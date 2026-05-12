@@ -13,6 +13,11 @@ import { useEffect } from 'react';
 
 import '@/global.css';
 
+import { Toast } from '@/components/auth/toast';
+import { wireAuthAutoRefresh } from '@/lib/auth/app-state';
+import { logAuthCallbackUrl } from '@/lib/auth/dev-log';
+import { useSession } from '@/lib/auth/use-session';
+
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -21,18 +26,38 @@ export default function RootLayout() {
     InterTight_400Regular,
     InterTight_500Medium,
   });
-
   const fontsLoaded = frauncesLoaded && interTightLoaded;
+  const session = useSession();
 
   useEffect(() => {
-    if (fontsLoaded) {
+    logAuthCallbackUrl();
+    return wireAuthAutoRefresh();
+  }, []);
+
+  useEffect(() => {
+    if (fontsLoaded && session.status !== 'loading') {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, session.status]);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || session.status === 'loading') {
     return null;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  const isSignedIn = session.status === 'signed-in';
+
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Protected guard={isSignedIn}>
+          <Stack.Screen name="index" />
+        </Stack.Protected>
+        <Stack.Protected guard={!isSignedIn}>
+          <Stack.Screen name="sign-in" />
+        </Stack.Protected>
+        <Stack.Screen name="auth/callback" />
+      </Stack>
+      <Toast />
+    </>
+  );
 }
