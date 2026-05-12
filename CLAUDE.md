@@ -78,6 +78,9 @@ NativeWind config exposes these as Tailwind tokens (`bg-sand`, `text-inbound`, `
 - **Font loading discipline** — fonts must be loaded via `expo-font` + `useFonts` hook. Block app render with `SplashScreen.preventAutoHideAsync()` until loaded, or you'll see system fonts flash on cold start.
 - **expo-router file paths matter** — `app/index.tsx` is the home route; `app/_layout.tsx` is the layout wrapper. Don't rename or move these without understanding the routing implications.
 - **Inline style for state-dependent colors** — don't use `hover:text-token` patterns (see above). Same applies to any focused/pressed/disabled state styling: pass an inline style or use the Pressable `style` function.
+- **Reanimated 4 babel plugin** — Expo SDK 54 ships `react-native-reanimated` v4, which splits worklet handling into a separate `react-native-worklets` package. The babel plugin to add (last in the plugins array) is `react-native-worklets/plugin`, NOT the older `react-native-reanimated/plugin`. Older docs and tutorials still reference the latter; ignore them.
+- **NativeWind v4 pin on Tailwind v3** — NativeWind v4 currently requires `tailwindcss` v3.x. Do not bump `tailwindcss` to v4 — NativeWind doesn't support it yet, and the bump silently breaks utility resolution at runtime.
+- **jest-expo preset, no custom `transformIgnorePatterns`** — `package.json`'s `jest` block only sets `preset: jest-expo`. Don't reintroduce a custom `transformIgnorePatterns` override — the preset already handles RN + Expo + reanimated/worklets correctly, and any hand-rolled regex drifts out of date the moment a new package is added.
 
 ## Conventions inherited from `analog-guest`
 

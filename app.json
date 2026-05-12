@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Analog Operator",
+    "slug": "analog-operator",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "analog-operator",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "company.theanalog.operator",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "company.theanalog.operator",
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
