@@ -27,17 +27,24 @@ function mapError(err: AuthError | null): AuthFailure {
       message: 'Too many requests — try again in a moment.',
     };
   }
-  const message = err.message ?? '';
-  if (/network|fetch failed|timeout/i.test(message)) {
+  if (
+    err.status === 0 ||
+    /network|fetch failed|timeout/i.test(err.message ?? '')
+  ) {
     return { kind: 'network', message: 'Connection issue — try again.' };
   }
-  if (/invalid|expired|otp|token/i.test(message)) {
-    return {
-      kind: 'invalid_code',
-      message: "Code didn't match. Try again or resend.",
-    };
-  }
-  return { kind: 'unknown', message: message || 'Something went wrong.' };
+  return {
+    kind: 'unknown',
+    message: err.message || 'Something went wrong.',
+  };
+}
+
+const INVALID_CODE_MESSAGE = "Code didn't match. Try again or resend.";
+
+function isVerifyClientError(err: AuthError): boolean {
+  if (typeof err.status !== 'number') return false;
+  if (err.status === 429) return false;
+  return err.status >= 400 && err.status < 500;
 }
 
 export async function sendPhoneOtp(phoneE164: string): Promise<AuthResult> {
@@ -57,8 +64,17 @@ export async function verifyPhoneOtp(
     token,
     type: 'sms',
   });
-  if (error || !data.session) {
+  if (error) {
+    if (isVerifyClientError(error)) {
+      return {
+        ok: false,
+        error: { kind: 'invalid_code', message: INVALID_CODE_MESSAGE },
+      };
+    }
     return { ok: false, error: mapError(error) };
+  }
+  if (!data.session) {
+    return { ok: false, error: mapError(null) };
   }
   return { ok: true, data: data.session };
 }

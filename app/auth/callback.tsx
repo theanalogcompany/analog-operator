@@ -5,26 +5,8 @@ import { Text, View } from 'react-native';
 
 import { showToast } from '@/components/auth/toast';
 import { linkOperator } from '@/lib/auth/operator';
+import { parseFragmentTokens } from '@/lib/auth/parse-fragment';
 import { supabase } from '@/lib/supabase/client';
-
-type FragmentTokens =
-  | { ok: true; accessToken: string; refreshToken: string }
-  | { ok: false };
-
-function parseFragmentTokens(url: string): FragmentTokens {
-  const hashIdx = url.indexOf('#');
-  if (hashIdx === -1) {
-    return { ok: false };
-  }
-  const fragment = url.slice(hashIdx + 1);
-  const params = new URLSearchParams(fragment);
-  const accessToken = params.get('access_token');
-  const refreshToken = params.get('refresh_token');
-  if (!accessToken || !refreshToken) {
-    return { ok: false };
-  }
-  return { ok: true, accessToken, refreshToken };
-}
 
 export default function AuthCallbackScreen() {
   useEffect(() => {
@@ -33,6 +15,9 @@ export default function AuthCallbackScreen() {
     async function handleUrl(url: string) {
       const parsed = parseFragmentTokens(url);
       if (!parsed.ok) {
+        if (parsed.error && __DEV__) {
+          console.log('[analog-operator] magic-link error:', parsed.error);
+        }
         showToast('Invalid or expired link. Try again.');
         if (active) router.replace('/sign-in');
         return;

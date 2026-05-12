@@ -34,7 +34,7 @@ export function Toast() {
   return (
     <View
       className="absolute bottom-12 left-4 right-4 rounded-xl bg-inbound px-4 py-3"
-      pointerEvents="none"
+      style={{ pointerEvents: 'none' }}
     >
       <Text
         className="font-inter-tight text-sand"

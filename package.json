@@ -10,7 +10,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "jest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node regen-typed-routes.cjs && tsc --noEmit"
   },
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",
