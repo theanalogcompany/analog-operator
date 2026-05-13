@@ -26,7 +26,7 @@ You are working on Linear ticket $ARGUMENTS for analog-operator. The operator ty
 | `lastBotComment` body contains `[HUMAN-REVIEW-REQUIRED]` | Exit. No wakeup. |
 | `lastBotComment` body contains `[POLLING-TIMEOUT]` | Exit. No wakeup. |
 | `lastBotComment` body contains `[POLLING-CLOSED]` | Exit. No wakeup. Operator-driven wind-down. |
-| `lastBotComment` body contains a PR link (Phase 5 step 21 marker) | Exit. No wakeup. Manual merge gate. |
+| `lastBotComment` body contains a PR link (Phase 5 step 22 marker) | Exit. No wakeup. Manual merge gate. |
 | `botComments.length === 0` | Fresh run. Run Phase 0 → Phase 2. Post plan or `[NEEDS-INPUT]` or `[HUMAN-REVIEW-REQUIRED]`. If polling-eligible: write `[POLLING-STATE]` (iteration=1), ScheduleWakeup(60s), exit. If `[HUMAN-REVIEW-REQUIRED]`: exit, no wakeup. |
 | `lastQuestionComment` exists, `newReplies.length === 0`, `pollingState.iteration < 26` | Run Phase 0 (re-verify scope). If still safe: increment iteration, update `[POLLING-STATE]` in place, ScheduleWakeup(nextInterval per backoff), exit. |
 | `lastQuestionComment` exists, `newReplies.length === 0`, `pollingState.iteration >= 26` | Post `[POLLING-TIMEOUT]`. Exit. No wakeup. |
@@ -75,25 +75,26 @@ When the 3-way classification is **Proceed**, route by `lastQuestionComment`:
 The implicit question on the plan post is "does this plan look right?" Advance to Phase 3 only on a substantive approval reply ("build", "approved, proceed", or equivalent). A reply with revisions counts as substantive — integrate, re-post the plan, return to polling.
 
 # Phase 3 — Build (only after explicit substantive approval)
-10. Create the branch if not already present: `jaipal/TAC-XXX-short-description`.
-11. Implement the plan. Match existing patterns. `@/*` alias for imports. Errors as values: return `{ ok: true, data }` or `{ ok: false, error }`. Throw only at outer boundaries (top-level effects, event handlers). Zod at boundaries. No `any`. No new top-level directories without asking first.
-12. If a question surfaces mid-build that wasn't in the plan, post `[NEEDS-INPUT]` (threaded), update `[POLLING-STATE]`, ScheduleWakeup(60s), exit. Don't guess.
-13. **CLAUDE.md hygiene check.** Before exiting Build, evaluate whether this change introduces anything that should be in CLAUDE.md per the "Keeping this file current" rule. Specifically check for: new scripts in `package.json`, new migrations (with migration log entry), new library patterns or conventions, gotchas discovered during implementation, new directories, new env vars, new workflow rules, or version bumps to documented dependencies. If yes, update CLAUDE.md in the same commit as the code change. If no, note in the PR description: *"CLAUDE.md update considered: [what you checked, why no update needed]."* If you have not written a "CLAUDE.md update considered: …" line in the PR description by the time Phase 5 step 20 runs, the task is incomplete — go back and add it before opening the PR.
+10. **Sync local `main` before branching.** Skip if the branch already exists (resuming a build). Otherwise: `git checkout main && git fetch origin && git pull origin main --ff-only`. If the `--ff-only` pull fails — local `main` has diverged from `origin/main` — STOP. Post a `[HUMAN-REVIEW-REQUIRED]` Linear comment surfacing the divergence (include `git log --oneline HEAD..origin/main` and `git log --oneline origin/main..HEAD` so both directions are visible), then exit immediately. Do NOT auto-rebase, reset, or otherwise resolve — the divergence is a bug worth flagging. (Branching from stale local `main` is what produced the TAC-37 conflict storm.)
+11. Create the branch if not already present: `jaipal/TAC-XXX-short-description`.
+12. Implement the plan. Match existing patterns. `@/*` alias for imports. Errors as values: return `{ ok: true, data }` or `{ ok: false, error }`. Throw only at outer boundaries (top-level effects, event handlers). Zod at boundaries. No `any`. No new top-level directories without asking first.
+13. If a question surfaces mid-build that wasn't in the plan, post `[NEEDS-INPUT]` (threaded), update `[POLLING-STATE]`, ScheduleWakeup(60s), exit. Don't guess.
+14. **CLAUDE.md hygiene check.** Before exiting Build, evaluate whether this change introduces anything that should be in CLAUDE.md per the "Keeping this file current" rule. Specifically check for: new scripts in `package.json`, new migrations (with migration log entry), new library patterns or conventions, gotchas discovered during implementation, new directories, new env vars, new workflow rules, or version bumps to documented dependencies. If yes, update CLAUDE.md in the same commit as the code change. If no, note in the PR description: *"CLAUDE.md update considered: [what you checked, why no update needed]."* If you have not written a "CLAUDE.md update considered: …" line in the PR description by the time Phase 5 step 21 runs, the task is incomplete — go back and add it before opening the PR.
 
 # Phase 4 — Verify
-14. `npx tsc --noEmit` — must pass.
-15. `npm run lint` — must pass.
-16. Test gate (conditional on `package.json` state):
+15. `npx tsc --noEmit` — must pass.
+16. `npm run lint` — must pass.
+17. Test gate (conditional on `package.json` state):
     - If `package.json` does not exist, OR `package.json` exists but has no `"test"` script under `scripts`: emit an info-level note (`tests: not yet configured — jest-expo wired during TAC-112 Phase 1 scaffold`) and continue. Non-blocker.
     - If `package.json` has a `"test"` script: run `npm test`. All tests must pass. Report count delta vs main. Any failure is a blocker per the existing rules.
-17. If the diff touches any screen under `app/**` or any component under `components/**`, invoke the `qa-runner` subagent.
-18. Invoke the `code-reviewer` subagent on the diff. Address BLOCKER and MAJOR findings; explain skips on MINOR.
+18. If the diff touches any screen under `app/**` or any component under `components/**`, invoke the `qa-runner` subagent.
+19. Invoke the `code-reviewer` subagent on the diff. Address BLOCKER and MAJOR findings; explain skips on MINOR.
 
 # Phase 5 — Ship
-19. Commit. Subject: `TAC-XXX: <imperative lowercase subject>`. Body explains why if non-obvious.
-20. `gh pr create`. Title matches commit subject. Body summarizes changes + test count delta + any plan deviations + CLAUDE.md note (per Phase 3 step 13) + anything you'd push back on.
-21. Post a Linear comment with the PR link (threaded via `parentId`). Move ticket status to "Ready for QA."
-22. Exit. No ScheduleWakeup. Manual merge gate — operator runs `gh pr merge --squash --delete-branch` after reviewing the PR on GitHub.
+20. Commit. Subject: `TAC-XXX: <imperative lowercase subject>`. Body explains why if non-obvious.
+21. `gh pr create`. Title matches commit subject. Body summarizes changes + test count delta + any plan deviations + CLAUDE.md note (per Phase 3 step 14) + anything you'd push back on.
+22. Post a Linear comment with the PR link (threaded via `parentId`). Move ticket status to "Ready for QA."
+23. Exit. No ScheduleWakeup. Manual merge gate — operator runs `gh pr merge --squash --delete-branch` after reviewing the PR on GitHub.
 
 # Polling protocol
 
@@ -171,9 +172,9 @@ Default: every bot comment posts with `parentId = lastBotComment.id` (or omitted
 - Plan gate (Phase 2 → 3) requires explicit substantive approval, delivered as a Linear reply caught by the polling loop. Do not advance on silence or on a non-substantive reply (chit-chat, holding-pattern). The substantive-answer judgment IS the gate.
 - The operator types `/work-ticket TAC-XXX` exactly once. Never instruct them to type `/loop`. Subsequent invocations come from the harness re-firing on ScheduleWakeup.
 - ScheduleWakeup is the only polling primitive — no `Bash sleep`, no until-loops chaining short sleeps. The harness blocks those.
-- No auto-merge (Phase 5 step 22). Manual merge gate stays manual; no wakeup after the PR-link comment.
+- No auto-merge (Phase 5 step 23). Manual merge gate stays manual; no wakeup after the PR-link comment.
 - No loyalty-program language anywhere — points, rewards, tier, earn, badges, progress bars are forbidden. Guests are recognized, not enrolled.
 - High-stakes uncertainty → `[HUMAN-REVIEW-REQUIRED]`, never `[NEEDS-INPUT]`. Exits immediately, no wakeup.
 - Wind-down is operator-driven. The agent never decides to wind down on its own — the substantive reply must indicate stopping. The 3-way classification (Proceed / Modify / Wind-down) is the only path to `[POLLING-CLOSED]`.
-- The agent never auto-closes the ticket. Status is set automatically only at Phase 5 step 21 (PR ship → "Ready for QA"). Wind-down, timeout, and human-review exits leave status untouched — operators close manually. The permission hook enforces this.
+- The agent never auto-closes the ticket. Status is set automatically only at Phase 5 step 22 (PR ship → "Ready for QA"). Wind-down, timeout, and human-review exits leave status untouched — operators close manually. The permission hook enforces this.
 - CLAUDE.md hygiene is mandatory in every Build phase. Skipping = drift, drift = future pain.
