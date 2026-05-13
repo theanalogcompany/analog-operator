@@ -63,6 +63,7 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
       <SwipeOverlay direction={direction} intensity={intensity} />
       <GestureDetector gesture={composed}>
         <Animated.View
+          collapsable={false}
           className="w-full"
           style={[{ maxWidth: 354, zIndex: 3 }, cardStyle]}
         >
