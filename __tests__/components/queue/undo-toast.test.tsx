@@ -76,7 +76,12 @@ describe('UndoToast', () => {
     await act(async () => {
       await setUndoState({ action: 'approve', draft });
     });
-    fireEvent.press(screen.getByLabelText('Undo'));
+    // The press handler kicks off `void clearUndoState()`; if we don't wrap
+    // the press in act(), notify() runs after the test body returns and
+    // calls setState on a still-mounted UndoToast outside act → warning.
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Undo'));
+    });
     expect(onUndo).toHaveBeenCalledTimes(1);
     expect(onUndo.mock.calls[0][0]).toMatchObject({
       action: 'approve',
