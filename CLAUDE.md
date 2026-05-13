@@ -47,8 +47,9 @@ NativeWind config exposes these as Tailwind tokens (`bg-sand`, `text-inbound`, `
 
 - This app calls operator-facing endpoints in `analog-guest`. Spec lives in Linear ticket TAC-258.
 - Base URL via env var: `EXPO_PUBLIC_API_BASE_URL` (e.g. `https://analog-guest.vercel.app`)
+- Supabase env vars: `EXPO_PUBLIC_SUPABASE_URL` + `EXPO_PUBLIC_SUPABASE_ANON_KEY` (required; `lib/supabase/client.ts` throws at module load if either is missing). Copy `.env.example` → `.env.local` and fill.
 - Auth: Supabase session JWT in `Authorization: Bearer <token>` header
-- A typed API client will live at `lib/api/` (to be built in TAC-206 / TAC-37 — not yet)
+- A typed API client will live at `lib/api/` (to be built in TAC-37 — not yet)
 
 ## Workflow rules for Claude Code
 
@@ -80,7 +81,15 @@ NativeWind config exposes these as Tailwind tokens (`bg-sand`, `text-inbound`, `
 - **Inline style for state-dependent colors** — don't use `hover:text-token` patterns (see above). Same applies to any focused/pressed/disabled state styling: pass an inline style or use the Pressable `style` function.
 - **Reanimated 4 babel plugin** — Expo SDK 54 ships `react-native-reanimated` v4, which splits worklet handling into a separate `react-native-worklets` package. The babel plugin to add (last in the plugins array) is `react-native-worklets/plugin`, NOT the older `react-native-reanimated/plugin`. Older docs and tutorials still reference the latter; ignore them.
 - **NativeWind v4 pin on Tailwind v3** — NativeWind v4 currently requires `tailwindcss` v3.x. Do not bump `tailwindcss` to v4 — NativeWind doesn't support it yet, and the bump silently breaks utility resolution at runtime.
-- **jest-expo preset, no custom `transformIgnorePatterns`** — `package.json`'s `jest` block only sets `preset: jest-expo`. Don't reintroduce a custom `transformIgnorePatterns` override — the preset already handles RN + Expo + reanimated/worklets correctly, and any hand-rolled regex drifts out of date the moment a new package is added.
+- **jest-expo preset, no custom `transformIgnorePatterns`** — `package.json`'s `jest` block only sets `preset: jest-expo` plus a `setupFiles` entry pointing at `jest.setup.js`. Don't reintroduce a custom `transformIgnorePatterns` override — the preset already handles RN + Expo + reanimated/worklets correctly, and any hand-rolled regex drifts out of date the moment a new package is added. `jest.setup.js` stubs `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` so the `lib/supabase/client.ts` module-load throw doesn't crash the suite.
+- **Always `npx expo install <pkg>` for Expo-namespaced packages.** Plain `npm install expo-secure-store` pulls the latest npm version (e.g. v55 at the time of TAC-206), which can be a major-version ahead of what the current SDK supports. `npx expo install` resolves against the SDK's compatibility metadata. If you accidentally use `npm install`, `npx expo install --check` will flag the drift.
+- **Auth (Supabase + Expo SecureStore)** — four footguns to remember:
+  1. SecureStore storage adapter must be async — `getItemAsync` / `setItemAsync` / `deleteItemAsync` all return promises. Match the `SupportedStorage` shape from `@supabase/auth-js`; no `as any`. See `lib/supabase/client.ts`.
+  2. AppState wiring is mandatory for token refresh in the background. `supabase.auth.startAutoRefresh()` / `stopAutoRefresh()` must be called on AppState `active` / non-`active` transitions. See `lib/auth/app-state.ts`. Without this, the session looks fine until the access token silently expires.
+  3. Magic-link tokens live in the URL fragment (`#access_token=…&refresh_token=…`), not the query string. Parse via `url.split('#')[1]` then `URLSearchParams`. `Linking.parse(url).queryParams` does not expose fragment params.
+  4. Deep-link prod shape (`analog-operator://auth/callback`) only surfaces in a dev-client / TestFlight build. Under Expo Go the redirect URL is `exp://…/--/auth/callback`. `lib/auth/dev-log.ts` console-logs `Linking.createURL('auth/callback')` once on app boot so you can eyeball the resolved shape on first launch of a new build flavor.
+- **Typed routes wired into `npm run typecheck`.** `npm run typecheck` runs `node regen-typed-routes.cjs && tsc --noEmit`. The regen script rebuilds `.expo/types/router.d.ts` so route-string validation in tsc covers the current set of `app/**` files. Without it, CI typecheck either falls back to permissive route types (if the file is absent) or fails on stale ones (if you ran `expo start` once, then renamed/added a route). The script lives at the repo root and is the same logic Metro runs at `expo start`.
+- **Zod 4 strict UUID validation.** `z.string().uuid()` in Zod 4 enforces the canonical UUIDv1–v8 regex including the variant nibble (`[89abAB]` in position 14). Test fixtures of the form `11111111-1111-1111-1111-111111111111` are rejected because the variant char is `1`. Use real-looking UUIDv4s in fixtures (e.g. `f47ac10b-58cc-4372-a567-0e02b2c3d479`) or use `crypto.randomUUID()`.
 
 ## Conventions inherited from `analog-guest`
 
