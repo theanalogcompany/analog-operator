@@ -14,6 +14,10 @@ import { useEffect } from 'react';
 import '@/global.css';
 
 import { Toast } from '@/components/auth/toast';
+import {
+  rehydrateUndoState,
+  wireUndoAutoClearOnSignOut,
+} from '@/hooks/use-undo-state';
 import { wireAuthAutoRefresh } from '@/lib/auth/app-state';
 import { logAuthCallbackUrl } from '@/lib/auth/dev-log';
 import { useSession } from '@/lib/auth/use-session';
@@ -31,7 +35,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     logAuthCallbackUrl();
-    return wireAuthAutoRefresh();
+    void rehydrateUndoState();
+    const stopUndoClear = wireUndoAutoClearOnSignOut();
+    const stopAutoRefresh = wireAuthAutoRefresh();
+    return () => {
+      stopUndoClear();
+      stopAutoRefresh();
+    };
   }, []);
 
   useEffect(() => {
@@ -51,6 +61,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={isSignedIn}>
           <Stack.Screen name="index" />
+          <Stack.Screen name="queue" />
         </Stack.Protected>
         <Stack.Protected guard={!isSignedIn}>
           <Stack.Screen name="sign-in" />
