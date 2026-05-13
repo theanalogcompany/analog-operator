@@ -1,12 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { act, render } from '@testing-library/react-native';
 
 import {
   clearUndoState,
   getUndoState,
   rehydrateUndoState,
   setUndoState,
+  useUndoState,
 } from '@/hooks/use-undo-state';
 import { type PendingDraft } from '@/lib/api/queue';
+import { undoToast } from '@/lib/theme';
 
 const STORAGE_KEY = 'analog-operator.undo-state.v1';
 
@@ -38,6 +41,12 @@ describe('use-undo-state', () => {
   beforeEach(async () => {
     await clearUndoState();
     await AsyncStorage.clear();
+  });
+
+  // Symmetrical with beforeEach: makes sure no test leaks the 3s expiry
+  // setTimeout into the next test (or past suite completion).
+  afterEach(async () => {
+    await clearUndoState();
   });
 
   it('sets and reads an undo record', async () => {
@@ -116,5 +125,34 @@ describe('use-undo-state', () => {
     await rehydrateUndoState();
     expect(getUndoState()).toBeNull();
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('clears the expiry timer when the last subscriber unmounts (state preserved because timer was cleared)', async () => {
+    jest.useFakeTimers();
+    try {
+      function Probe() {
+        useUndoState();
+        return null;
+      }
+      const { unmount } = render(<Probe />);
+
+      await act(async () => {
+        await setUndoState({ action: 'approve', draft: makeDraft() });
+      });
+
+      // Sanity: state is live and the module-level expiry timer is pending.
+      expect(getUndoState()).not.toBeNull();
+
+      unmount();
+
+      // Advance past the 3s undoToast window. The assertion below proves the
+      // per-mount cleanup disposed the setTimeout — if the timer had leaked,
+      // it would have called clearUndoState() and we'd see null here.
+      jest.advanceTimersByTime(undoToast.windowMs + 1_000);
+
+      expect(getUndoState()).not.toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
