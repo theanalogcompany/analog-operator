@@ -40,11 +40,11 @@ export function useQueueSwipe({
     .failOffsetY([-15, 15])
     .onBegin(() => {
       'worklet';
-      console.log('[pan] begin');
+      if (__DEV__) console.log('[pan] begin');
     })
     .onUpdate((e) => {
       'worklet';
-      console.log('[pan] update', e.translationX);
+      if (__DEV__) console.log('[pan] update', e.translationX);
       translateX.value = e.translationX;
       rotation.value = e.translationX * swipe.rotationFactor;
       const abs = Math.abs(e.translationX);
