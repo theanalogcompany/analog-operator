@@ -45,7 +45,7 @@ export default function QueueScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-bg-warm">
+    <SafeAreaView className="flex-1 bg-sand">
       <View className="flex-row items-center justify-between px-[22px] pb-2 pt-4">
         <Text
           className="font-fraunces text-ink"

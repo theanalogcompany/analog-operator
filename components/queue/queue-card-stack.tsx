@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedStyle } from 'react-native-reanimated';
 
 import { useHaptics } from '@/hooks/use-haptics';
 import { useQueueSwipe } from '@/hooks/use-queue-swipe';
@@ -29,12 +29,25 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
     haptics.swipeLeftEdit();
     onEdit(draft);
   };
+  const toggleExpanded = (): void => {
+    setExpanded((v) => !v);
+  };
 
   const { pan, translateX, rotation, direction, intensity } = useQueueSwipe({
     onCommitRight: handleRight,
     onCommitLeft: handleLeft,
     enabled: true,
   });
+
+  const tap = Gesture.Tap()
+    .maxDuration(250)
+    .maxDistance(10)
+    .onEnd((_event, success) => {
+      'worklet';
+      if (success) runOnJS(toggleExpanded)();
+    });
+
+  const composed = Gesture.Exclusive(pan, tap);
 
   const cardStyle = useAnimatedStyle(() => ({
     transform: [
@@ -46,16 +59,12 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
   return (
     <>
       <SwipeOverlay direction={direction} intensity={intensity} />
-      <GestureDetector gesture={pan}>
+      <GestureDetector gesture={composed}>
         <Animated.View
           className="w-full"
           style={[{ maxWidth: 354, zIndex: 3 }, cardStyle]}
         >
-          <QueueCard
-            draft={draft}
-            expanded={expanded}
-            onToggleExpanded={() => setExpanded((v) => !v)}
-          />
+          <QueueCard draft={draft} expanded={expanded} />
         </Animated.View>
       </GestureDetector>
     </>
@@ -78,9 +87,14 @@ function PeekCard({ draft }: PeekCardProps) {
       }}
     >
       <View
-        style={{ maxWidth: 354, width: '100%', transform: [{ scale: peekCard.scale }] }}
+        style={{
+          maxWidth: 354,
+          width: '100%',
+          transform: [{ scale: peekCard.scale }],
+          transformOrigin: 'top center',
+        }}
       >
-        <QueueCard draft={draft} expanded={false} onToggleExpanded={() => {}} />
+        <QueueCard draft={draft} expanded={false} />
       </View>
     </View>
   );
@@ -130,4 +144,3 @@ export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
     </View>
   );
 }
-

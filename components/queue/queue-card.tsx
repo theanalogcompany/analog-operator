@@ -24,26 +24,34 @@ function minutesPending(draft: PendingDraft): string {
 type Props = {
   draft: PendingDraft;
   expanded: boolean;
-  onToggleExpanded: () => void;
+  /**
+   * Optional tap handler. When set, the card renders a Pressable outer so RN's
+   * built-in press recognition fires (used by unit tests). In production the
+   * tap comes through the FrontCard's gesture composition, so the queue stack
+   * leaves this undefined and the outer renders as a plain View — keeping the
+   * native gesture-handler surface unobstructed.
+   */
+  onToggleExpanded?: () => void;
 };
 
+const cardOuterClass =
+  'overflow-hidden rounded-[20px] border-[0.5px] border-hairline bg-white';
+
+const cardShadow = {
+  shadowColor: '#1C1814',
+  shadowOpacity: 0.1,
+  shadowOffset: { width: 0, height: 8 },
+  shadowRadius: 24,
+  elevation: 6,
+} as const;
+
 export function QueueCard({ draft, expanded, onToggleExpanded }: Props) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Pending draft for ${displayName(draft)}. Tap to ${
-        expanded ? 'collapse' : 'expand'
-      } context.`}
-      onPress={onToggleExpanded}
-      className="overflow-hidden rounded-[20px] border-[0.5px] border-hairline bg-white"
-      style={{
-        shadowColor: '#1C1814',
-        shadowOpacity: 0.06,
-        shadowOffset: { width: 0, height: 12 },
-        shadowRadius: 32,
-        elevation: 4,
-      }}
-    >
+  const a11yLabel = `Pending draft for ${displayName(draft)}. Tap to ${
+    expanded ? 'collapse' : 'expand'
+  } context.`;
+
+  const body = (
+    <>
       <View className="flex-row items-center gap-[10px] px-[18px] pb-[14px] pt-[18px]">
         <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
           {displayName(draft)}
@@ -156,7 +164,32 @@ export function QueueCard({ draft, expanded, onToggleExpanded }: Props) {
           ))}
         </View>
       ) : null}
-    </Pressable>
+    </>
+  );
+
+  if (onToggleExpanded) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        onPress={onToggleExpanded}
+        className={cardOuterClass}
+        style={cardShadow}
+      >
+        {body}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      className={cardOuterClass}
+      style={cardShadow}
+    >
+      {body}
+    </View>
   );
 }
 
