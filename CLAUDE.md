@@ -16,8 +16,13 @@ The operator-facing native mobile app for Analog — a guest recognition platfor
 - `app/` — expo-router file-based routes (screens live here, indexed by file name)
 - `components/` — reusable UI components
 - `lib/` — shared utilities, API clients, hooks, Zod schemas
+  - `lib/api/` — typed clients for `analog-guest` endpoints (Result-shaped, Bearer-attached)
+  - `lib/fixtures/` — in-memory data + simulated emitters for parallel-build scaffolds
+  - `lib/realtime/` — channel adapters (fixture today, Supabase Realtime later)
+  - `lib/theme.ts` — non-color design tokens (motion thresholds, durations, easings). Colors stay in `tailwind.config.js`.
 - `hooks/` — custom React hooks
 - `assets/` — fonts, images, icons
+- `docs/prototypes/` — design HTML prototypes used as visual source of truth
 - `.claude/` — workflow infrastructure (slash commands and sub-agents)
 
 This repo has no database, no migrations, no API routes, no AI/runtime code. All of that lives in `analog-guest`.
@@ -47,9 +52,10 @@ NativeWind config exposes these as Tailwind tokens (`bg-sand`, `text-inbound`, `
 
 - This app calls operator-facing endpoints in `analog-guest`. Spec lives in Linear ticket TAC-258.
 - Base URL via env var: `EXPO_PUBLIC_API_BASE_URL` (e.g. `https://analog-guest.vercel.app`)
+- **Fixture mode: when `EXPO_PUBLIC_API_BASE_URL` is unset (or empty), `lib/api/queue.ts` and `lib/realtime/queue-channel.ts` route to in-memory fixtures (`lib/fixtures/queue.ts`).** Used during parallel-build phases when the upstream backend (TAC-258 + TAC-264) hasn't shipped. Flip to real wires by setting the env var.
 - Supabase env vars: `EXPO_PUBLIC_SUPABASE_URL` + `EXPO_PUBLIC_SUPABASE_ANON_KEY` (required; `lib/supabase/client.ts` throws at module load if either is missing). Copy `.env.example` → `.env.local` and fill.
-- Auth: Supabase session JWT in `Authorization: Bearer <token>` header
-- A typed API client will live at `lib/api/` (to be built in TAC-37 — not yet)
+- Auth: Supabase session JWT in `Authorization: Bearer <token>` header — wired via `authedFetch` in `lib/api/client.ts`. One refresh-and-retry on 401/403, then `NO_SESSION`. Never loops. API client never navigates; auth redirects belong to the global session listener.
+- Errors-as-values shape: every `lib/api/*` function returns `{ ok: true, data }` or `{ ok: false, error: ApiError }`. `ApiError` is one of `NO_SESSION | HTTP | NETWORK | PARSE`. Current callers treat all `HTTP` as retryable — comment in `parseHttpError` if that taxonomy needs to grow.
 
 ## Workflow rules for Claude Code
 
@@ -89,7 +95,10 @@ NativeWind config exposes these as Tailwind tokens (`bg-sand`, `text-inbound`, `
   3. Magic-link tokens live in the URL fragment (`#access_token=…&refresh_token=…`), not the query string. Parse via `url.split('#')[1]` then `URLSearchParams`. `Linking.parse(url).queryParams` does not expose fragment params.
   4. Deep-link prod shape (`analog-operator://auth/callback`) only surfaces in a dev-client / TestFlight build. Under Expo Go the redirect URL is `exp://…/--/auth/callback`. `lib/auth/dev-log.ts` console-logs `Linking.createURL('auth/callback')` once on app boot so you can eyeball the resolved shape on first launch of a new build flavor.
 - **Typed routes wired into `npm run typecheck`.** `npm run typecheck` runs `node regen-typed-routes.cjs && tsc --noEmit`. The regen script rebuilds `.expo/types/router.d.ts` so route-string validation in tsc covers the current set of `app/**` files. Without it, CI typecheck either falls back to permissive route types (if the file is absent) or fails on stale ones (if you ran `expo start` once, then renamed/added a route). The script lives at the repo root and is the same logic Metro runs at `expo start`.
-- **Zod 4 strict UUID validation.** `z.string().uuid()` in Zod 4 enforces the canonical UUIDv1–v8 regex including the variant nibble (`[89abAB]` in position 14). Test fixtures of the form `11111111-1111-1111-1111-111111111111` are rejected because the variant char is `1`. Use real-looking UUIDv4s in fixtures (e.g. `f47ac10b-58cc-4372-a567-0e02b2c3d479`) or use `crypto.randomUUID()`.
+- **Zod 4 strict UUID validation.** `z.string().uuid()` in Zod 4 enforces the canonical UUIDv1–v8 regex including the variant nibble (`[89abAB]` in position 14). Test fixtures of the form `11111111-1111-1111-1111-111111111111` are rejected because the variant char is `1`. Use real-looking UUIDv4s in fixtures (e.g. `f47ac10b-58cc-4372-a567-0e02b2c3d479`) or use `crypto.randomUUID()`. Hermes's `crypto.randomUUID()` isn't reliably available, so `lib/fixtures/queue.ts` hand-rolls a `fixtureUuid()` using `Math.random` — non-cryptographic, fine for seed data; do NOT use it outside fixtures.
+- **AsyncStorage key namespacing.** Keys are prefixed `analog-operator.<area>.v<n>` (e.g. `analog-operator.undo-state.v1`). Bump the `v` when the stored shape changes; never silently re-parse a different shape against the same key.
+- **Fixture-mode boundary.** `EXPO_PUBLIC_API_BASE_URL` unset = fixture mode. `lib/api/queue.ts` exports `isFixtureMode()` and uses it to route to `lib/fixtures/queue.ts`; `lib/realtime/queue-channel.ts` does the same for the realtime channel. When real wires land, fixes are confined to those two boundaries — UI hooks/components above never check the env var directly.
+- **Gesture worklets.** `react-native-reanimated` v4 + `react-native-gesture-handler` are the gesture/animation stack. UI-thread callbacks (`onUpdate`, `onEnd`) need a `'worklet';` directive; cross to JS thread via `runOnJS(...)`. Gesture math thresholds, durations, and easings live in `lib/theme.ts` (`swipe`, `editTakeover`, `undoToast`, `peekCard`, `easing`), NOT in tailwind tokens.
 
 ## Conventions inherited from `analog-guest`
 
