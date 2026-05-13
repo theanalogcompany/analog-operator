@@ -9,6 +9,14 @@ let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 export function showToast(message: string): void {
   if (dismissTimer) {
     clearTimeout(dismissTimer);
+    dismissTimer = null;
+  }
+  if (listeners.size === 0) {
+    // No subscribers — the auto-dismiss timer would only call back into an
+    // empty Set anyway, and leaving it scheduled keeps the Node worker
+    // alive past suite completion in tests that exercise a screen without
+    // mounting the root layout's <Toast />.
+    return;
   }
   listeners.forEach((l) => l(message));
   dismissTimer = setTimeout(() => {
@@ -24,6 +32,13 @@ export function Toast() {
     listeners.add(setMessage);
     return () => {
       listeners.delete(setMessage);
+      // When the last Toast unmounts, dispose the module-level 4s dismiss
+      // timer so a pending setTimeout doesn't keep the Node worker alive
+      // after a test suite finishes (same pattern as use-undo-state).
+      if (listeners.size === 0 && dismissTimer) {
+        clearTimeout(dismissTimer);
+        dismissTimer = null;
+      }
     };
   }, []);
 

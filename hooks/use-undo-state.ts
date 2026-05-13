@@ -117,6 +117,16 @@ export function useUndoState(): UndoRecord | null {
     subscribers.add(setState);
     return () => {
       subscribers.delete(setState);
+      // When the last subscriber unmounts, dispose the module-level expiry
+      // timer so a 3s setTimeout doesn't keep the Node worker alive after a
+      // test suite finishes. Note: this leaves `current` non-null on purpose
+      // — today the only subscriber is the single UndoToast rendered by
+      // app/queue/index.tsx, which stays mounted for the queue session, so
+      // the "last unmount" path is effectively only hit at app teardown /
+      // sign-out (both of which clear `current` explicitly). If a future
+      // refactor mounts UndoToast in a sub-screen that unmounts mid-window,
+      // also null out `current` here or stale state will linger.
+      if (subscribers.size === 0) clearTimer();
     };
   }, []);
   return state;

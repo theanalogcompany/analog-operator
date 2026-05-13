@@ -37,7 +37,13 @@ describe('UndoToast', () => {
   });
 
   afterEach(async () => {
-    await clearUndoState();
+    // clearUndoState() runs notify() which calls setState on any mounted
+    // UndoToast. RNTL's auto-cleanup unmounts later (separate afterEach),
+    // so without act() here the setState fires on a still-mounted component
+    // outside React's test scope and warns.
+    await act(async () => {
+      await clearUndoState();
+    });
   });
 
   it('renders nothing when there is no undo state', () => {
@@ -76,7 +82,12 @@ describe('UndoToast', () => {
     await act(async () => {
       await setUndoState({ action: 'approve', draft });
     });
-    fireEvent.press(screen.getByLabelText('Undo'));
+    // The press handler kicks off `void clearUndoState()`; if we don't wrap
+    // the press in act(), notify() runs after the test body returns and
+    // calls setState on a still-mounted UndoToast outside act → warning.
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Undo'));
+    });
     expect(onUndo).toHaveBeenCalledTimes(1);
     expect(onUndo.mock.calls[0][0]).toMatchObject({
       action: 'approve',
