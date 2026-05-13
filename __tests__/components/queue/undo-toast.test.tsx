@@ -37,7 +37,13 @@ describe('UndoToast', () => {
   });
 
   afterEach(async () => {
-    await clearUndoState();
+    // clearUndoState() runs notify() which calls setState on any mounted
+    // UndoToast. RNTL's auto-cleanup unmounts later (separate afterEach),
+    // so without act() here the setState fires on a still-mounted component
+    // outside React's test scope and warns.
+    await act(async () => {
+      await clearUndoState();
+    });
   });
 
   it('renders nothing when there is no undo state', () => {
