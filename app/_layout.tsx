@@ -10,6 +10,7 @@ import {
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import '@/global.css';
 
@@ -57,7 +58,7 @@ export default function RootLayout() {
   const isSignedIn = session.status === 'signed-in';
 
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={isSignedIn}>
           <Stack.Screen name="index" />
@@ -69,6 +70,6 @@ export default function RootLayout() {
         <Stack.Screen name="auth/callback" />
       </Stack>
       <Toast />
-    </>
+    </GestureHandlerRootView>
   );
 }

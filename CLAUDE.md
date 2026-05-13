@@ -66,6 +66,7 @@ NativeWind config exposes these as Tailwind tokens (`bg-sand`, `text-inbound`, `
 - Don't run the app yourself — Jaipal runs it locally to verify on his iPhone via Expo Go (Phase 1) or dev client (later)
 - Don't add native modules that break Expo Go compatibility without explicit approval
 - Don't add new dependencies without listing them in the plan first
+- After any rebase or merge that touches `app/_layout.tsx` or other app-root wiring, flag that an on-device smoke test (cold launch + queue swipe) is required — unit tests do not catch gesture-handler root-view regressions or other native-host wrapper drops
 
 ## High-stakes flags
 
