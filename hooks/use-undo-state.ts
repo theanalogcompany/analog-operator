@@ -117,6 +117,10 @@ export function useUndoState(): UndoRecord | null {
     subscribers.add(setState);
     return () => {
       subscribers.delete(setState);
+      // When the last subscriber unmounts, dispose the module-level expiry
+      // timer so a 3s setTimeout doesn't keep the Node worker alive after a
+      // test suite finishes.
+      if (subscribers.size === 0) clearTimer();
     };
   }, []);
   return state;
