@@ -11,6 +11,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '@/global.css';
 
@@ -59,17 +60,19 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={isSignedIn}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="queue" />
-        </Stack.Protected>
-        <Stack.Protected guard={!isSignedIn}>
-          <Stack.Screen name="sign-in" />
-        </Stack.Protected>
-        <Stack.Screen name="auth/callback" />
-      </Stack>
-      <Toast />
+      <SafeAreaProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Protected guard={isSignedIn}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="queue" />
+          </Stack.Protected>
+          <Stack.Protected guard={!isSignedIn}>
+            <Stack.Screen name="sign-in" />
+          </Stack.Protected>
+          <Stack.Screen name="auth/callback" />
+        </Stack>
+        <Toast />
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
