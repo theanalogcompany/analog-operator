@@ -18,6 +18,7 @@ type FrontCardProps = {
 };
 
 function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
+  console.log('[render] FrontCard mounted');
   const [expanded, setExpanded] = useState(false);
   const haptics = useHaptics();
 
@@ -44,6 +45,7 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
     .maxDistance(10)
     .onEnd((_event, success) => {
       'worklet';
+      console.log('[tap] end', { success });
       if (success) runOnJS(toggleExpanded)();
     });
 
@@ -61,6 +63,7 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
       <SwipeOverlay direction={direction} intensity={intensity} />
       <GestureDetector gesture={composed}>
         <Animated.View
+          collapsable={false}
           className="w-full"
           style={[{ maxWidth: 354, zIndex: 3 }, cardStyle]}
         >
@@ -123,6 +126,7 @@ type Props = {
 };
 
 export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
+  console.log('[render] stack mounted, count:', drafts.length);
   const top = drafts[0];
   const peek = drafts[1];
 
