@@ -76,7 +76,7 @@ export async function approveDraft(messageId: string): Promise<Result<void>> {
     return fixtures.approveDraftFixture(messageId);
   }
   const result = await authedFetch(
-    `/api/operator/queue/${encodeURIComponent(messageId)}/approve`,
+    `/api/operator/messages/${encodeURIComponent(messageId)}/approve`,
     { method: 'POST' },
   );
   if (!result.ok) return result;
@@ -91,7 +91,7 @@ export async function editAndSend(
     return fixtures.editAndSendFixture(messageId, body);
   }
   const result = await authedFetch(
-    `/api/operator/queue/${encodeURIComponent(messageId)}/edit`,
+    `/api/operator/messages/${encodeURIComponent(messageId)}/edit`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -107,7 +107,7 @@ export async function skipDraft(messageId: string): Promise<Result<void>> {
     return fixtures.skipDraftFixture(messageId);
   }
   const result = await authedFetch(
-    `/api/operator/queue/${encodeURIComponent(messageId)}/skip`,
+    `/api/operator/messages/${encodeURIComponent(messageId)}/skip`,
     { method: 'POST' },
   );
   if (!result.ok) return result;
@@ -119,7 +119,7 @@ export async function undoAction(messageId: string): Promise<Result<void>> {
     return fixtures.undoActionFixture(messageId);
   }
   const result = await authedFetch(
-    `/api/operator/queue/${encodeURIComponent(messageId)}/undo`,
+    `/api/operator/messages/${encodeURIComponent(messageId)}/undo`,
     { method: 'POST' },
   );
   if (!result.ok) return result;

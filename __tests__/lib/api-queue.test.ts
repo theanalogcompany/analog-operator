@@ -82,38 +82,38 @@ describe('lib/api/queue HTTP shape', () => {
     jest.restoreAllMocks();
   });
 
-  it('approveDraft posts to /api/operator/queue/:id/approve', async () => {
+  it('approveDraft posts to /api/operator/messages/:id/approve', async () => {
     await approveDraft('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe(
-      'https://api.test/api/operator/queue/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/approve',
+      'https://api.test/api/operator/messages/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/approve',
     );
     expect(init.method).toBe('POST');
   });
 
-  it('editAndSend posts JSON body to /api/operator/queue/:id/edit', async () => {
+  it('editAndSend posts JSON body to /api/operator/messages/:id/edit', async () => {
     await editAndSend('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d', 'my version');
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe(
-      'https://api.test/api/operator/queue/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/edit',
+      'https://api.test/api/operator/messages/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/edit',
     );
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({ body: 'my version' });
   });
 
-  it('skipDraft posts to /api/operator/queue/:id/skip', async () => {
+  it('skipDraft posts to /api/operator/messages/:id/skip', async () => {
     await skipDraft('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
     const [url] = fetchMock.mock.calls[0];
     expect(String(url)).toBe(
-      'https://api.test/api/operator/queue/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/skip',
+      'https://api.test/api/operator/messages/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/skip',
     );
   });
 
-  it('undoAction posts to /api/operator/queue/:id/undo', async () => {
+  it('undoAction posts to /api/operator/messages/:id/undo', async () => {
     await undoAction('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
     const [url] = fetchMock.mock.calls[0];
     expect(String(url)).toBe(
-      'https://api.test/api/operator/queue/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/undo',
+      'https://api.test/api/operator/messages/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/undo',
     );
   });
 });
