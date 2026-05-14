@@ -41,7 +41,7 @@ export type PendingDraft = z.infer<typeof PendingDraftSchema>;
 const PendingDraftListSchema = z.array(PendingDraftSchema);
 
 export function isFixtureMode(): boolean {
-  return !process.env.EXPO_PUBLIC_API_BASE_URL;
+  return process.env.EXPO_PUBLIC_USE_FIXTURES === 'true';
 }
 
 function parseFailure(reason: string): { ok: false; error: ApiError } {

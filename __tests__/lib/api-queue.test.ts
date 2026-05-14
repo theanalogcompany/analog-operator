@@ -7,8 +7,16 @@ import {
   undoAction,
 } from '@/lib/api/queue';
 
+const ORIGINAL_USE_FIXTURES = process.env.EXPO_PUBLIC_USE_FIXTURES;
+const ORIGINAL_API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
+
+afterAll(() => {
+  process.env.EXPO_PUBLIC_USE_FIXTURES = ORIGINAL_USE_FIXTURES;
+  process.env.EXPO_PUBLIC_API_BASE_URL = ORIGINAL_API_BASE;
+});
+
 beforeEach(() => {
-  process.env.EXPO_PUBLIC_API_BASE_URL = '';
+  process.env.EXPO_PUBLIC_USE_FIXTURES = 'true';
   fixtures.resetQueueFixture();
 });
 
@@ -70,6 +78,7 @@ describe('lib/api/queue HTTP shape', () => {
   let fetchMock: jest.Mock;
 
   beforeEach(() => {
+    process.env.EXPO_PUBLIC_USE_FIXTURES = 'false';
     process.env.EXPO_PUBLIC_API_BASE_URL = 'https://api.test';
     fetchMock = jest.fn().mockResolvedValue(new Response('', { status: 200 }));
     global.fetch = fetchMock as any;

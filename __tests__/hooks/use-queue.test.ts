@@ -83,4 +83,11 @@ describe('use-queue applyEvent merge logic', () => {
     const next = applyEvent([a], { type: 'queue_added', draft: a });
     expect(next).toHaveLength(1);
   });
+
+  it('returns the same array reference on queue_changed — the consumer reloads instead', () => {
+    const a = makeDraft('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d', '2026-05-13T16:00:00.000Z');
+    const prev = [a];
+    const next = applyEvent(prev, { type: 'queue_changed' });
+    expect(next).toBe(prev);
+  });
 });

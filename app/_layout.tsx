@@ -22,6 +22,7 @@ import {
 } from '@/hooks/use-undo-state';
 import { wireAuthAutoRefresh } from '@/lib/auth/app-state';
 import { logAuthCallbackUrl } from '@/lib/auth/dev-log';
+import { wireOperatorCacheClear } from '@/lib/auth/operator';
 import { useSession } from '@/lib/auth/use-session';
 
 SplashScreen.preventAutoHideAsync();
@@ -40,9 +41,11 @@ export default function RootLayout() {
     void rehydrateUndoState();
     const stopUndoClear = wireUndoAutoClearOnSignOut();
     const stopAutoRefresh = wireAuthAutoRefresh();
+    const stopOperatorCacheClear = wireOperatorCacheClear();
     return () => {
       stopUndoClear();
       stopAutoRefresh();
+      stopOperatorCacheClear();
     };
   }, []);
 

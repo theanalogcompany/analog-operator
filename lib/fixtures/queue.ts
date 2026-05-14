@@ -13,7 +13,11 @@ export type QueueChannelEvent =
       message_id: string;
       agent_draft: string;
       agent_reasoning: string | null;
-    };
+    }
+  // Emitted only by the live Supabase Realtime channel. The raw `messages`
+  // row payload lacks the JOINed PendingDraft fields (guest, recognition,
+  // context), so the consumer reloads the queue rather than merging.
+  | { type: 'queue_changed' };
 
 type Subscriber = (event: QueueChannelEvent) => void;
 

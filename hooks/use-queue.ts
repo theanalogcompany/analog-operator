@@ -52,6 +52,12 @@ function applyEvent(prev: PendingDraft[], event: QueueChannelEvent): PendingDraf
       };
       return next;
     }
+    case 'queue_changed': {
+      // Live-channel signal: caller must reload the queue separately. The
+      // raw `messages` payload doesn't carry JOINed PendingDraft fields, so
+      // there is nothing to merge here.
+      return prev;
+    }
   }
 }
 
@@ -83,9 +89,16 @@ export function useQueue(): UseQueueResult {
     };
   }, [reload]);
 
-  const onRealtimeEvent = useCallback((event: QueueChannelEvent): void => {
-    setDrafts((prev) => applyEvent(prev, event));
-  }, []);
+  const onRealtimeEvent = useCallback(
+    (event: QueueChannelEvent): void => {
+      if (event.type === 'queue_changed') {
+        void reload();
+        return;
+      }
+      setDrafts((prev) => applyEvent(prev, event));
+    },
+    [reload],
+  );
   useQueueRealtime(onRealtimeEvent);
 
   const optimisticallyRemove = useCallback((messageId: string): void => {
