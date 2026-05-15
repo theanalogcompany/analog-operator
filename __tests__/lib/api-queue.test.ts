@@ -1,5 +1,6 @@
 import * as fixtures from '@/lib/fixtures/queue';
 import {
+  type PendingDraft,
   approveDraft,
   editAndSend,
   listQueue,
@@ -124,5 +125,50 @@ describe('lib/api/queue HTTP shape', () => {
     expect(String(url)).toBe(
       'https://api.test/api/operator/messages/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/undo',
     );
+  });
+
+  it('listQueue GETs /api/operator/queue and unwraps the { drafts } envelope', async () => {
+    const draft: PendingDraft = {
+      id: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guest_id: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guest_name: 'Maya R.',
+      guest_phone: '+15551110001',
+      recognition_band: 'returning',
+      recognition_signals: ['7 visits over 4 months'],
+      context_messages: [],
+      current_inbound: {
+        id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        body: 'is the patio open',
+        direction: 'inbound',
+        created_at: '2026-05-14T16:00:00.000Z',
+      },
+      agent_draft: "yes, patio's open until 9",
+      agent_reasoning: null,
+      flag_reason: 'low fidelity',
+      pending_since: '2026-05-14T16:00:00.000Z',
+      created_at: '2026-05-14T16:00:00.000Z',
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ drafts: [draft] }), { status: 200 }),
+    );
+
+    const result = await listQueue();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe('https://api.test/api/operator/queue');
+    expect(init.method).toBe('GET');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].id).toBe(draft.id);
+    }
+  });
+
+  it('listQueue returns PARSE when the server returns a bare array (regression guard)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([]), { status: 200 }),
+    );
+    const result = await listQueue();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('PARSE');
   });
 });

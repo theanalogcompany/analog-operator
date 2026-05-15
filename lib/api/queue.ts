@@ -38,7 +38,12 @@ export const PendingDraftSchema = z.object({
 });
 export type PendingDraft = z.infer<typeof PendingDraftSchema>;
 
-const PendingDraftListSchema = z.array(PendingDraftSchema);
+// Server (`analog-guest` GET /api/operator/queue) returns the array wrapped
+// in a { drafts: [...] } envelope — see analog-guest/app/api/operator/queue/
+// route.ts. Parse the envelope and unwrap before returning.
+const ListQueueResponseSchema = z.object({
+  drafts: z.array(PendingDraftSchema),
+});
 
 export function isFixtureMode(): boolean {
   return process.env.EXPO_PUBLIC_USE_FIXTURES === 'true';
@@ -66,9 +71,9 @@ export async function listQueue(): Promise<Result<PendingDraft[]>> {
   } catch (e) {
     return parseFailure(e instanceof Error ? e.message : 'invalid json');
   }
-  const parsed = PendingDraftListSchema.safeParse(json);
+  const parsed = ListQueueResponseSchema.safeParse(json);
   if (!parsed.success) return parseFailure(parsed.error.message);
-  return ok(parsed.data);
+  return ok(parsed.data.drafts);
 }
 
 export async function approveDraft(messageId: string): Promise<Result<void>> {
