@@ -14,51 +14,14 @@ export type UseQueueResult = {
   reload: () => Promise<void>;
   /** Remove a draft from the local list (after a swipe commit, before the API resolves). */
   optimisticallyRemove: (messageId: string) => void;
-  /** Restore a draft into the local list at FIFO position (called on API failure or undo). */
+  /** Restore a draft into the local list (called on API failure or undo). */
   restore: (draft: PendingDraft) => void;
 };
 
-function sortByCreatedAt(list: PendingDraft[]): PendingDraft[] {
-  return [...list].sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-}
-
-function applyEvent(prev: PendingDraft[], event: QueueChannelEvent): PendingDraft[] {
-  switch (event.type) {
-    case 'queue_added': {
-      if (prev.some((d) => d.id === event.draft.id)) return prev;
-      return sortByCreatedAt([...prev, event.draft]);
-    }
-    case 'guest_message': {
-      const idx = prev.findIndex((d) => d.id === event.message_id);
-      if (idx === -1) return prev;
-      const target = prev[idx];
-      const next = [...prev];
-      next[idx] = {
-        ...target,
-        context_messages: [...target.context_messages, target.current_inbound],
-        current_inbound: event.inbound,
-      };
-      return next;
-    }
-    case 'draft_regenerated': {
-      const idx = prev.findIndex((d) => d.id === event.message_id);
-      if (idx === -1) return prev;
-      const target = prev[idx];
-      const next = [...prev];
-      next[idx] = {
-        ...target,
-        agent_draft: event.agent_draft,
-        agent_reasoning: event.agent_reasoning,
-      };
-      return next;
-    }
-    case 'queue_changed': {
-      // Live-channel signal: caller must reload the queue separately. The
-      // raw `messages` payload doesn't carry JOINed PendingDraft fields, so
-      // there is nothing to merge here.
-      return prev;
-    }
-  }
+// FIFO: `pendingSinceMs` is elapsed milliseconds since the draft was
+// created, so larger values are older and sort first.
+function sortByPendingDesc(list: PendingDraft[]): PendingDraft[] {
+  return [...list].sort((a, b) => b.pendingSinceMs - a.pendingSinceMs);
 }
 
 export function useQueue(): UseQueueResult {
@@ -73,7 +36,7 @@ export function useQueue(): UseQueueResult {
     const result = await listQueue();
     if (!mounted.current) return;
     if (result.ok) {
-      setDrafts(sortByCreatedAt(result.data));
+      setDrafts(sortByPendingDesc(result.data));
       setStatus('ready');
     } else {
       setError(result.error);
@@ -89,30 +52,27 @@ export function useQueue(): UseQueueResult {
     };
   }, [reload]);
 
+  // All realtime events trigger a reload — we don't patch state locally
+  // because the raw `messages` payload doesn't carry the JOINed
+  // PendingDraft fields the queue needs.
   const onRealtimeEvent = useCallback(
-    (event: QueueChannelEvent): void => {
-      if (event.type === 'queue_changed') {
-        void reload();
-        return;
-      }
-      setDrafts((prev) => applyEvent(prev, event));
+    (_event: QueueChannelEvent): void => {
+      void reload();
     },
     [reload],
   );
   useQueueRealtime(onRealtimeEvent);
 
   const optimisticallyRemove = useCallback((messageId: string): void => {
-    setDrafts((prev) => prev.filter((d) => d.id !== messageId));
+    setDrafts((prev) => prev.filter((d) => d.messageId !== messageId));
   }, []);
 
   const restore = useCallback((draft: PendingDraft): void => {
     setDrafts((prev) => {
-      if (prev.some((d) => d.id === draft.id)) return prev;
-      return sortByCreatedAt([...prev, draft]);
+      if (prev.some((d) => d.messageId === draft.messageId)) return prev;
+      return sortByPendingDesc([...prev, draft]);
     });
   }, []);
 
   return { drafts, status, error, reload, optimisticallyRemove, restore };
 }
-
-export { applyEvent };

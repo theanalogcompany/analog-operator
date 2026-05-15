@@ -40,10 +40,10 @@ export const easing = {
 };
 
 export const recognition = {
-  bandLabels: {
-    guest: 'Guest',
-    regular: 'Regular',
+  stateLabels: {
+    new: 'New',
     returning: 'Returning',
-    'raving-fan': 'Raving Fan',
+    regular: 'Regular',
+    raving_fan: 'Raving Fan',
   } as const,
 };

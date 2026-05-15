@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 
-import { type RecognitionBand } from '@/lib/api/queue';
+import { type RecognitionState } from '@/lib/api/queue';
 import { recognition } from '@/lib/theme';
 
 type Palette = {
@@ -9,20 +9,23 @@ type Palette = {
   dot: string;
 };
 
-const PALETTES: Record<RecognitionBand, Palette> = {
-  guest: { bg: '#EDE4D2', text: '#4A4339', dot: '#857A6A' },
+const PALETTES: Record<RecognitionState, Palette> = {
+  new: { bg: '#EDE4D2', text: '#4A4339', dot: '#857A6A' },
   returning: { bg: '#EDE4D2', text: '#4A4339', dot: '#4A4339' },
   regular: { bg: '#E5B19C', text: '#6B3220', dot: '#A85638' },
-  'raving-fan': { bg: '#C66A4A', text: '#FFFFFF', dot: '#FFFFFF' },
+  raving_fan: { bg: '#C66A4A', text: '#FFFFFF', dot: '#FFFFFF' },
 };
 
 type Props = {
-  band: RecognitionBand;
+  /** `null` = "we don't have recognition data yet"; renders no badge. */
+  state: RecognitionState | null;
 };
 
-export function RecognitionBadge({ band }: Props) {
-  const palette = PALETTES[band];
-  const label = recognition.bandLabels[band];
+export function RecognitionBadge({ state }: Props) {
+  if (state === null) return null;
+
+  const palette = PALETTES[state];
+  const label = recognition.stateLabels[state];
   return (
     <View
       accessibilityLabel={`Recognition: ${label}`}

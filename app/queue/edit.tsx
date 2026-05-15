@@ -25,11 +25,11 @@ export default function EditScreen() {
   const params = useLocalSearchParams<{ messageId?: string; prefill?: string }>();
   const queue = useQueueContext();
   const draft = useMemo(
-    () => queue.drafts.find((d) => d.id === params.messageId) ?? null,
+    () => queue.drafts.find((d) => d.messageId === params.messageId) ?? null,
     [queue.drafts, params.messageId],
   );
 
-  const [text, setText] = useState<string>(params.prefill ?? draft?.agent_draft ?? '');
+  const [text, setText] = useState<string>(params.prefill ?? draft?.draftBody ?? '');
   const [submitting, setSubmitting] = useState<'edit' | 'skip' | null>(null);
 
   if (!draft) {
@@ -65,10 +65,10 @@ export default function EditScreen() {
       return;
     }
     setSubmitting('edit');
-    queue.optimisticallyRemove(draft.id);
+    queue.optimisticallyRemove(draft.messageId);
     void setUndoState({ action: 'edit', draft, body });
     router.back();
-    const result = await editAndSend(draft.id, body);
+    const result = await editAndSend(draft.messageId, body);
     if (!result.ok) {
       void clearUndoState();
       queue.restore(draft);
@@ -76,7 +76,7 @@ export default function EditScreen() {
       // Re-open the takeover with the operator's typed text preserved (settled decision: their text is sacred).
       router.push({
         pathname: '/queue/edit',
-        params: { messageId: draft.id, prefill: body },
+        params: { messageId: draft.messageId, prefill: body },
       });
     }
     setSubmitting(null);
@@ -85,10 +85,10 @@ export default function EditScreen() {
   const handleSkip = async (): Promise<void> => {
     if (submitting) return;
     setSubmitting('skip');
-    queue.optimisticallyRemove(draft.id);
+    queue.optimisticallyRemove(draft.messageId);
     void setUndoState({ action: 'skip', draft });
     router.back();
-    const result = await skipDraft(draft.id);
+    const result = await skipDraft(draft.messageId);
     if (!result.ok) {
       void clearUndoState();
       queue.restore(draft);
@@ -120,19 +120,19 @@ export default function EditScreen() {
             <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
               {queueCardDisplayName(draft)}
             </Text>
-            <RecognitionBadge band={draft.recognition_band} />
+            <RecognitionBadge state={draft.recognitionState} />
           </View>
           <View style={{ width: 60 }} />
         </View>
 
-        {draft.flag_reason ? (
+        {draft.reviewReason ? (
           <View
             className="mx-[18px] mb-1 rounded-[4px] border-l-2 border-clay bg-sand"
             style={{ paddingHorizontal: 14, paddingVertical: 12 }}
           >
             <Text className="font-inter-tight text-ink" style={{ fontSize: 12.5, lineHeight: 19 }}>
               <Text className="font-inter-tight-medium text-clay-deep">Flagged because: </Text>
-              {draft.flag_reason}
+              {draft.reviewReason}
             </Text>
           </View>
         ) : null}
@@ -141,7 +141,7 @@ export default function EditScreen() {
           className="flex-1"
           contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 16, gap: 8 }}
         >
-          {draft.context_messages.map((m) => (
+          {draft.recentContext.map((m) => (
             <View
               key={m.id}
               className={
@@ -169,22 +169,6 @@ export default function EditScreen() {
               </Text>
             </View>
           ))}
-          <View
-            className="self-start rounded-[18px] bg-inbound"
-            style={{
-              maxWidth: '80%',
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderBottomLeftRadius: 6,
-            }}
-          >
-            <Text
-              className="font-inter-tight"
-              style={{ color: '#F0EDE7', fontSize: 14, lineHeight: 20 }}
-            >
-              {draft.current_inbound.body}
-            </Text>
-          </View>
         </ScrollView>
 
         <View className="border-t-[0.5px] border-hairline bg-white" style={{ paddingHorizontal: 16, paddingVertical: 12 }}>

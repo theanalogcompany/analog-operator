@@ -4,35 +4,30 @@ import { QueueCard } from '@/components/queue/queue-card';
 import { type PendingDraft } from '@/lib/api/queue';
 
 function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
-  const now = new Date().toISOString();
   return {
-    id: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-    guest_id: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-    guest_name: 'Maya R.',
-    guest_phone: '+15551110001',
-    recognition_band: 'returning',
-    recognition_signals: ['7 visits over 4 months'],
-    context_messages: [],
-    current_inbound: {
-      id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
-      body: 'Is the patio open?',
-      direction: 'inbound',
-      created_at: now,
-    },
-    agent_draft: "Yes — patio's open until 9.",
-    agent_reasoning: null,
-    flag_reason: 'low fidelity score',
-    pending_since: now,
-    created_at: now,
+    messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueSlug: 'mock-sextant',
+    guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    guestDisplayName: 'Maya R.',
+    guestPhoneFallback: '+15551110001',
+    draftBody: "Yes — patio's open until 9.",
+    category: 'reservation',
+    voiceFidelity: 0.81,
+    reviewReason: 'low fidelity score',
+    recognitionState: 'returning',
+    pendingSinceMs: 240_000,
+    recentContext: [],
+    langfuseTraceId: null,
     ...overrides,
   };
 }
 
 describe('QueueCard', () => {
-  it('renders the guest name + recognition band', () => {
+  it('renders the guest name + recognition badge', () => {
     render(
       <QueueCard
-        draft={makeDraft({ recognition_band: 'raving-fan' })}
+        draft={makeDraft({ recognitionState: 'raving_fan' })}
         expanded={false}
         onToggleExpanded={() => {}}
       />,
@@ -41,10 +36,10 @@ describe('QueueCard', () => {
     expect(screen.getByText('Raving Fan')).toBeTruthy();
   });
 
-  it('falls back to guest_phone when guest_name is null', () => {
+  it('falls back to guestPhoneFallback when guestDisplayName is null', () => {
     render(
       <QueueCard
-        draft={makeDraft({ guest_name: null })}
+        draft={makeDraft({ guestDisplayName: null })}
         expanded={false}
         onToggleExpanded={() => {}}
       />,
@@ -52,10 +47,10 @@ describe('QueueCard', () => {
     expect(screen.getByText('+15551110001')).toBeTruthy();
   });
 
-  it('renders the flag reason banner when present', () => {
+  it('renders the review-reason banner when present', () => {
     render(
       <QueueCard
-        draft={makeDraft({ flag_reason: 'first message from new guest' })}
+        draft={makeDraft({ reviewReason: 'first message from new guest' })}
         expanded={false}
         onToggleExpanded={() => {}}
       />,
@@ -64,10 +59,10 @@ describe('QueueCard', () => {
     expect(screen.getByText(/Flagged because:/)).toBeTruthy();
   });
 
-  it('omits the flag banner when flag_reason is null', () => {
+  it('omits the review-reason banner when reviewReason is null', () => {
     render(
       <QueueCard
-        draft={makeDraft({ flag_reason: null })}
+        draft={makeDraft({ reviewReason: null })}
         expanded={false}
         onToggleExpanded={() => {}}
       />,
@@ -75,27 +70,66 @@ describe('QueueCard', () => {
     expect(screen.queryByText(/Flagged because:/)).toBeNull();
   });
 
-  it('reveals recognition signals when expanded', () => {
+  it('renders recentContext bubbles when expanded', () => {
     render(
       <QueueCard
-        draft={makeDraft({ recognition_signals: ['7 visits over 4 months'] })}
+        draft={makeDraft({
+          recentContext: [
+            {
+              id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+              direction: 'inbound',
+              body: 'is the patio open',
+              createdAt: '2026-05-14T16:00:00.000Z',
+            },
+          ],
+        })}
         expanded
         onToggleExpanded={() => {}}
       />,
     );
-    expect(screen.getByText('Recognition signals')).toBeTruthy();
-    expect(screen.getByText(/7 visits over 4 months/)).toBeTruthy();
+    expect(screen.getByText('is the patio open')).toBeTruthy();
   });
 
-  it('hides recognition signals when collapsed', () => {
+  it('hides recentContext when collapsed', () => {
     render(
       <QueueCard
-        draft={makeDraft({ recognition_signals: ['7 visits over 4 months'] })}
+        draft={makeDraft({
+          recentContext: [
+            {
+              id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+              direction: 'inbound',
+              body: 'is the patio open',
+              createdAt: '2026-05-14T16:00:00.000Z',
+            },
+          ],
+        })}
         expanded={false}
         onToggleExpanded={() => {}}
       />,
     );
-    expect(screen.queryByText('Recognition signals')).toBeNull();
+    expect(screen.queryByText('is the patio open')).toBeNull();
+  });
+
+  it('renders the draftBody', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({ draftBody: 'a unique draft body' })}
+        expanded={false}
+        onToggleExpanded={() => {}}
+      />,
+    );
+    expect(screen.getByText('a unique draft body')).toBeTruthy();
+  });
+
+  it('omits the recognition badge when recognitionState is null', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({ recognitionState: null })}
+        expanded={false}
+        onToggleExpanded={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText(/Recognition:/)).toBeNull();
   });
 
   it('fires onToggleExpanded when pressed', () => {

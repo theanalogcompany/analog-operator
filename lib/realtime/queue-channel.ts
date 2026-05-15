@@ -4,13 +4,16 @@ import type {
 } from '@supabase/supabase-js';
 
 import { isFixtureMode } from '@/lib/api/queue';
-import {
-  type QueueChannelEvent,
-  subscribeQueueFixture,
-} from '@/lib/fixtures/queue';
+import { subscribeQueueFixture } from '@/lib/fixtures/queue';
 import { supabase } from '@/lib/supabase/client';
 
-export type { QueueChannelEvent };
+// Single canonical event variant. The consumer (`hooks/use-queue.ts`) always
+// reloads on any event — the raw `messages` payload doesn't carry the JOINed
+// PendingDraft fields the queue needs, so per-event surgical merging is not
+// feasible. Keeping the type a union of one keeps the consumer pattern open
+// to richer events in the future (e.g., a server-side single-row endpoint
+// landing a fully-shaped PendingDraft) without breaking the call site today.
+export type QueueChannelEvent = { type: 'queue_changed' };
 
 export type QueueChannel = {
   unsubscribe: () => void;

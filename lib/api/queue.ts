@@ -5,36 +5,39 @@ import * as fixtures from '@/lib/fixtures/queue';
 import { authedFetch, parseHttpError } from './client';
 import { type ApiError, type Result, err, ok } from './errors';
 
-export const RecognitionBandSchema = z.enum([
-  'guest',
-  'regular',
+export const RecognitionStateSchema = z.enum([
+  'new',
   'returning',
-  'raving-fan',
+  'regular',
+  'raving_fan',
 ]);
-export type RecognitionBand = z.infer<typeof RecognitionBandSchema>;
+export type RecognitionState = z.infer<typeof RecognitionStateSchema>;
 
-export const MessageSchema = z.object({
+export const RecentContextEntrySchema = z.object({
   id: z.string().uuid(),
-  body: z.string(),
   direction: z.enum(['inbound', 'outbound']),
-  created_at: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
 });
-export type Message = z.infer<typeof MessageSchema>;
+export type RecentContextEntry = z.infer<typeof RecentContextEntrySchema>;
 
+// Matches `QueueDraft` from analog-guest/lib/operator/queue.ts (TAC-258).
+// All camelCase per the server contract.
 export const PendingDraftSchema = z.object({
-  id: z.string().uuid(),
-  guest_id: z.string().uuid(),
-  guest_name: z.string().nullable(),
-  guest_phone: z.string(),
-  recognition_band: RecognitionBandSchema,
-  recognition_signals: z.array(z.string()).default([]),
-  context_messages: z.array(MessageSchema).default([]),
-  current_inbound: MessageSchema,
-  agent_draft: z.string(),
-  agent_reasoning: z.string().nullable(),
-  flag_reason: z.string().nullable(),
-  pending_since: z.string(),
-  created_at: z.string(),
+  messageId: z.string().uuid(),
+  venueId: z.string().uuid(),
+  venueSlug: z.string(),
+  guestId: z.string().uuid(),
+  guestDisplayName: z.string().nullable(),
+  guestPhoneFallback: z.string(),
+  draftBody: z.string(),
+  category: z.string().nullable(),
+  voiceFidelity: z.number().nullable(),
+  reviewReason: z.string().nullable(),
+  recognitionState: RecognitionStateSchema.nullable(),
+  pendingSinceMs: z.number(),
+  recentContext: z.array(RecentContextEntrySchema).default([]),
+  langfuseTraceId: z.string().nullable(),
 });
 export type PendingDraft = z.infer<typeof PendingDraftSchema>;
 

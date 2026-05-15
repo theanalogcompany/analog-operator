@@ -8,26 +8,21 @@ import {
 import { type PendingDraft } from '@/lib/api/queue';
 
 function makeDraft(): PendingDraft {
-  const now = new Date().toISOString();
   return {
-    id: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-    guest_id: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-    guest_name: 'Maya R.',
-    guest_phone: '+15551110001',
-    recognition_band: 'returning',
-    recognition_signals: [],
-    context_messages: [],
-    current_inbound: {
-      id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
-      body: 'inbound',
-      direction: 'inbound',
-      created_at: now,
-    },
-    agent_draft: 'agent reply',
-    agent_reasoning: null,
-    flag_reason: null,
-    pending_since: now,
-    created_at: now,
+    messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueSlug: 'mock-sextant',
+    guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    guestDisplayName: 'Maya R.',
+    guestPhoneFallback: '+15551110001',
+    draftBody: 'agent reply',
+    category: null,
+    voiceFidelity: null,
+    reviewReason: null,
+    recognitionState: 'returning',
+    pendingSinceMs: 240_000,
+    recentContext: [],
+    langfuseTraceId: null,
   };
 }
 
@@ -91,7 +86,7 @@ describe('UndoToast', () => {
     expect(onUndo).toHaveBeenCalledTimes(1);
     expect(onUndo.mock.calls[0][0]).toMatchObject({
       action: 'approve',
-      message_id: draft.id,
+      message_id: draft.messageId,
       draft,
     });
   });

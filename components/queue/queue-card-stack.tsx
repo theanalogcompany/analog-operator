@@ -139,7 +139,7 @@ export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
     >
       {peek ? <PeekCard draft={peek} /> : null}
       <FrontCard
-        key={top.id}
+        key={top.messageId}
         draft={top}
         onApprove={onApprove}
         onEdit={onEdit}

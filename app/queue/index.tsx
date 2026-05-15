@@ -26,9 +26,9 @@ export default function QueueScreen() {
   const router = useRouter();
 
   const handleApprove = async (draft: PendingDraft): Promise<void> => {
-    queue.optimisticallyRemove(draft.id);
+    queue.optimisticallyRemove(draft.messageId);
     void setUndoState({ action: 'approve', draft });
-    const result = await approveDraft(draft.id);
+    const result = await approveDraft(draft.messageId);
     if (!result.ok) {
       queue.restore(draft);
       void clearUndoState();
@@ -37,7 +37,7 @@ export default function QueueScreen() {
   };
 
   const handleEdit = (draft: PendingDraft): void => {
-    router.push({ pathname: '/queue/edit', params: { messageId: draft.id } });
+    router.push({ pathname: '/queue/edit', params: { messageId: draft.messageId } });
   };
 
   const handleUndo = (record: UndoRecord): void => {

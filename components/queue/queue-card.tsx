@@ -5,15 +5,14 @@ import { type PendingDraft } from '@/lib/api/queue';
 import { RecognitionBadge } from './recognition-badge';
 
 function displayName(draft: PendingDraft): string {
-  if (draft.guest_name && draft.guest_name.trim().length > 0) return draft.guest_name;
-  return draft.guest_phone;
+  if (draft.guestDisplayName && draft.guestDisplayName.trim().length > 0) {
+    return draft.guestDisplayName;
+  }
+  return draft.guestPhoneFallback;
 }
 
 function minutesPending(draft: PendingDraft): string {
-  const minutes = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(draft.pending_since).getTime()) / 60_000),
-  );
+  const minutes = Math.max(0, Math.floor(draft.pendingSinceMs / 60_000));
   if (minutes < 1) return 'just now';
   if (minutes === 1) return '1 min';
   if (minutes < 60) return `${minutes} min`;
@@ -56,7 +55,7 @@ export function QueueCard({ draft, expanded, onToggleExpanded }: Props) {
         <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
           {displayName(draft)}
         </Text>
-        <RecognitionBadge band={draft.recognition_band} />
+        <RecognitionBadge state={draft.recognitionState} />
         <Text
           className="ml-auto font-inter-tight text-ink-faint"
           style={{ fontSize: 11, letterSpacing: 0.44 }}
@@ -65,71 +64,54 @@ export function QueueCard({ draft, expanded, onToggleExpanded }: Props) {
         </Text>
       </View>
 
-      {draft.flag_reason ? (
+      {draft.reviewReason ? (
         <View
           className="mx-4 mb-[14px] rounded-[4px] border-l-2 border-clay bg-sand"
           style={{ paddingHorizontal: 14, paddingVertical: 12 }}
         >
           <Text className="font-inter-tight text-ink" style={{ fontSize: 13, lineHeight: 20 }}>
             <Text className="font-inter-tight-medium text-clay-deep">Flagged because: </Text>
-            {draft.flag_reason}
+            {draft.reviewReason}
           </Text>
         </View>
       ) : null}
 
       <View className="h-[0.5px] bg-hairline" style={{ marginHorizontal: 18 }} />
 
-      <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
-        {expanded
-          ? draft.context_messages.map((m) => (
-              <View
-                key={m.id}
-                className={
-                  m.direction === 'inbound'
-                    ? 'self-start rounded-[18px] bg-inbound'
-                    : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
-                }
+      {expanded ? (
+        <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
+          {draft.recentContext.map((m) => (
+            <View
+              key={m.id}
+              className={
+                m.direction === 'inbound'
+                  ? 'self-start rounded-[18px] bg-inbound'
+                  : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
+              }
+              style={{
+                maxWidth: '86%',
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderBottomLeftRadius: m.direction === 'inbound' ? 6 : 18,
+                borderBottomRightRadius: m.direction === 'outbound' ? 6 : 18,
+              }}
+            >
+              <Text
+                className="font-inter-tight"
                 style={{
-                  maxWidth: '86%',
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                  borderBottomLeftRadius: m.direction === 'inbound' ? 6 : 18,
-                  borderBottomRightRadius: m.direction === 'outbound' ? 6 : 18,
+                  color: m.direction === 'inbound' ? '#F0EDE7' : '#1C1814',
+                  fontSize: 14,
+                  lineHeight: 20,
                 }}
               >
-                <Text
-                  className="font-inter-tight"
-                  style={{
-                    color: m.direction === 'inbound' ? '#F0EDE7' : '#1C1814',
-                    fontSize: 14,
-                    lineHeight: 20,
-                  }}
-                >
-                  {m.body}
-                </Text>
-              </View>
-            ))
-          : null}
-
-        <View
-          className="self-start rounded-[18px] bg-inbound"
-          style={{
-            maxWidth: '86%',
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            borderBottomLeftRadius: 6,
-          }}
-        >
-          <Text
-            className="font-inter-tight"
-            style={{ color: '#F0EDE7', fontSize: 14, lineHeight: 20 }}
-          >
-            {draft.current_inbound.body}
-          </Text>
+                {m.body}
+              </Text>
+            </View>
+          ))}
         </View>
-      </View>
+      ) : null}
 
-      <View className="flex-row justify-end px-[18px] pb-[18px] pt-[6px]">
+      <View className="flex-row justify-end px-[18px] pb-[18px] pt-[14px]">
         <View
           className="self-end rounded-[18px] border border-clay bg-white"
           style={{
@@ -140,30 +122,10 @@ export function QueueCard({ draft, expanded, onToggleExpanded }: Props) {
           }}
         >
           <Text className="font-inter-tight text-ink" style={{ fontSize: 14.5, lineHeight: 22 }}>
-            {draft.agent_draft}
+            {draft.draftBody}
           </Text>
         </View>
       </View>
-
-      {expanded && draft.recognition_signals.length > 0 ? (
-        <View className="border-t-[0.5px] border-hairline px-[18px] py-[14px]">
-          <Text
-            className="font-inter-tight-medium uppercase text-ink-faint"
-            style={{ fontSize: 10, letterSpacing: 1.8, marginBottom: 8 }}
-          >
-            Recognition signals
-          </Text>
-          {draft.recognition_signals.map((signal, idx) => (
-            <Text
-              key={`signal-${idx}`}
-              className="font-inter-tight text-ink-soft"
-              style={{ fontSize: 13, lineHeight: 20 }}
-            >
-              • {signal}
-            </Text>
-          ))}
-        </View>
-      ) : null}
     </>
   );
 

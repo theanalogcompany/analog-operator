@@ -30,48 +30,49 @@ describe('lib/api/queue in fixture mode', () => {
     }
   });
 
-  it('listQueue results pass Zod validation (real-shaped UUIDs)', async () => {
+  it('approveDraft removes the draft from the fixture queue', async () => {
+    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
+    const target = before.data[0].messageId;
+    await approveDraft(target);
+    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
+    expect(after.data.find((d) => d.messageId === target)).toBeUndefined();
+  });
+
+  it('skipDraft removes the draft', async () => {
+    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
+    const target = before.data[0].messageId;
+    await skipDraft(target);
+    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
+    expect(after.data.find((d) => d.messageId === target)).toBeUndefined();
+  });
+
+  it('editAndSend removes the draft on first call', async () => {
+    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
+    const target = before.data[0].messageId;
+    await editAndSend(target, 'my version');
+    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
+    expect(after.data.find((d) => d.messageId === target)).toBeUndefined();
+  });
+
+  it('undoAction restores a removed draft', async () => {
+    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
+    const target = before.data[0].messageId;
+    await approveDraft(target);
+    await undoAction(target);
+    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
+    expect(after.data.find((d) => d.messageId === target)).toBeDefined();
+  });
+
+  it('seeded drafts have real-shaped UUIDs for messageId + guestId + venueId', async () => {
     const result = await listQueue();
     if (!result.ok) throw new Error('listQueue should succeed in fixture mode');
     const uuidRe =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    for (const draft of result.data) {
-      expect(uuidRe.test(draft.id)).toBe(true);
-      expect(uuidRe.test(draft.guest_id)).toBe(true);
+    for (const d of result.data) {
+      expect(uuidRe.test(d.messageId)).toBe(true);
+      expect(uuidRe.test(d.guestId)).toBe(true);
+      expect(uuidRe.test(d.venueId)).toBe(true);
     }
-  });
-
-  it('approveDraft removes the draft from the fixture queue', async () => {
-    const before = (await listQueue()) as { ok: true; data: { id: string }[] };
-    const target = before.data[0].id;
-    await approveDraft(target);
-    const after = (await listQueue()) as { ok: true; data: { id: string }[] };
-    expect(after.data.find((d) => d.id === target)).toBeUndefined();
-  });
-
-  it('skipDraft removes the draft', async () => {
-    const before = (await listQueue()) as { ok: true; data: { id: string }[] };
-    const target = before.data[0].id;
-    await skipDraft(target);
-    const after = (await listQueue()) as { ok: true; data: { id: string }[] };
-    expect(after.data.find((d) => d.id === target)).toBeUndefined();
-  });
-
-  it('editAndSend removes the draft on first call', async () => {
-    const before = (await listQueue()) as { ok: true; data: { id: string }[] };
-    const target = before.data[0].id;
-    await editAndSend(target, 'my version');
-    const after = (await listQueue()) as { ok: true; data: { id: string }[] };
-    expect(after.data.find((d) => d.id === target)).toBeUndefined();
-  });
-
-  it('undoAction restores a removed draft', async () => {
-    const before = (await listQueue()) as { ok: true; data: { id: string }[] };
-    const target = before.data[0].id;
-    await approveDraft(target);
-    await undoAction(target);
-    const after = (await listQueue()) as { ok: true; data: { id: string }[] };
-    expect(after.data.find((d) => d.id === target)).toBeDefined();
   });
 });
 
@@ -129,24 +130,27 @@ describe('lib/api/queue HTTP shape', () => {
 
   it('listQueue GETs /api/operator/queue and unwraps the { drafts } envelope', async () => {
     const draft: PendingDraft = {
-      id: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-      guest_id: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-      guest_name: 'Maya R.',
-      guest_phone: '+15551110001',
-      recognition_band: 'returning',
-      recognition_signals: ['7 visits over 4 months'],
-      context_messages: [],
-      current_inbound: {
-        id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-        body: 'is the patio open',
-        direction: 'inbound',
-        created_at: '2026-05-14T16:00:00.000Z',
-      },
-      agent_draft: "yes, patio's open until 9",
-      agent_reasoning: null,
-      flag_reason: 'low fidelity',
-      pending_since: '2026-05-14T16:00:00.000Z',
-      created_at: '2026-05-14T16:00:00.000Z',
+      messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueSlug: 'mock-sextant',
+      guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guestDisplayName: 'Maya R.',
+      guestPhoneFallback: '+15551110001',
+      draftBody: "yes, patio's open until 9",
+      category: 'reservation',
+      voiceFidelity: 0.81,
+      reviewReason: 'low fidelity',
+      recognitionState: 'returning',
+      pendingSinceMs: 240_000,
+      recentContext: [
+        {
+          id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+          direction: 'inbound',
+          body: 'is the patio open',
+          createdAt: '2026-05-14T16:00:00.000Z',
+        },
+      ],
+      langfuseTraceId: null,
     };
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ drafts: [draft] }), { status: 200 }),
@@ -159,7 +163,7 @@ describe('lib/api/queue HTTP shape', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data).toHaveLength(1);
-      expect(result.data[0].id).toBe(draft.id);
+      expect(result.data[0].messageId).toBe(draft.messageId);
     }
   });
 
