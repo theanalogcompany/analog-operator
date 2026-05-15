@@ -17,7 +17,11 @@ export type UndoRecord = {
   expires_at: number;
 };
 
-const STORAGE_KEY = 'analog-operator.undo-state.v1';
+// v2 (TAC-270 follow-up): the embedded `draft: PendingDraft` shape changed
+// to match the server `QueueDraft` contract. Bumping the key so an in-flight
+// undo from a pre-upgrade app cold-launches into a missing-record state
+// instead of rehydrating a malformed draft.
+const STORAGE_KEY = 'analog-operator.undo-state.v2';
 
 let current: UndoRecord | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -58,7 +62,7 @@ export async function setUndoState(args: {
 }): Promise<void> {
   current = {
     action: args.action,
-    message_id: args.draft.id,
+    message_id: args.draft.messageId,
     draft: args.draft,
     body: args.action === 'edit' ? (args.body ?? null) : null,
     expires_at: Date.now() + undoToast.windowMs,

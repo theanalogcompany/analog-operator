@@ -39,26 +39,28 @@ jest.mock('@/lib/api/queue', () => {
 });
 
 function makeDraft(): PendingDraft {
-  const now = new Date().toISOString();
   return {
-    id: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-    guest_id: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-    guest_name: 'Maya R.',
-    guest_phone: '+15551110001',
-    recognition_band: 'returning',
-    recognition_signals: [],
-    context_messages: [],
-    current_inbound: {
-      id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
-      body: 'is the patio open',
-      direction: 'inbound',
-      created_at: now,
-    },
-    agent_draft: "Yes — patio's open until 9.",
-    agent_reasoning: null,
-    flag_reason: 'low fidelity',
-    pending_since: now,
-    created_at: now,
+    messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueSlug: 'mock-sextant',
+    guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    guestDisplayName: 'Maya R.',
+    guestPhoneFallback: '+15551110001',
+    draftBody: "Yes — patio's open until 9.",
+    category: null,
+    voiceFidelity: null,
+    reviewReason: 'low fidelity',
+    recognitionState: 'returning',
+    pendingSinceMs: 240_000,
+    recentContext: [
+      {
+        id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+        direction: 'inbound',
+        body: 'is the patio open',
+        createdAt: '2026-05-14T16:00:00.000Z',
+      },
+    ],
+    langfuseTraceId: null,
   };
 }
 
@@ -70,7 +72,7 @@ beforeEach(async () => {
   (mockQueue.optimisticallyRemove as jest.Mock).mockReset();
   (mockQueue.restore as jest.Mock).mockReset();
   mockQueue.drafts = [makeDraft()];
-  mockRouter.params = { messageId: mockQueue.drafts[0].id };
+  mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
   await clearUndoState();
 });
 
@@ -88,7 +90,7 @@ describe('EditScreen', () => {
 
   it('prefills from the prefill param when present (failure-retry path)', () => {
     mockRouter.params = {
-      messageId: mockQueue.drafts[0].id,
+      messageId: mockQueue.drafts[0].messageId,
       prefill: 'my partially-typed retry attempt',
     };
     render(<EditScreen />);
@@ -115,14 +117,14 @@ describe('EditScreen', () => {
 
     await waitFor(() => expect(editAndSend).toHaveBeenCalled());
     expect(editAndSend).toHaveBeenCalledWith(
-      mockQueue.drafts[0].id,
+      mockQueue.drafts[0].messageId,
       'my version of the reply',
     );
     await waitFor(() => expect(mockRouter.push).toHaveBeenCalled());
     expect(mockRouter.push).toHaveBeenCalledWith({
       pathname: '/queue/edit',
       params: {
-        messageId: mockQueue.drafts[0].id,
+        messageId: mockQueue.drafts[0].messageId,
         prefill: 'my version of the reply',
       },
     });
@@ -140,7 +142,7 @@ describe('EditScreen', () => {
     fireEvent.press(screen.getByLabelText("Don't send anything"));
 
     await waitFor(() => expect(skipDraft).toHaveBeenCalled());
-    expect(skipDraft).toHaveBeenCalledWith(mockQueue.drafts[0].id);
+    expect(skipDraft).toHaveBeenCalledWith(mockQueue.drafts[0].messageId);
     expect(mockQueue.restore).toHaveBeenCalledWith(mockQueue.drafts[0]);
     expect(getUndoState()).toBeNull();
     // Skip failure does NOT re-open the takeover (no typed text to preserve).

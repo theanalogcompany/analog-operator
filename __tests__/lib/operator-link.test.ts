@@ -1,4 +1,4 @@
-import { linkOperator } from '@/lib/auth/operator';
+import { clearOperatorCache, linkOperator } from '@/lib/auth/operator';
 import { supabase } from '@/lib/supabase/client';
 
 jest.mock('@/lib/supabase/client', () => ({
@@ -13,6 +13,7 @@ const maybeSingle = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearOperatorCache();
   rpc.mockReturnValue({ maybeSingle });
 });
 

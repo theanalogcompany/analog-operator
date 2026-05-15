@@ -11,29 +11,24 @@ import {
 import { type PendingDraft } from '@/lib/api/queue';
 import { undoToast } from '@/lib/theme';
 
-const STORAGE_KEY = 'analog-operator.undo-state.v1';
+const STORAGE_KEY = 'analog-operator.undo-state.v2';
 
 function makeDraft(): PendingDraft {
-  const now = new Date().toISOString();
   return {
-    id: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-    guest_id: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-    guest_name: 'Maya R.',
-    guest_phone: '+15551110001',
-    recognition_band: 'returning',
-    recognition_signals: [],
-    context_messages: [],
-    current_inbound: {
-      id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
-      body: 'i',
-      direction: 'inbound',
-      created_at: now,
-    },
-    agent_draft: 'a',
-    agent_reasoning: null,
-    flag_reason: null,
-    pending_since: now,
-    created_at: now,
+    messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueSlug: 'mock-sextant',
+    guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    guestDisplayName: 'Maya R.',
+    guestPhoneFallback: '+15551110001',
+    draftBody: 'a',
+    category: null,
+    voiceFidelity: null,
+    reviewReason: null,
+    recognitionState: 'returning',
+    pendingSinceMs: 240_000,
+    recentContext: [],
+    langfuseTraceId: null,
   };
 }
 
@@ -55,7 +50,7 @@ describe('use-undo-state', () => {
     const state = getUndoState();
     expect(state).not.toBeNull();
     expect(state?.action).toBe('approve');
-    expect(state?.message_id).toBe(draft.id);
+    expect(state?.message_id).toBe(draft.messageId);
     expect(state?.draft).toEqual(draft);
     expect(state?.body).toBeNull();
     expect(state?.expires_at).toBeGreaterThan(Date.now());
@@ -79,7 +74,7 @@ describe('use-undo-state', () => {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     expect(raw).not.toBeNull();
     const parsed = JSON.parse(raw as string);
-    expect(parsed.message_id).toBe(draft.id);
+    expect(parsed.message_id).toBe(draft.messageId);
   });
 
   it('clears state and removes the AsyncStorage entry', async () => {
@@ -97,7 +92,7 @@ describe('use-undo-state', () => {
       STORAGE_KEY,
       JSON.stringify({
         action: 'approve',
-        message_id: draft.id,
+        message_id: draft.messageId,
         draft,
         body: null,
         expires_at: future,
@@ -116,7 +111,7 @@ describe('use-undo-state', () => {
       STORAGE_KEY,
       JSON.stringify({
         action: 'approve',
-        message_id: draft.id,
+        message_id: draft.messageId,
         draft,
         body: null,
         expires_at: past,
