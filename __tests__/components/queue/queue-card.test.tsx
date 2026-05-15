@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react-native';
+import { render, screen } from '@testing-library/react-native';
 
 import { QueueCard } from '@/components/queue/queue-card';
 import { type PendingDraft } from '@/lib/api/queue';
@@ -25,25 +25,13 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
 
 describe('QueueCard', () => {
   it('renders the guest name + recognition badge', () => {
-    render(
-      <QueueCard
-        draft={makeDraft({ recognitionState: 'raving_fan' })}
-        expanded={false}
-        onToggleExpanded={() => {}}
-      />,
-    );
+    render(<QueueCard draft={makeDraft({ recognitionState: 'raving_fan' })} />);
     expect(screen.getByText('Maya R.')).toBeTruthy();
     expect(screen.getByText('Raving Fan')).toBeTruthy();
   });
 
   it('falls back to guestPhoneFallback when guestDisplayName is null', () => {
-    render(
-      <QueueCard
-        draft={makeDraft({ guestDisplayName: null })}
-        expanded={false}
-        onToggleExpanded={() => {}}
-      />,
-    );
+    render(<QueueCard draft={makeDraft({ guestDisplayName: null })} />);
     expect(screen.getByText('+15551110001')).toBeTruthy();
   });
 
@@ -51,8 +39,6 @@ describe('QueueCard', () => {
     render(
       <QueueCard
         draft={makeDraft({ reviewReason: 'first message from new guest' })}
-        expanded={false}
-        onToggleExpanded={() => {}}
       />,
     );
     expect(screen.getByText(/first message from new guest/)).toBeTruthy();
@@ -60,17 +46,11 @@ describe('QueueCard', () => {
   });
 
   it('omits the review-reason banner when reviewReason is null', () => {
-    render(
-      <QueueCard
-        draft={makeDraft({ reviewReason: null })}
-        expanded={false}
-        onToggleExpanded={() => {}}
-      />,
-    );
+    render(<QueueCard draft={makeDraft({ reviewReason: null })} />);
     expect(screen.queryByText(/Flagged because:/)).toBeNull();
   });
 
-  it('renders recentContext bubbles when expanded', () => {
+  it('renders recentContext bubbles by default (always-expanded)', () => {
     render(
       <QueueCard
         draft={makeDraft({
@@ -83,65 +63,18 @@ describe('QueueCard', () => {
             },
           ],
         })}
-        expanded
-        onToggleExpanded={() => {}}
       />,
     );
     expect(screen.getByText('is the patio open')).toBeTruthy();
   });
 
-  it('hides recentContext when collapsed', () => {
-    render(
-      <QueueCard
-        draft={makeDraft({
-          recentContext: [
-            {
-              id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-              direction: 'inbound',
-              body: 'is the patio open',
-              createdAt: '2026-05-14T16:00:00.000Z',
-            },
-          ],
-        })}
-        expanded={false}
-        onToggleExpanded={() => {}}
-      />,
-    );
-    expect(screen.queryByText('is the patio open')).toBeNull();
-  });
-
   it('renders the draftBody', () => {
-    render(
-      <QueueCard
-        draft={makeDraft({ draftBody: 'a unique draft body' })}
-        expanded={false}
-        onToggleExpanded={() => {}}
-      />,
-    );
+    render(<QueueCard draft={makeDraft({ draftBody: 'a unique draft body' })} />);
     expect(screen.getByText('a unique draft body')).toBeTruthy();
   });
 
   it('omits the recognition badge when recognitionState is null', () => {
-    render(
-      <QueueCard
-        draft={makeDraft({ recognitionState: null })}
-        expanded={false}
-        onToggleExpanded={() => {}}
-      />,
-    );
+    render(<QueueCard draft={makeDraft({ recognitionState: null })} />);
     expect(screen.queryByLabelText(/Recognition:/)).toBeNull();
-  });
-
-  it('fires onToggleExpanded when pressed', () => {
-    const toggle = jest.fn();
-    render(
-      <QueueCard
-        draft={makeDraft()}
-        expanded={false}
-        onToggleExpanded={toggle}
-      />,
-    );
-    fireEvent.press(screen.getByRole('button'));
-    expect(toggle).toHaveBeenCalledTimes(1);
   });
 });

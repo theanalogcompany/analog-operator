@@ -1,4 +1,3 @@
-import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   type SharedValue,
@@ -30,12 +29,6 @@ export function SwipeOverlay({ direction, intensity }: Props) {
     opacity: direction.value === 1 ? intensity.value : 0,
   }));
   const leftOverlayStyle = useAnimatedStyle(() => ({
-    opacity: direction.value === -1 ? intensity.value : 0,
-  }));
-  const rightIconStyle = useAnimatedStyle(() => ({
-    opacity: direction.value === 1 ? intensity.value : 0,
-  }));
-  const leftIconStyle = useAnimatedStyle(() => ({
     opacity: direction.value === -1 ? intensity.value : 0,
   }));
 
@@ -80,34 +73,6 @@ export function SwipeOverlay({ direction, intensity }: Props) {
           end={{ x: 1, y: 0.5 }}
           style={{ flex: 1 }}
         />
-      </Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          {
-            position: 'absolute',
-            top: '50%',
-            right: 28,
-            transform: [{ translateY: -22 }],
-          },
-          rightIconStyle,
-        ]}
-      >
-        <Feather name="send" size={44} color="#FFFFFF" />
-      </Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          {
-            position: 'absolute',
-            top: '50%',
-            left: 28,
-            transform: [{ translateY: -22 }],
-          },
-          leftIconStyle,
-        ]}
-      >
-        <Feather name="edit-2" size={44} color="#FFFFFF" />
       </Animated.View>
     </>
   );

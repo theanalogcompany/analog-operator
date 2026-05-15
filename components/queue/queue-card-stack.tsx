@@ -1,12 +1,15 @@
-import { useState } from 'react';
-import { Text, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle } from 'react-native-reanimated';
+import { View } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  type SharedValue,
+  interpolateColor,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 
 import { useHaptics } from '@/hooks/use-haptics';
-import { useQueueSwipe } from '@/hooks/use-queue-swipe';
+import { type SwipeDirection, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type PendingDraft } from '@/lib/api/queue';
-import { peekCard } from '@/lib/theme';
+import { peekCard, swipeHint } from '@/lib/theme';
 
 import { QueueCard } from './queue-card';
 import { SwipeOverlay } from './swipe-overlay';
@@ -19,7 +22,6 @@ type FrontCardProps = {
 
 function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
   if (__DEV__) console.log('[render] FrontCard mounted');
-  const [expanded, setExpanded] = useState(false);
   const haptics = useHaptics();
 
   const handleRight = (): void => {
@@ -30,26 +32,12 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
     haptics.swipeLeftEdit();
     onEdit(draft);
   };
-  const toggleExpanded = (): void => {
-    setExpanded((v) => !v);
-  };
 
   const { pan, translateX, rotation, direction, intensity } = useQueueSwipe({
     onCommitRight: handleRight,
     onCommitLeft: handleLeft,
     enabled: true,
   });
-
-  const tap = Gesture.Tap()
-    .maxDuration(250)
-    .maxDistance(10)
-    .onEnd((_event, success) => {
-      'worklet';
-      if (__DEV__) console.log('[tap] end', { success });
-      if (success) runOnJS(toggleExpanded)();
-    });
-
-  const composed = Gesture.Exclusive(pan, tap);
 
   const cardStyle = useAnimatedStyle(() => ({
     transform: [
@@ -61,15 +49,16 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
   return (
     <>
       <SwipeOverlay direction={direction} intensity={intensity} />
-      <GestureDetector gesture={composed}>
+      <GestureDetector gesture={pan}>
         <Animated.View
           collapsable={false}
           className="w-full"
           style={[{ maxWidth: 354, zIndex: 3 }, cardStyle]}
         >
-          <QueueCard draft={draft} expanded={expanded} />
+          <QueueCard draft={draft} />
         </Animated.View>
       </GestureDetector>
+      <SwipeHints direction={direction} intensity={intensity} />
     </>
   );
 }
@@ -97,24 +86,44 @@ function PeekCard({ draft }: PeekCardProps) {
           transformOrigin: 'top center',
         }}
       >
-        <QueueCard draft={draft} expanded={false} />
+        <QueueCard draft={draft} />
       </View>
     </View>
   );
 }
 
-function SwipeHints() {
+type SwipeHintsProps = {
+  direction: SharedValue<SwipeDirection>;
+  intensity: SharedValue<number>;
+};
+
+function SwipeHints({ direction, intensity }: SwipeHintsProps) {
+  const leftStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      direction.value === -1 ? intensity.value : 0,
+      [0, 1],
+      [swipeHint.restColor, swipeHint.editColor],
+    ),
+  }));
+  const rightStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      direction.value === 1 ? intensity.value : 0,
+      [0, 1],
+      [swipeHint.restColor, swipeHint.sendColor],
+    ),
+  }));
+
   return (
     <View
       className="w-full flex-row justify-between"
       style={{ maxWidth: 354, paddingHorizontal: 8, paddingTop: 12 }}
     >
-      <Text className="font-inter-tight text-ink-faint" style={{ fontSize: 11 }}>
+      <Animated.Text className="font-inter-tight" style={[{ fontSize: 13 }, leftStyle]}>
         ← Swipe left to edit
-      </Text>
-      <Text className="font-inter-tight text-ink-faint" style={{ fontSize: 11 }}>
+      </Animated.Text>
+      <Animated.Text className="font-inter-tight" style={[{ fontSize: 13 }, rightStyle]}>
         Swipe right to send →
-      </Text>
+      </Animated.Text>
     </View>
   );
 }
@@ -144,7 +153,6 @@ export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
         onApprove={onApprove}
         onEdit={onEdit}
       />
-      <SwipeHints />
     </View>
   );
 }

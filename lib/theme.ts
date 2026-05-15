@@ -39,6 +39,16 @@ export const easing = {
   emphasizedDecelerate: [0.2, 0.8, 0.2, 1] as const,
 };
 
+// Swipe-hint text colors. `restColor` matches `ink-faint` in tailwind.config.js.
+// `sendColor` / `editColor` are the targets the hint text interpolates toward
+// proportional to the swipe intensity (right = send, left = edit). Kept as raw
+// hex so the worklet on the UI thread reads them without bridging tailwind.
+export const swipeHint = {
+  restColor: '#857A6A',
+  sendColor: '#C66A4A',
+  editColor: '#4A4339',
+} as const;
+
 export const recognition = {
   stateLabels: {
     new: 'New',
