@@ -1,7 +1,9 @@
+import { Feather } from '@expo/vector-icons';
 import { Pressable, Text, View } from 'react-native';
 
 import { type PendingDraft } from '@/lib/api/queue';
 
+import { FlaggedBanner } from './flagged-banner';
 import { RecognitionBadge } from './recognition-badge';
 
 function displayName(draft: PendingDraft): string {
@@ -22,15 +24,13 @@ function minutesPending(draft: PendingDraft): string {
 
 type Props = {
   draft: PendingDraft;
-  expanded: boolean;
   /**
-   * Optional tap handler. When set, the card renders a Pressable outer so RN's
-   * built-in press recognition fires (used by unit tests). In production the
-   * tap comes through the FrontCard's gesture composition, so the queue stack
-   * leaves this undefined and the outer renders as a plain View — keeping the
-   * native gesture-handler surface unobstructed.
+   * Fires when the operator taps the draft bubble. Routes to the edit screen.
+   * Per CLAUDE.md `Pressable inside GestureDetector` gotcha: this Pressable is
+   * scoped to the bubble subtree only — swipes anywhere else on the card go
+   * straight to the pan gesture. Bubble-originated swipes are an open UAT item.
    */
-  onToggleExpanded?: () => void;
+  onPressDraftBubble?: () => void;
 };
 
 const cardOuterClass =
@@ -44,13 +44,16 @@ const cardShadow = {
   elevation: 6,
 } as const;
 
-export function QueueCard({ draft, expanded, onToggleExpanded }: Props) {
-  const a11yLabel = `Pending draft for ${displayName(draft)}. Tap to ${
-    expanded ? 'collapse' : 'expand'
-  } context.`;
+export function QueueCard({ draft, onPressDraftBubble }: Props) {
+  const a11yLabel = `Pending draft for ${displayName(draft)}.`;
 
-  const body = (
-    <>
+  return (
+    <View
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      className={cardOuterClass}
+      style={cardShadow}
+    >
       <View className="flex-row items-center gap-[10px] px-[18px] pb-[14px] pt-[18px]">
         <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
           {displayName(draft)}
@@ -64,93 +67,96 @@ export function QueueCard({ draft, expanded, onToggleExpanded }: Props) {
         </Text>
       </View>
 
-      {draft.reviewReason ? (
-        <View
-          className="mx-4 mb-[14px] rounded-[4px] border-l-2 border-clay bg-sand"
-          style={{ paddingHorizontal: 14, paddingVertical: 12 }}
-        >
-          <Text className="font-inter-tight text-ink" style={{ fontSize: 13, lineHeight: 20 }}>
-            <Text className="font-inter-tight-medium text-clay-deep">Flagged because: </Text>
-            {draft.reviewReason}
-          </Text>
-        </View>
-      ) : null}
+      <FlaggedBanner reason={draft.reviewReason} />
 
       <View className="h-[0.5px] bg-hairline" style={{ marginHorizontal: 18 }} />
 
-      {expanded ? (
-        <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
-          {draft.recentContext.map((m) => (
-            <View
-              key={m.id}
-              className={
-                m.direction === 'inbound'
-                  ? 'self-start rounded-[18px] bg-inbound'
-                  : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
-              }
+      <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
+        {draft.recentContext.map((m) => (
+          <View
+            key={m.id}
+            className={
+              m.direction === 'inbound'
+                ? 'self-start rounded-[18px] bg-inbound'
+                : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
+            }
+            style={{
+              maxWidth: '86%',
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderBottomLeftRadius: m.direction === 'inbound' ? 6 : 18,
+              borderBottomRightRadius: m.direction === 'outbound' ? 6 : 18,
+            }}
+          >
+            <Text
+              className="font-inter-tight"
               style={{
-                maxWidth: '86%',
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderBottomLeftRadius: m.direction === 'inbound' ? 6 : 18,
-                borderBottomRightRadius: m.direction === 'outbound' ? 6 : 18,
+                color: m.direction === 'inbound' ? '#F0EDE7' : '#1C1814',
+                fontSize: 14,
+                lineHeight: 20,
               }}
             >
-              <Text
-                className="font-inter-tight"
-                style={{
-                  color: m.direction === 'inbound' ? '#F0EDE7' : '#1C1814',
-                  fontSize: 14,
-                  lineHeight: 20,
-                }}
-              >
-                {m.body}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      <View className="flex-row justify-end px-[18px] pb-[18px] pt-[14px]">
-        <View
-          className="self-end rounded-[18px] border border-clay bg-white"
-          style={{
-            maxWidth: '86%',
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            borderBottomRightRadius: 6,
-          }}
-        >
-          <Text className="font-inter-tight text-ink" style={{ fontSize: 14.5, lineHeight: 22 }}>
-            {draft.draftBody}
-          </Text>
-        </View>
+              {m.body}
+            </Text>
+          </View>
+        ))}
       </View>
-    </>
-  );
 
-  if (onToggleExpanded) {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={a11yLabel}
-        onPress={onToggleExpanded}
-        className={cardOuterClass}
-        style={cardShadow}
+      <View
+        className="flex-row justify-end"
+        style={{ paddingHorizontal: 18, paddingBottom: 18, paddingTop: 14 }}
       >
-        {body}
-      </Pressable>
-    );
-  }
-
-  return (
-    <View
-      accessibilityRole="button"
-      accessibilityLabel={a11yLabel}
-      className={cardOuterClass}
-      style={cardShadow}
-    >
-      {body}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Edit draft"
+          onPress={onPressDraftBubble}
+          disabled={!onPressDraftBubble}
+          style={({ pressed }) => ({
+            position: 'relative',
+            maxWidth: '86%',
+            alignSelf: 'flex-end',
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <View
+            className="bg-white"
+            style={{
+              borderWidth: 1,
+              borderColor: '#C66A4A',
+              borderRadius: 20,
+              borderBottomRightRadius: 6,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              paddingRight: 48,
+            }}
+          >
+            <Text
+              className="font-inter-tight text-ink"
+              style={{ fontSize: 14.5, lineHeight: 22 }}
+            >
+              {draft.draftBody}
+            </Text>
+          </View>
+          <View
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={{
+              position: 'absolute',
+              right: 8,
+              bottom: 8,
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: '#C66A4A',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Feather name="send" size={14} color="#FFFFFF" />
+          </View>
+        </Pressable>
+      </View>
     </View>
   );
 }
