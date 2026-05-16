@@ -35,6 +35,12 @@ export const PendingDraftSchema = z.object({
   voiceFidelity: z.number().nullable(),
   reviewReason: z.string().nullable(),
   recognitionState: RecognitionStateSchema.nullable(),
+  // Tolerant during the cross-repo rollout: TAC-278 introduces the
+  // server-side `agent_reasoning` column + RPC SELECT. Until that ships
+  // the field is absent from JSON; the optional+default(null) chain lets
+  // this client parse cleanly either way. Tighten to .nullable() in a
+  // follow-up once both sides are live.
+  agentReasoning: z.string().nullable().optional().default(null),
   pendingSinceMs: z.number(),
   recentContext: z.array(RecentContextEntrySchema).default([]),
   langfuseTraceId: z.string().nullable(),

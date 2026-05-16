@@ -1,3 +1,5 @@
+import { ScrollView } from 'react-native';
+
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 
 import EditScreen from '@/app/queue/edit';
@@ -46,7 +48,7 @@ jest.mock('@/lib/api/queue', () => {
   };
 });
 
-function makeDraft(): PendingDraft {
+function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
   return {
     messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
@@ -59,6 +61,7 @@ function makeDraft(): PendingDraft {
     voiceFidelity: null,
     reviewReason: 'low fidelity',
     recognitionState: 'returning',
+    agentReasoning: null,
     pendingSinceMs: 240_000,
     recentContext: [
       {
@@ -69,6 +72,7 @@ function makeDraft(): PendingDraft {
       },
     ],
     langfuseTraceId: null,
+    ...overrides,
   };
 }
 
@@ -179,6 +183,73 @@ describe('EditScreen', () => {
     // No need to wait — the early return is synchronous.
     expect(editAndSend).not.toHaveBeenCalled();
     expect(getUndoState()).toBeNull();
+  });
+
+  it('renders the full chronological recentContext inside the ScrollView (regression guard)', () => {
+    mockQueue.drafts = [
+      makeDraft({
+        recentContext: [
+          {
+            id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+            direction: 'inbound',
+            body: 'first inbound',
+            createdAt: '2026-05-14T16:00:00.000Z',
+          },
+          {
+            id: '33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a',
+            direction: 'outbound',
+            body: 'middle outbound',
+            createdAt: '2026-05-14T16:05:00.000Z',
+          },
+          {
+            id: '44d7a2f4-5c6b-4d8e-9e9a-1c2d3e4f5a6b',
+            direction: 'inbound',
+            body: 'latest inbound',
+            createdAt: '2026-05-14T16:10:00.000Z',
+          },
+        ],
+      }),
+    ];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    render(<EditScreen />);
+    expect(screen.getByText('first inbound')).toBeTruthy();
+    expect(screen.getByText('middle outbound')).toBeTruthy();
+    expect(screen.getByText('latest inbound')).toBeTruthy();
+  });
+
+  it('renders agentReasoning outside the ScrollView when non-null', () => {
+    mockQueue.drafts = [
+      makeDraft({ agentReasoning: 'lean into the warmth' }),
+    ];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    render(<EditScreen />);
+    const reasoning = screen.getByLabelText('Agent reasoning');
+    const scrollView = screen.UNSAFE_getByType(ScrollView);
+    let cursor: typeof reasoning.parent | null = reasoning.parent;
+    let descendantOfScrollView = false;
+    while (cursor) {
+      if (cursor === scrollView) {
+        descendantOfScrollView = true;
+        break;
+      }
+      cursor = cursor.parent;
+    }
+    expect(descendantOfScrollView).toBe(false);
+    expect(screen.getByText('lean into the warmth')).toBeTruthy();
+  });
+
+  it('omits agentReasoning render when null', () => {
+    mockQueue.drafts = [makeDraft({ agentReasoning: null })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    render(<EditScreen />);
+    expect(screen.queryByLabelText('Agent reasoning')).toBeNull();
+  });
+
+  it('omits agentReasoning render when empty string (defensive trim)', () => {
+    mockQueue.drafts = [makeDraft({ agentReasoning: '   ' })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    render(<EditScreen />);
+    expect(screen.queryByLabelText('Agent reasoning')).toBeNull();
   });
 });
 

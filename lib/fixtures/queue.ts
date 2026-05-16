@@ -38,6 +38,7 @@ const draft = (args: {
   guestDisplayName: string | null;
   guestPhoneFallback: string;
   recognitionState: RecognitionState | null;
+  agentReasoning: string | null;
   recentContext: {
     id: string;
     body: string;
@@ -63,6 +64,7 @@ const draft = (args: {
     voiceFidelity: args.voiceFidelity,
     reviewReason: args.reviewReason,
     recognitionState: args.recognitionState,
+    agentReasoning: args.agentReasoning,
     pendingSinceMs: args.pendingMinutes * 60_000,
     recentContext: args.recentContext.map((m) => ({
       id: m.id,
@@ -84,6 +86,8 @@ function seedDrafts(): PendingDraft[] {
       guestDisplayName: 'Maya R.',
       guestPhoneFallback: '+15551110001',
       recognitionState: 'returning',
+      agentReasoning:
+        "She's confirming the table, not just asking — voice is clipped and warm. Match the energy, hold the corner spot.",
       recentContext: [
         {
           id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
@@ -119,6 +123,7 @@ function seedDrafts(): PendingDraft[] {
       guestDisplayName: null,
       guestPhoneFallback: '+15551110002',
       recognitionState: 'new',
+      agentReasoning: null,
       recentContext: [
         {
           id: 'ee22e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
@@ -142,6 +147,8 @@ function seedDrafts(): PendingDraft[] {
       guestDisplayName: 'Devon L.',
       guestPhoneFallback: '+15551110003',
       recognitionState: 'raving_fan',
+      agentReasoning:
+        'Parents in town for one night, hoping for the rosemary loaf at 7. Lean into the occasion — the buckwheat slice is a fair gesture.',
       recentContext: [
         {
           id: 'ff33f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a',
