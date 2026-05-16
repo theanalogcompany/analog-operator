@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, Text, View } from 'react-native';
 
-import { type PendingDraft, type RecentContextEntry } from '@/lib/api/queue';
+import { type PendingDraft } from '@/lib/api/queue';
 
 import { AgentReasoning } from './agent-reasoning';
 import { FlaggedBanner } from './flagged-banner';
@@ -21,10 +21,6 @@ function minutesPending(draft: PendingDraft): string {
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   return `${hours} hr${hours > 1 ? 's' : ''}`;
-}
-
-function latestInbound(draft: PendingDraft): RecentContextEntry | null {
-  return draft.recentContext.findLast((m) => m.direction === 'inbound') ?? null;
 }
 
 type Props = {
@@ -51,7 +47,7 @@ const cardShadow = {
 
 export function QueueCard({ draft, onPressDraftBubble }: Props) {
   const a11yLabel = `Pending draft for ${displayName(draft)}.`;
-  const inbound = latestInbound(draft);
+  const thread = draft.recentContext;
 
   return (
     <View
@@ -83,29 +79,36 @@ export function QueueCard({ draft, onPressDraftBubble }: Props) {
 
       <View className="h-[0.5px] bg-hairline" style={{ marginHorizontal: 18 }} />
 
-      {inbound ? (
+      {thread.length > 0 ? (
         <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
-          <View
-            key={inbound.id}
-            className="self-start rounded-[18px] bg-inbound"
-            style={{
-              maxWidth: '86%',
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderBottomLeftRadius: 6,
-            }}
-          >
-            <Text
-              className="font-inter-tight"
+          {thread.map((m) => (
+            <View
+              key={m.id}
+              className={
+                m.direction === 'inbound'
+                  ? 'self-start rounded-[18px] bg-inbound'
+                  : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
+              }
               style={{
-                color: '#F0EDE7',
-                fontSize: 14,
-                lineHeight: 20,
+                maxWidth: '86%',
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderBottomLeftRadius: m.direction === 'inbound' ? 6 : 18,
+                borderBottomRightRadius: m.direction === 'outbound' ? 6 : 18,
               }}
             >
-              {inbound.body}
-            </Text>
-          </View>
+              <Text
+                className="font-inter-tight"
+                style={{
+                  color: m.direction === 'inbound' ? '#F0EDE7' : '#1C1814',
+                  fontSize: 14,
+                  lineHeight: 20,
+                }}
+              >
+                {m.body}
+              </Text>
+            </View>
+          ))}
         </View>
       ) : null}
 

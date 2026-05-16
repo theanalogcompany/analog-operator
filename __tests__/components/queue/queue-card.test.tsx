@@ -51,7 +51,7 @@ describe('QueueCard', () => {
     expect(screen.queryByText(/Flagged because:/)).toBeNull();
   });
 
-  it('renders only the most recent inbound when recentContext has multiple entries', () => {
+  it('renders all recentContext messages chronologically (oldest at top, newest at bottom)', () => {
     render(
       <QueueCard
         draft={makeDraft({
@@ -78,18 +78,32 @@ describe('QueueCard', () => {
         })}
       />,
     );
-    expect(screen.getByText('the latest inbound message')).toBeTruthy();
-    expect(screen.queryByText('earlier inbound from yesterday')).toBeNull();
-    expect(screen.queryByText('operator reply in between')).toBeNull();
+    const earlier = screen.getByText('earlier inbound from yesterday');
+    const middle = screen.getByText('operator reply in between');
+    const latest = screen.getByText('the latest inbound message');
+    expect(earlier).toBeTruthy();
+    expect(middle).toBeTruthy();
+    expect(latest).toBeTruthy();
+    // Order is enforced by the parse-boundary sort in lib/api/queue.ts; the
+    // card receives the array as-is and renders in order. Verify both ends
+    // appear in the right document order.
+    const all = screen.getAllByText(
+      /(earlier inbound from yesterday|operator reply in between|the latest inbound message)/,
+    );
+    expect(all.map((n) => n.props.children)).toEqual([
+      'earlier inbound from yesterday',
+      'operator reply in between',
+      'the latest inbound message',
+    ]);
   });
 
-  it('renders no inbound bubble when recentContext is empty', () => {
+  it('renders no mini-thread when recentContext is empty', () => {
     render(<QueueCard draft={makeDraft({ recentContext: [] })} />);
-    // Draft body still renders; that confirms the card mounted with no inbound.
+    // Draft body still renders; that confirms the card mounted with no thread.
     expect(screen.getByText("Yes — patio's open until 9.")).toBeTruthy();
   });
 
-  it('renders no inbound bubble when recentContext has only outbound messages', () => {
+  it('renders outbound bubbles too in the mini-thread', () => {
     render(
       <QueueCard
         draft={makeDraft({
@@ -104,7 +118,7 @@ describe('QueueCard', () => {
         })}
       />,
     );
-    expect(screen.queryByText('operator-initiated outbound')).toBeNull();
+    expect(screen.getByText('operator-initiated outbound')).toBeTruthy();
   });
 
   it('renders agentReasoning when present', () => {

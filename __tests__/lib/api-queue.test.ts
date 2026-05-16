@@ -212,6 +212,61 @@ describe('lib/api/queue HTTP shape', () => {
     }
   });
 
+  it('listQueue sorts recentContext ascending by createdAt regardless of server order', async () => {
+    // The server RPC returns recentContext newest-first (`order by created_at
+    // desc`). The Zod transform in PendingDraftSchema flips it once at the
+    // parse boundary so both the card and the edit screen iterate oldest-first
+    // without re-sorting. (TAC-280.)
+    const newestFirstPayload = {
+      messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueSlug: 'mock-sextant',
+      guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guestDisplayName: 'Maya R.',
+      guestPhoneFallback: '+15551110001',
+      draftBody: 'reply',
+      category: null,
+      voiceFidelity: null,
+      reviewReason: null,
+      recognitionState: 'returning',
+      agentReasoning: null,
+      pendingSinceMs: 240_000,
+      recentContext: [
+        {
+          id: 'dd11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+          direction: 'inbound',
+          body: 'newest',
+          createdAt: '2026-05-14T16:10:00.000Z',
+        },
+        {
+          id: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+          direction: 'outbound',
+          body: 'middle',
+          createdAt: '2026-05-14T16:05:00.000Z',
+        },
+        {
+          id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+          direction: 'inbound',
+          body: 'oldest',
+          createdAt: '2026-05-14T16:00:00.000Z',
+        },
+      ],
+      langfuseTraceId: null,
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ drafts: [newestFirstPayload] }), {
+        status: 200,
+      }),
+    );
+
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const bodies = result.data[0].recentContext.map((m) => m.body);
+      expect(bodies).toEqual(['oldest', 'middle', 'newest']);
+    }
+  });
+
   it('listQueue parses cleanly when agentReasoning is explicitly null', async () => {
     const draftWithNullReasoning = {
       messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
