@@ -16,6 +16,7 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
     voiceFidelity: 0.81,
     reviewReason: 'low fidelity score',
     recognitionState: 'returning',
+    agentReasoning: null,
     pendingSinceMs: 240_000,
     recentContext: [],
     langfuseTraceId: null,
@@ -50,7 +51,7 @@ describe('QueueCard', () => {
     expect(screen.queryByText(/Flagged because:/)).toBeNull();
   });
 
-  it('renders recentContext bubbles by default (always-expanded)', () => {
+  it('renders only the most recent inbound when recentContext has multiple entries', () => {
     render(
       <QueueCard
         draft={makeDraft({
@@ -58,14 +59,76 @@ describe('QueueCard', () => {
             {
               id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
               direction: 'inbound',
-              body: 'is the patio open',
+              body: 'earlier inbound from yesterday',
+              createdAt: '2026-05-14T16:00:00.000Z',
+            },
+            {
+              id: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+              direction: 'outbound',
+              body: 'operator reply in between',
+              createdAt: '2026-05-14T16:05:00.000Z',
+            },
+            {
+              id: 'dd11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+              direction: 'inbound',
+              body: 'the latest inbound message',
+              createdAt: '2026-05-14T16:10:00.000Z',
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText('the latest inbound message')).toBeTruthy();
+    expect(screen.queryByText('earlier inbound from yesterday')).toBeNull();
+    expect(screen.queryByText('operator reply in between')).toBeNull();
+  });
+
+  it('renders no inbound bubble when recentContext is empty', () => {
+    render(<QueueCard draft={makeDraft({ recentContext: [] })} />);
+    // Draft body still renders; that confirms the card mounted with no inbound.
+    expect(screen.getByText("Yes — patio's open until 9.")).toBeTruthy();
+  });
+
+  it('renders no inbound bubble when recentContext has only outbound messages', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          recentContext: [
+            {
+              id: 'ee11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+              direction: 'outbound',
+              body: 'operator-initiated outbound',
               createdAt: '2026-05-14T16:00:00.000Z',
             },
           ],
         })}
       />,
     );
-    expect(screen.getByText('is the patio open')).toBeTruthy();
+    expect(screen.queryByText('operator-initiated outbound')).toBeNull();
+  });
+
+  it('renders agentReasoning when present', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          agentReasoning: 'Operator should lean into the warmth here.',
+        })}
+      />,
+    );
+    expect(
+      screen.getByText('Operator should lean into the warmth here.'),
+    ).toBeTruthy();
+    expect(screen.getByLabelText('Agent reasoning')).toBeTruthy();
+  });
+
+  it('omits agentReasoning when null', () => {
+    render(<QueueCard draft={makeDraft({ agentReasoning: null })} />);
+    expect(screen.queryByLabelText('Agent reasoning')).toBeNull();
+  });
+
+  it('omits agentReasoning when empty string (defensive trim)', () => {
+    render(<QueueCard draft={makeDraft({ agentReasoning: '   ' })} />);
+    expect(screen.queryByLabelText('Agent reasoning')).toBeNull();
   });
 
   it('renders the draftBody', () => {

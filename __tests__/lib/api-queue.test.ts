@@ -141,6 +141,7 @@ describe('lib/api/queue HTTP shape', () => {
       voiceFidelity: 0.81,
       reviewReason: 'low fidelity',
       recognitionState: 'returning',
+      agentReasoning: 'lean into the warmth',
       pendingSinceMs: 240_000,
       recentContext: [
         {
@@ -164,6 +165,7 @@ describe('lib/api/queue HTTP shape', () => {
     if (result.ok) {
       expect(result.data).toHaveLength(1);
       expect(result.data[0].messageId).toBe(draft.messageId);
+      expect(result.data[0].agentReasoning).toBe('lean into the warmth');
     }
   });
 
@@ -174,5 +176,70 @@ describe('lib/api/queue HTTP shape', () => {
     const result = await listQueue();
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe('PARSE');
+  });
+
+  it('listQueue parses cleanly when the server omits agentReasoning (pre-TAC-278 deploy)', async () => {
+    // TAC-276 schema is tolerant: agentReasoning is .nullable().optional().default(null).
+    // Until sibling TAC-278 ships the server column, the field is absent from
+    // every response — parse must succeed and surface null.
+    const draftWithoutReasoning = {
+      messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueSlug: 'mock-sextant',
+      guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guestDisplayName: 'Maya R.',
+      guestPhoneFallback: '+15551110001',
+      draftBody: 'reply',
+      category: null,
+      voiceFidelity: null,
+      reviewReason: null,
+      recognitionState: 'returning',
+      pendingSinceMs: 240_000,
+      recentContext: [],
+      langfuseTraceId: null,
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ drafts: [draftWithoutReasoning] }), {
+        status: 200,
+      }),
+    );
+
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].agentReasoning).toBeNull();
+    }
+  });
+
+  it('listQueue parses cleanly when agentReasoning is explicitly null', async () => {
+    const draftWithNullReasoning = {
+      messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueSlug: 'mock-sextant',
+      guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guestDisplayName: 'Maya R.',
+      guestPhoneFallback: '+15551110001',
+      draftBody: 'reply',
+      category: null,
+      voiceFidelity: null,
+      reviewReason: null,
+      recognitionState: 'returning',
+      agentReasoning: null,
+      pendingSinceMs: 240_000,
+      recentContext: [],
+      langfuseTraceId: null,
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ drafts: [draftWithNullReasoning] }), {
+        status: 200,
+      }),
+    );
+
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data[0].agentReasoning).toBeNull();
+    }
   });
 });

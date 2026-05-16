@@ -26,6 +26,7 @@ function makeDraft(): PendingDraft {
     voiceFidelity: null,
     reviewReason: null,
     recognitionState: 'returning',
+    agentReasoning: null,
     pendingSinceMs: 240_000,
     recentContext: [],
     langfuseTraceId: null,

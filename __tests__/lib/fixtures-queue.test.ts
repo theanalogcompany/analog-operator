@@ -81,6 +81,7 @@ describe('lib/fixtures/queue emitter', () => {
       voiceFidelity: 0.8,
       reviewReason: null,
       recognitionState: 'new',
+      agentReasoning: null,
       pendingSinceMs: 60_000,
       recentContext: [
         {
