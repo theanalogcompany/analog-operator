@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { type PendingDraft } from '@/lib/api/queue';
 
+import { FlaggedBanner } from './flagged-banner';
 import { RecognitionBadge } from './recognition-badge';
 
 function displayName(draft: PendingDraft): string {
@@ -23,6 +24,13 @@ function minutesPending(draft: PendingDraft): string {
 
 type Props = {
   draft: PendingDraft;
+  /**
+   * Fires when the operator taps the draft bubble. Routes to the edit screen.
+   * Per CLAUDE.md `Pressable inside GestureDetector` gotcha: this Pressable is
+   * scoped to the bubble subtree only — swipes anywhere else on the card go
+   * straight to the pan gesture. Bubble-originated swipes are an open UAT item.
+   */
+  onPressDraftBubble?: () => void;
 };
 
 const cardOuterClass =
@@ -36,7 +44,7 @@ const cardShadow = {
   elevation: 6,
 } as const;
 
-export function QueueCard({ draft }: Props) {
+export function QueueCard({ draft, onPressDraftBubble }: Props) {
   const a11yLabel = `Pending draft for ${displayName(draft)}.`;
 
   return (
@@ -59,17 +67,7 @@ export function QueueCard({ draft }: Props) {
         </Text>
       </View>
 
-      {draft.reviewReason ? (
-        <View
-          className="mx-4 mb-[14px] rounded-[4px] border-l-2 border-clay bg-sand"
-          style={{ paddingHorizontal: 14, paddingVertical: 12 }}
-        >
-          <Text className="font-inter-tight text-ink" style={{ fontSize: 13, lineHeight: 20 }}>
-            <Text className="font-inter-tight-medium text-clay-deep">Flagged because: </Text>
-            {draft.reviewReason}
-          </Text>
-        </View>
-      ) : null}
+      <FlaggedBanner reason={draft.reviewReason} />
 
       <View className="h-[0.5px] bg-hairline" style={{ marginHorizontal: 18 }} />
 
@@ -108,12 +106,17 @@ export function QueueCard({ draft }: Props) {
         className="flex-row justify-end"
         style={{ paddingHorizontal: 18, paddingBottom: 18, paddingTop: 14 }}
       >
-        <View
-          style={{
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Edit draft"
+          onPress={onPressDraftBubble}
+          disabled={!onPressDraftBubble}
+          style={({ pressed }) => ({
             position: 'relative',
             maxWidth: '86%',
             alignSelf: 'flex-end',
-          }}
+            opacity: pressed ? 0.7 : 1,
+          })}
         >
           <View
             className="bg-white"
@@ -152,7 +155,7 @@ export function QueueCard({ draft }: Props) {
           >
             <Feather name="send" size={14} color="#FFFFFF" />
           </View>
-        </View>
+        </Pressable>
       </View>
     </View>
   );

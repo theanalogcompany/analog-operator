@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
+import * as Linking from 'expo-linking';
 
 import QueueScreen from '@/app/queue/index';
 import { type UseQueueResult } from '@/hooks/use-queue';
@@ -19,6 +20,7 @@ let mockSession: SessionStub = {
   session: { user: { email: 'jaipal@theanalog.company' } },
 };
 
+jest.mock('expo-linking', () => ({ openURL: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock('@/app/queue/_layout', () => ({ useQueueContext: () => mockQueue }));
 jest.mock('@/lib/auth/use-session', () => ({ useSession: () => mockSession }));
@@ -38,6 +40,7 @@ beforeEach(() => {
     status: 'signed-in',
     session: { user: { email: 'jaipal@theanalog.company' } },
   };
+  (Linking.openURL as jest.Mock).mockClear();
 });
 
 describe('QueueScreen header surface', () => {
@@ -108,5 +111,11 @@ describe('QueueScreen header surface', () => {
     render(<QueueScreen />);
     expect(screen.getByText(/Need help\?/)).toBeTruthy();
     expect(screen.getByText('Chat with Jaipal')).toBeTruthy();
+  });
+
+  it('opens the help SMS link when "Chat with Jaipal" is pressed', () => {
+    render(<QueueScreen />);
+    fireEvent.press(screen.getByLabelText('Chat with Jaipal via SMS'));
+    expect(Linking.openURL).toHaveBeenCalledWith('sms:+17869530853');
   });
 });

@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
+import { FlaggedBanner } from '@/components/queue/flagged-banner';
 import { queueCardDisplayName } from '@/components/queue/queue-card';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
 import { clearUndoState, setUndoState } from '@/hooks/use-undo-state';
@@ -125,17 +126,7 @@ export default function EditScreen() {
           <View style={{ width: 60 }} />
         </View>
 
-        {draft.reviewReason ? (
-          <View
-            className="mx-[18px] mb-1 rounded-[4px] border-l-2 border-clay bg-sand"
-            style={{ paddingHorizontal: 14, paddingVertical: 12 }}
-          >
-            <Text className="font-inter-tight text-ink" style={{ fontSize: 12.5, lineHeight: 19 }}>
-              <Text className="font-inter-tight-medium text-clay-deep">Flagged because: </Text>
-              {draft.reviewReason}
-            </Text>
-          </View>
-        ) : null}
+        <FlaggedBanner reason={draft.reviewReason} variant="edit" />
 
         <ScrollView
           className="flex-1"

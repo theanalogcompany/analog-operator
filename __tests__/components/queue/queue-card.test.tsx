@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { QueueCard } from '@/components/queue/queue-card';
 import { type PendingDraft } from '@/lib/api/queue';
@@ -76,5 +76,18 @@ describe('QueueCard', () => {
   it('omits the recognition badge when recognitionState is null', () => {
     render(<QueueCard draft={makeDraft({ recognitionState: null })} />);
     expect(screen.queryByLabelText(/Recognition:/)).toBeNull();
+  });
+
+  it('fires onPressDraftBubble when the draft bubble Pressable is pressed', () => {
+    const onPress = jest.fn();
+    render(<QueueCard draft={makeDraft()} onPressDraftBubble={onPress} />);
+    fireEvent.press(screen.getByLabelText('Edit draft'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the draft bubble disabled when no onPressDraftBubble is given (PeekCard usage)', () => {
+    render(<QueueCard draft={makeDraft()} />);
+    const pressable = screen.getByLabelText('Edit draft');
+    expect(pressable.props.accessibilityState).toMatchObject({ disabled: true });
   });
 });

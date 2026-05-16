@@ -55,7 +55,7 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
           className="w-full"
           style={[{ maxWidth: 354, zIndex: 3 }, cardStyle]}
         >
-          <QueueCard draft={draft} />
+          <QueueCard draft={draft} onPressDraftBubble={() => onEdit(draft)} />
         </Animated.View>
       </GestureDetector>
       <SwipeHints direction={direction} intensity={intensity} />

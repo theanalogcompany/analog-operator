@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
@@ -79,12 +80,29 @@ function MetaRow({
   );
 }
 
+const HELP_SMS_URL = 'sms:+17869530853';
+
+async function openHelpSms(): Promise<void> {
+  try {
+    await Linking.openURL(HELP_SMS_URL);
+  } catch {
+    showToast("Couldn't open Messages");
+  }
+}
+
 function Footer() {
   return (
     <View className="items-center" style={{ paddingTop: 8, paddingBottom: 16 }}>
       <Text className="font-inter-tight text-ink-faint" style={{ fontSize: 12 }}>
         Need help?{' '}
-        <Text className="font-inter-tight-medium text-ink">
+        <Text
+          accessibilityRole="link"
+          accessibilityLabel="Chat with Jaipal via SMS"
+          className="font-inter-tight-medium text-clay"
+          onPress={() => {
+            void openHelpSms();
+          }}
+        >
           Chat with Jaipal
         </Text>
       </Text>

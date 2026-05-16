@@ -44,23 +44,29 @@ export function HamburgerMenu({ visible, onClose, onSignOut }: Props) {
           // Block backdrop press from bubbling through the panel itself.
           onStartShouldSetResponder={() => true}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Sign out"
-            onPress={handleSignOut}
-            style={({ pressed }) => ({
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <Text
-              className="font-inter-tight text-ink"
-              style={{ fontSize: 15 }}
+          <View style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
+              onPress={handleSignOut}
+              style={({ pressed }) => ({
+                borderWidth: 1,
+                borderColor: '#C66A4A',
+                borderRadius: 8,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                alignItems: 'center',
+                opacity: pressed ? 0.6 : 1,
+              })}
             >
-              Sign out
-            </Text>
-          </Pressable>
+              <Text
+                className="font-inter-tight-medium text-clay"
+                style={{ fontSize: 14 }}
+              >
+                Sign out
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </Pressable>
     </Modal>
