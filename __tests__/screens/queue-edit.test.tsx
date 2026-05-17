@@ -5,7 +5,12 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react-nativ
 import EditScreen from '@/app/queue/edit';
 import { type UseQueueResult } from '@/hooks/use-queue';
 import { clearUndoState, getUndoState } from '@/hooks/use-undo-state';
-import { type PendingDraft, editAndSend, skipDraft } from '@/lib/api/queue';
+import {
+  type PendingDraft,
+  PendingDraftSchema,
+  editAndSend,
+  skipDraft,
+} from '@/lib/api/queue';
 
 const mockRouter = {
   push: jest.fn(),
@@ -183,6 +188,63 @@ describe('EditScreen', () => {
     // No need to wait — the early return is synchronous.
     expect(editAndSend).not.toHaveBeenCalled();
     expect(getUndoState()).toBeNull();
+  });
+
+  it('renders oldest-first when the upstream server payload was newest-first (parse-boundary sort lock-in)', () => {
+    // Defensive guard for the parse-boundary sort in `lib/api/queue.ts`. The
+    // edit screen iterates `draft.recentContext` in array order; on its own
+    // it would render whatever order the server provided. The Zod
+    // .transform() in PendingDraftSchema flips newest-first → oldest-first
+    // at parse time, so the screen renders chronologically. If the
+    // transform is ever removed, this test fails. (TAC-280.)
+    const newestFirstPayload = {
+      messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueSlug: 'mock-sextant',
+      guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guestDisplayName: 'Maya R.',
+      guestPhoneFallback: '+15551110001',
+      draftBody: "Yes — patio's open until 9.",
+      category: null,
+      voiceFidelity: null,
+      reviewReason: null,
+      recognitionState: 'returning',
+      agentReasoning: null,
+      pendingSinceMs: 240_000,
+      recentContext: [
+        {
+          id: '44d7a2f4-5c6b-4d8e-9e9a-1c2d3e4f5a6b',
+          direction: 'inbound',
+          body: 'latest inbound',
+          createdAt: '2026-05-14T16:10:00.000Z',
+        },
+        {
+          id: '33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a',
+          direction: 'outbound',
+          body: 'middle outbound',
+          createdAt: '2026-05-14T16:05:00.000Z',
+        },
+        {
+          id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+          direction: 'inbound',
+          body: 'first inbound',
+          createdAt: '2026-05-14T16:00:00.000Z',
+        },
+      ],
+      langfuseTraceId: null,
+    };
+    const parsed = PendingDraftSchema.parse(newestFirstPayload);
+    mockQueue.drafts = [parsed];
+    mockRouter.params = { messageId: parsed.messageId };
+    render(<EditScreen />);
+    const bodies = screen.getAllByText(
+      /(first inbound|middle outbound|latest inbound)/,
+    );
+    expect(bodies.map((n) => n.props.children)).toEqual([
+      'first inbound',
+      'middle outbound',
+      'latest inbound',
+    ]);
   });
 
   it('renders the full chronological recentContext inside the ScrollView (regression guard)', () => {

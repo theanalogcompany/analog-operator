@@ -23,28 +23,41 @@ export type RecentContextEntry = z.infer<typeof RecentContextEntrySchema>;
 
 // Matches `QueueDraft` from analog-guest/lib/operator/queue.ts (TAC-258).
 // All camelCase per the server contract.
-export const PendingDraftSchema = z.object({
-  messageId: z.string().uuid(),
-  venueId: z.string().uuid(),
-  venueSlug: z.string(),
-  guestId: z.string().uuid(),
-  guestDisplayName: z.string().nullable(),
-  guestPhoneFallback: z.string(),
-  draftBody: z.string(),
-  category: z.string().nullable(),
-  voiceFidelity: z.number().nullable(),
-  reviewReason: z.string().nullable(),
-  recognitionState: RecognitionStateSchema.nullable(),
-  // Tolerant during the cross-repo rollout: TAC-278 introduces the
-  // server-side `agent_reasoning` column + RPC SELECT. Until that ships
-  // the field is absent from JSON; the optional+default(null) chain lets
-  // this client parse cleanly either way. Tighten to .nullable() in a
-  // follow-up once both sides are live.
-  agentReasoning: z.string().nullable().optional().default(null),
-  pendingSinceMs: z.number(),
-  recentContext: z.array(RecentContextEntrySchema).default([]),
-  langfuseTraceId: z.string().nullable(),
-});
+//
+// `recentContext` is normalized to oldest-first at the parse boundary so
+// both the queue card and the edit screen iterate in chronological order
+// without each having to re-sort. The server RPC currently returns
+// newest-first (`order by created_at desc`); the .transform() flips it
+// once here so consumers never need to think about ordering. (TAC-280.)
+export const PendingDraftSchema = z
+  .object({
+    messageId: z.string().uuid(),
+    venueId: z.string().uuid(),
+    venueSlug: z.string(),
+    guestId: z.string().uuid(),
+    guestDisplayName: z.string().nullable(),
+    guestPhoneFallback: z.string(),
+    draftBody: z.string(),
+    category: z.string().nullable(),
+    voiceFidelity: z.number().nullable(),
+    reviewReason: z.string().nullable(),
+    recognitionState: RecognitionStateSchema.nullable(),
+    // Tolerant during the cross-repo rollout: TAC-278 introduces the
+    // server-side `agent_reasoning` column + RPC SELECT. Until that ships
+    // the field is absent from JSON; the optional+default(null) chain lets
+    // this client parse cleanly either way. Tighten to .nullable() in a
+    // follow-up once both sides are live.
+    agentReasoning: z.string().nullable().optional().default(null),
+    pendingSinceMs: z.number(),
+    recentContext: z.array(RecentContextEntrySchema).default([]),
+    langfuseTraceId: z.string().nullable(),
+  })
+  .transform((draft) => ({
+    ...draft,
+    recentContext: [...draft.recentContext].sort((a, b) =>
+      a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0,
+    ),
+  }));
 export type PendingDraft = z.infer<typeof PendingDraftSchema>;
 
 // Server (`analog-guest` GET /api/operator/queue) returns the array wrapped
