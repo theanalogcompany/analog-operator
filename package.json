@@ -10,7 +10,10 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "jest",
-    "typecheck": "node regen-typed-routes.cjs && tsc --noEmit"
+    "typecheck": "node regen-typed-routes.cjs && tsc --noEmit",
+    "build:preview": "eas build --platform ios --profile preview",
+    "build:production": "eas build --platform ios --profile production",
+    "submit:production": "eas submit --platform ios --profile production"
   },
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",
