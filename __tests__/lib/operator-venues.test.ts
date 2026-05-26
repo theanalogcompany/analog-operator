@@ -29,23 +29,28 @@ const OPERATOR_ID = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 const VENUE_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const VENUE_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
-function mockOperatorRow() {
+function mockOperatorRow(
+  row: {
+    auth_user_id_phone: string | null;
+    auth_user_id_email: string | null;
+  } = { auth_user_id_phone: SESSION_USER_ID, auth_user_id_email: null },
+) {
   const maybeSingle = jest.fn().mockResolvedValue({
     data: {
       id: OPERATOR_ID,
       phone_number: '+15551234567',
       email: 'op@cafe.com',
-      auth_user_id: SESSION_USER_ID,
+      ...row,
     },
     error: null,
   });
-  const eq = jest.fn().mockReturnValue({ maybeSingle });
-  const select = jest.fn().mockReturnValue({ eq });
+  const or = jest.fn().mockReturnValue({ maybeSingle });
+  const select = jest.fn().mockReturnValue({ or });
   supabaseFrom.mockImplementation((table: string) => {
     if (table === 'operators') return { select };
     throw new Error(`unexpected from(${table})`);
   });
-  return { select, eq, maybeSingle };
+  return { select, or, maybeSingle };
 }
 
 function mockVenueRows(rows: { venue_id: string }[]) {
@@ -73,19 +78,35 @@ describe('getOperator', () => {
     expect(result).toEqual({ ok: false, error: 'no_session' });
   });
 
-  it('looks up the operator row by auth_user_id and returns it', async () => {
+  it('looks up the operator row by either auth_user_id_phone or auth_user_id_email', async () => {
     getSession.mockResolvedValue({
       data: { session: { user: { id: SESSION_USER_ID } } },
     });
-    const { select, eq } = mockOperatorRow();
+    const { select, or } = mockOperatorRow();
 
     const result = await getOperator();
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.operator.id).toBe(OPERATOR_ID);
     expect(select).toHaveBeenCalledWith(
-      'id, phone_number, email, auth_user_id',
+      'id, phone_number, email, auth_user_id_phone, auth_user_id_email',
     );
-    expect(eq).toHaveBeenCalledWith('auth_user_id', SESSION_USER_ID);
+    expect(or).toHaveBeenCalledWith(
+      `auth_user_id_phone.eq.${SESSION_USER_ID},auth_user_id_email.eq.${SESSION_USER_ID}`,
+    );
+  });
+
+  it('resolves to the same row when matched on auth_user_id_email', async () => {
+    getSession.mockResolvedValue({
+      data: { session: { user: { id: SESSION_USER_ID } } },
+    });
+    mockOperatorRow({
+      auth_user_id_phone: null,
+      auth_user_id_email: SESSION_USER_ID,
+    });
+
+    const result = await getOperator();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.operator.id).toBe(OPERATOR_ID);
   });
 
   it('returns the cached operator on the second call without re-querying', async () => {
@@ -111,8 +132,8 @@ describe('getOperator', () => {
       data: { session: { user: { id: SESSION_USER_ID } } },
     });
     const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
-    const eq = jest.fn().mockReturnValue({ maybeSingle });
-    const select = jest.fn().mockReturnValue({ eq });
+    const or = jest.fn().mockReturnValue({ maybeSingle });
+    const select = jest.fn().mockReturnValue({ or });
     supabaseFrom.mockReturnValue({ select });
 
     const result = await getOperator();
@@ -127,8 +148,8 @@ describe('getOperator', () => {
       data: null,
       error: { message: 'boom' },
     });
-    const eq = jest.fn().mockReturnValue({ maybeSingle });
-    const select = jest.fn().mockReturnValue({ eq });
+    const or = jest.fn().mockReturnValue({ maybeSingle });
+    const select = jest.fn().mockReturnValue({ or });
     supabaseFrom.mockReturnValue({ select });
 
     const result = await getOperator();
