@@ -42,6 +42,9 @@ Then scan the Metro QR code with the iOS Camera app, which opens Expo Go and loa
 | `npm run lint` | Run `expo lint` (eslint with `eslint-config-expo`) |
 | `npm test` | Run the jest test suite |
 | `npx tsc --noEmit` | Typecheck without emitting build output |
+| `npm run build:preview` | Trigger an EAS Build preview build for iOS (internal distribution) |
+| `npm run build:production` | Trigger an EAS Build production build for iOS (TestFlight-uploadable) |
+| `npm run submit:production` | Submit the latest production build to TestFlight |
 
 ## Project structure
 
@@ -71,6 +74,55 @@ None are required for Phase 1. See [.env.example](.env.example) for the list of 
 ## API
 
 This app calls operator-facing endpoints from `analog-guest`. The API client and base-URL wiring land in TAC-37 / TAC-206 / TAC-258.
+
+## TestFlight + EAS Build
+
+Distribution to pilot operators (and Jaipal's iPhone) runs through [TestFlight](https://developer.apple.com/testflight/), driven by [EAS Build](https://docs.expo.dev/build/setup/) and [EAS Submit](https://docs.expo.dev/submit/ios/). Build config lives in [eas.json](eas.json). Apple credentials (Team ID, ASC App ID, ASC API key) are documented in the [TAC-259](https://linear.app/the-analog-company/issue/TAC-259) credentials comment; `.p8` keys live in Jaipal's 1Password and never enter the repo.
+
+### Prerequisites
+
+- Expo account (`eas login`) with access to the `analog-operator` project
+- [EAS CLI](https://docs.expo.dev/eas-update/getting-started/) installed locally (`npm i -g eas-cli`)
+- For CI preview builds: an `EXPO_TOKEN` GitHub Actions secret. A personal access token works for solo accounts; a [robot account](https://docs.expo.dev/accounts/programmatic-access/) token is preferred once we're on an Expo organization for audit-trail reasons. Store in repo Settings → Secrets and variables → Actions; never commit.
+
+### EAS environment variables
+
+`.env.local` is for `npm start` / `expo start` only — **EAS Build does not bundle it into production builds**. Production builds whose code reads `EXPO_PUBLIC_SUPABASE_URL` (or any other `EXPO_PUBLIC_*`) will see `undefined` and crash on cold launch. Before the first production build of any feature that touches env vars, sync them to EAS:
+
+- [expo.dev dashboard → Project → Environment Variables](https://docs.expo.dev/eas/environment-variables/) (web UI, easiest), **or**
+- `eas env:create --environment production --name EXPO_PUBLIC_SUPABASE_URL --value '...'` (CLI)
+
+Scope vars to `production` (used by `npm run build:production`) and `preview` (used by the PR preview workflow) — both environments need the values independently. Sensitive vars: set `--visibility sensitive`; non-sensitive (everything `EXPO_PUBLIC_*` is by definition app-visible): leave as plain.
+
+### One-time bootstrap (Jaipal)
+
+```bash
+eas login                                # auth the CLI to your Expo account
+eas init                                 # link this repo to the EAS project; writes extra.eas.projectId to app.json
+eas credentials                          # upload the ASC API .p8 + generate signing certs / provisioning profile (interactive)
+```
+
+After `eas init` writes `extra.eas.projectId` into `app.json`, stage and commit that change separately.
+
+**Heads-up: first `eas build` may need a re-run.** When EAS Build sees a `channel` field in `eas.json` for the first time, it auto-installs `expo-updates`, writes the `updates` / `runtimeVersion` blocks into `app.json`, and exits with *"Installed expo-updates and configured EAS Update. Command must be re-run to pick up new updates configuration."* That's expected — just run the build command again. One-time event; subsequent builds skip the auto-config step.
+
+### Recurring loop
+
+```bash
+npm run build:production                 # cloud-build a TestFlight-eligible IPA on EAS
+npm run submit:production                # upload latest production build to App Store Connect / TestFlight
+```
+
+TestFlight processing takes ~10–15 minutes after submit. Once the build shows "Ready to Submit" in App Store Connect → TestFlight and you've added it to your internal test group, it appears in the TestFlight app on your iPhone and is installable.
+
+### Preview builds on PRs
+
+[.github/workflows/eas-build-preview.yml](.github/workflows/eas-build-preview.yml) fires `eas build --platform ios --profile preview` on every pull request against `main`. Builds are installable via [Expo Orbit](https://expo.dev/orbit) or the build-page QR code. **Note:** PRs from forks don't have access to the `EXPO_TOKEN` secret, so preview builds will fail on forked-PR workflows — acceptable for the pilot since there are no external contributors.
+
+### Bumping versions
+
+- `ios.buildNumber` is owned by EAS (`appVersionSource: "remote"` + `autoIncrement: true` in [eas.json](eas.json) — platform behavior is implicit; iOS bumps buildNumber, Android bumps versionCode). Don't add `ios.buildNumber` to `app.json` — the field is redundant under remote mode. If you ever need to seed a non-zero starting buildNumber, run `eas build:version:set --platform ios` once, server-side.
+- `expo.version` (semver) stays manual in `app.json`. Bump intentionally per release (e.g., 0.1.0 → 0.2.0 when the pilot's feature set advances).
 
 ## Workflow
 

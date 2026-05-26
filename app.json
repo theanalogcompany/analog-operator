@@ -25,6 +25,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b9bf5727-6627-45a1-90e1-cdf1ee70b075"
+      }
+    },
+    "owner": "jaipalsilla"
   }
 }
