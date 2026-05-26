@@ -18,15 +18,30 @@ beforeEach(() => {
 });
 
 describe('linkOperator', () => {
-  it('returns operator on happy path', async () => {
+  it('returns operator on happy path (phone)', async () => {
     const operator = {
       id: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
       phone_number: '+15551234567',
       email: 'op@cafe.com',
-      auth_user_id: 'b3e8c8e8-1234-4567-89ab-cdef01234567',
+      auth_user_id_phone: 'b3e8c8e8-1234-4567-89ab-cdef01234567',
+      auth_user_id_email: null,
     };
     maybeSingle.mockResolvedValue({ data: operator, error: null });
     const result = await linkOperator({ phone: '+15551234567' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.operator.id).toBe(operator.id);
+  });
+
+  it('returns operator on happy path (email)', async () => {
+    const operator = {
+      id: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+      phone_number: '+15551234567',
+      email: 'op@cafe.com',
+      auth_user_id_phone: null,
+      auth_user_id_email: 'c0ffee00-58cc-4372-a567-0e02b2c3d479',
+    };
+    maybeSingle.mockResolvedValue({ data: operator, error: null });
+    const result = await linkOperator({ email: 'op@cafe.com' });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.operator.id).toBe(operator.id);
   });

@@ -2,12 +2,16 @@ import { z } from 'zod';
 
 import { supabase } from '@/lib/supabase/client';
 
+// Non-nullable per analog-guest migrations: `email NOT NULL UNIQUE` (001),
+// `phone_number NOT NULL` (021 step 10). Dual `auth_user_id_*` columns from
+// 021 — both nullable but DB CHECK ensures at least one is set per row.
 const OperatorSchema = z
   .object({
     id: z.string().uuid(),
-    phone_number: z.string().nullable(),
-    email: z.string().email().nullable(),
-    auth_user_id: z.string().uuid().nullable(),
+    phone_number: z.string(),
+    email: z.string().email(),
+    auth_user_id_phone: z.string().uuid().nullable(),
+    auth_user_id_email: z.string().uuid().nullable(),
   })
   .passthrough();
 
@@ -60,8 +64,10 @@ export async function linkOperator(args: {
 /**
  * Resolve the operator row for the active session. Reads the cache populated
  * by `linkOperator()` after sign-in; on cold launch (cache empty but session
- * restored from SecureStore), falls back to a Supabase lookup keyed on
- * `auth_user_id = session.user.id`.
+ * restored from SecureStore), falls back to a Supabase lookup where
+ * `session.user.id` is matched against either `auth_user_id_phone` or
+ * `auth_user_id_email`. Mirrors the OR semantics in the operators RLS policy
+ * (analog-guest migration 021).
  */
 export async function getOperator(): Promise<GetOperatorResult> {
   if (cachedOperator) return { ok: true, operator: cachedOperator };
@@ -73,8 +79,10 @@ export async function getOperator(): Promise<GetOperatorResult> {
 
   const { data, error } = await supabase
     .from('operators')
-    .select('id, phone_number, email, auth_user_id')
-    .eq('auth_user_id', session.user.id)
+    .select('id, phone_number, email, auth_user_id_phone, auth_user_id_email')
+    .or(
+      `auth_user_id_phone.eq.${session.user.id},auth_user_id_email.eq.${session.user.id}`,
+    )
     .maybeSingle();
   if (error) return { ok: false, error: 'rpc_failed' };
   if (!data) return { ok: false, error: 'not_provisioned' };
