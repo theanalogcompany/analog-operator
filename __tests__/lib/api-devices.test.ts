@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe('registerDeviceToken', () => {
-  it("POSTs { token, platform: 'ios' } to /api/operators/devices", async () => {
+  it("POSTs { token, platform: 'ios' } to /api/operator/devices", async () => {
     const fetchMock = jest.fn().mockResolvedValue(new Response('', { status: 200 }));
     global.fetch = fetchMock as never;
 
@@ -31,7 +31,7 @@ describe('registerDeviceToken', () => {
     expect(result.ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://api.test/api/operators/devices');
+    expect(url).toBe('https://api.test/api/operator/devices');
     expect(init.method).toBe('POST');
     expect(init.headers['Content-Type']).toBe('application/json');
     expect(JSON.parse(init.body)).toEqual({ token: 'apns-hex', platform: 'ios' });

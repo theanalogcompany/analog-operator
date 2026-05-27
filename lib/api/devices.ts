@@ -5,7 +5,7 @@ import { type ApiError, type Result, err, ok } from './errors';
 import { isFixtureMode } from './queue';
 
 // Server contract per TAC-207 settled-decision #7. Strict — no tolerant fallback
-// or optional fields; analog-guest's `/api/operators/devices` is live and the
+// or optional fields; analog-guest's `/api/operator/devices` is live and the
 // shape is locked.
 export const RegisterDeviceTokenRequestSchema = z.strictObject({
   token: z.string().min(1),
@@ -25,7 +25,7 @@ export async function registerDeviceToken(
     return ok(undefined);
   }
 
-  const result = await authedFetch('/api/operators/devices', {
+  const result = await authedFetch('/api/operator/devices', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(parsed.data),
