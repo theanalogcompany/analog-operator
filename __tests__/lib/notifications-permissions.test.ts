@@ -5,6 +5,7 @@ import {
   getCurrentPermissionStatus,
   refreshPermissionStatus,
   requestPermission,
+  requestPermissionIfUndetermined,
   subscribeToPermissionStatus,
 } from '@/lib/notifications/permissions';
 
@@ -94,5 +95,40 @@ describe('lib/notifications/permissions', () => {
     getPermissionsAsyncMock.mockResolvedValueOnce({ status: 'granted' });
     await refreshPermissionStatus();
     expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe('requestPermissionIfUndetermined', () => {
+  it('fires the OS prompt when the current status is undetermined', async () => {
+    getPermissionsAsyncMock.mockResolvedValueOnce({ status: 'undetermined' });
+    requestPermissionsAsyncMock.mockResolvedValueOnce({ status: 'granted' });
+    const result = await requestPermissionIfUndetermined();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toBe('granted');
+    expect(requestPermissionsAsyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT call request when status is already granted', async () => {
+    getPermissionsAsyncMock.mockResolvedValueOnce({ status: 'granted' });
+    const result = await requestPermissionIfUndetermined();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toBe('granted');
+    expect(requestPermissionsAsyncMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call request when status is already denied', async () => {
+    getPermissionsAsyncMock.mockResolvedValueOnce({ status: 'denied' });
+    const result = await requestPermissionIfUndetermined();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toBe('denied');
+    expect(requestPermissionsAsyncMock).not.toHaveBeenCalled();
+  });
+
+  it('propagates refresh failure without calling request', async () => {
+    getPermissionsAsyncMock.mockRejectedValueOnce(new Error('framework unavailable'));
+    const result = await requestPermissionIfUndetermined();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('NETWORK');
+    expect(requestPermissionsAsyncMock).not.toHaveBeenCalled();
   });
 });
