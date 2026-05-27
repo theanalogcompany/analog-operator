@@ -120,7 +120,7 @@ export async function fetchAndRegisterDeviceToken(): Promise<FetchAndRegisterRes
   }
 
   logDiag('posting to analog-guest', {
-    endpoint: '/api/operators/devices',
+    endpoint: '/api/operator/devices',
     previous: last ? maskToken(last) : 'none',
   });
   const registerResult = await registerDeviceToken({ token, platform: 'ios' });
