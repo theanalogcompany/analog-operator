@@ -59,6 +59,18 @@ NativeWind config exposes these as Tailwind tokens (`bg-sand`, `text-inbound`, `
 - Auth: Supabase session JWT in `Authorization: Bearer <token>` header — wired via `authedFetch` in `lib/api/client.ts`. One refresh-and-retry on 401/403, then `NO_SESSION`. Never loops. API client never navigates; auth redirects belong to the global session listener.
 - Errors-as-values shape: every `lib/api/*` function returns `{ ok: true, data }` or `{ ok: false, error: ApiError }`. `ApiError` is one of `NO_SESSION | HTTP | NETWORK | PARSE`. Current callers treat all `HTTP` as retryable — comment in `parseHttpError` if that taxonomy needs to grow.
 
+## Cross-repo contracts
+
+This app and `analog-guest` ship features together — operator endpoints land server-side first, then the client consumes them. Every cross-repo ticket pair (sibling pattern, e.g. TAC-207 ↔ TAC-288) follows these rules. Background: the TAC-207/TAC-288 push-notifications build burned 9 hours of debugging across multiple sessions because the client and server each implemented their own internally-consistent interpretation of an unwritten contract. These rules exist to prevent the next instance of that.
+
+1. **The `## Contract` section is the single source of truth.** Any cross-repo ticket MUST contain a `## Contract` block in the ticket description that locks: endpoint path (character-exact, including singular vs plural, leading slash), request body shape with a concrete example, response shape per status code, and required env vars with format notes (e.g. base64-DER vs raw, with-or-without dashes, plaintext vs JSON-string-escaped). If the Contract lives on one sibling, the other ticket links to it. Treat this section as authoritative — code matches the Contract, not the other way around.
+
+2. **No silent divergence.** If implementation needs to deviate from the Contract to match a codebase convention (singular `operator/` vs plural, snake_case vs camelCase, etc.), the ticket description is updated FIRST during plan review; the sibling ticket is updated in lockstep. Implementation never silently diverges with an "I chose X to match convention" justification while the Contract still says Y. The Contract reflects the decision, then code lands.
+
+3. **Server-first, sequential rollout.** Before touching client code in `analog-operator`, the `analog-guest` endpoint must be deployed AND verified via `curl` against the Contract section's exact request shape. Parallel development against an unverified contract is the documented root cause of the TAC-207/TAC-288 debugging sessions. The tolerant-Zod pattern under "Common gotchas" is the narrow exception (additive nullable fields), not a license to develop both sides in parallel.
+
+4. **Manual end-to-end UAT is a Done gate.** Unit tests passing on both sides proves each side is internally consistent with its own assumption of the contract — it does not prove the assumptions match. A cross-repo ticket cannot move to Done on unit-test pass alone; the operator runs the cross-repo flow on device (TestFlight for push, dev client for native-module paths) and confirms behavior end-to-end before close. UAT is NOT deferred to the sibling ticket — both tickets share the gate.
+
 ## Workflow rules for Claude Code
 
 - Always show me the plan before writing code I haven't asked for
