@@ -33,15 +33,26 @@ export function wireNotifications(): () => void {
   // When permission becomes 'granted' (either at boot or after the operator
   // returns from iOS Settings flipping it on), kick off token registration.
   // Dedupe via AsyncStorage means repeated calls with the same token are
-  // cheap — the no-op skip path is hit in steady state. Failures surface via
-  // a toast so UAT operators see something concrete; the diag logs in
-  // token.ts carry the full forensic detail.
+  // cheap — the no-op skip path is hit in steady state.
+  //
+  // Three toasts fire unconditionally so UAT can confirm the chain ran AND
+  // see the outcome — production builds can't bridge `console.log` to iOS
+  // unified logging without a native OSLog wrapper (separate ticket), so the
+  // toast is the only diagnostic surface available. UAT #2 after PR #25
+  // showed NO toast at all, which left us unable to distinguish "subscriber
+  // never fired" from "registration succeeded (so no failure toast) but
+  // server didn't persist." Surfacing every outcome resolves that ambiguity.
+  // Strip the diagnostic toasts back to "failure only" once the actual bug
+  // is identified and the chain is proven healthy.
   const stopPermissionWatch = subscribeToPermissionStatus((status) => {
     logDiag('permission status', { status });
     if (status !== 'granted') return;
     void (async () => {
+      showToast('Push registration: starting…');
       const result = await fetchAndRegisterDeviceToken();
-      if (!result.ok) {
+      if (result.ok) {
+        showToast(`Push registration: ${result.data}`);
+      } else {
         showToast(formatRegistrationFailureMessage(result.error));
       }
     })();
