@@ -8,7 +8,11 @@ import {
   subscribeToPermissionStatus,
 } from './permissions';
 import { captureInitialTap, wireTapResponseListener } from './tap-handler';
-import { fetchAndRegisterDeviceToken, wireTokenRotationListener } from './token';
+import {
+  fetchAndRegisterDeviceToken,
+  formatRegistrationFailureMessage,
+  wireTokenRotationListener,
+} from './token';
 
 /**
  * Wire up notification handling once at app-root boot. Pattern mirrors
@@ -38,7 +42,7 @@ export function wireNotifications(): () => void {
     void (async () => {
       const result = await fetchAndRegisterDeviceToken();
       if (!result.ok) {
-        showToast(`Push registration failed (${result.error.stage}) — pull device logs`);
+        showToast(formatRegistrationFailureMessage(result.error));
       }
     })();
   });
