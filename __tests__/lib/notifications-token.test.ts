@@ -5,6 +5,7 @@ import * as devicesApi from '@/lib/api/devices';
 import {
   __resetTokenStateForTests,
   fetchAndRegisterDeviceToken,
+  formatRegistrationFailureMessage,
   wireTokenRotationListener,
 } from '@/lib/notifications/token';
 
@@ -118,6 +119,76 @@ describe('fetchAndRegisterDeviceToken', () => {
     const result = await fetchAndRegisterDeviceToken();
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.stage).toBe('post-token');
+  });
+});
+
+describe('formatRegistrationFailureMessage', () => {
+  it('formats NETWORK failures with stage + kind + message', () => {
+    const out = formatRegistrationFailureMessage({
+      kind: 'NETWORK',
+      message: 'fetch failed',
+      stage: 'post-token',
+    });
+    expect(out).toBe('Push registration failed (post-token): NETWORK — fetch failed');
+  });
+
+  it('formats HTTP failures with status + message', () => {
+    const out = formatRegistrationFailureMessage({
+      kind: 'HTTP',
+      status: 401,
+      message: 'invalid bearer',
+      stage: 'post-token',
+    });
+    expect(out).toBe('Push registration failed (post-token): HTTP 401 — invalid bearer');
+  });
+
+  it('formats NO_SESSION failures without a tail', () => {
+    const out = formatRegistrationFailureMessage({
+      kind: 'NO_SESSION',
+      stage: 'post-token',
+    });
+    expect(out).toBe('Push registration failed (post-token): NO_SESSION');
+  });
+
+  it('formats PARSE failures with kind + message', () => {
+    const out = formatRegistrationFailureMessage({
+      kind: 'PARSE',
+      message: 'unexpected envelope',
+      stage: 'post-token',
+    });
+    expect(out).toBe('Push registration failed (post-token): PARSE — unexpected envelope');
+  });
+
+  it('honors the fetch-token stage tag', () => {
+    const out = formatRegistrationFailureMessage({
+      kind: 'NETWORK',
+      message: 'apns unavailable',
+      stage: 'fetch-token',
+    });
+    expect(out).toBe('Push registration failed (fetch-token): NETWORK — apns unavailable');
+  });
+
+  it('truncates with ellipsis when the message would exceed 80 chars total', () => {
+    const long = 'x'.repeat(200);
+    const out = formatRegistrationFailureMessage({
+      kind: 'NETWORK',
+      message: long,
+      stage: 'post-token',
+    });
+    expect(out.length).toBe(80);
+    expect(out.endsWith('…')).toBe(true);
+    expect(out.startsWith('Push registration failed (post-token): NETWORK — ')).toBe(true);
+  });
+
+  it('does NOT truncate when total length is at or under 80', () => {
+    // 'Push registration failed (post-token): NETWORK — offline' is 56 chars.
+    const out = formatRegistrationFailureMessage({
+      kind: 'NETWORK',
+      message: 'offline',
+      stage: 'post-token',
+    });
+    expect(out.length).toBeLessThanOrEqual(80);
+    expect(out.endsWith('…')).toBe(false);
   });
 });
 

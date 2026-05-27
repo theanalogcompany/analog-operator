@@ -48,11 +48,48 @@ async function fetchToken(): Promise<Result<string>> {
   }
 }
 
-type RegisterFailure = ApiError & { stage: 'fetch-token' | 'post-token' };
+export type RegisterFailure = ApiError & { stage: 'fetch-token' | 'post-token' };
 
 export type FetchAndRegisterResult =
   | { ok: true; data: 'registered' | 'skipped' }
   | { ok: false; error: RegisterFailure };
+
+const MAX_TOAST_LENGTH = 80;
+
+/**
+ * Render a `RegisterFailure` as a single-line toast string carrying enough
+ * forensic detail that an operator can paste it into a bug report. Format
+ * mirrors the request from TAC-288 UAT #2 follow-up: stage tag + kind + the
+ * underlying message / HTTP status. Capped at MAX_TOAST_LENGTH so the toast
+ * stays glanceable (~2 lines on iPhone); the un-truncated `error` lives in
+ * the diag log alongside.
+ *
+ * Why a toast at all: production builds strip `console.log` from iOS unified
+ * logging because the React Native logger doesn't bridge to OSLog without a
+ * native module wrapper. Until that bridge exists (separate ticket), the
+ * toast is the only diagnostic surface UAT operators can observe.
+ */
+export function formatRegistrationFailureMessage(error: RegisterFailure): string {
+  const prefix = `Push registration failed (${error.stage}): `;
+  let body: string;
+  switch (error.kind) {
+    case 'NETWORK':
+      body = `NETWORK — ${error.message}`;
+      break;
+    case 'HTTP':
+      body = `HTTP ${error.status} — ${error.message}`;
+      break;
+    case 'NO_SESSION':
+      body = 'NO_SESSION';
+      break;
+    case 'PARSE':
+      body = `PARSE — ${error.message}`;
+      break;
+  }
+  const full = prefix + body;
+  if (full.length <= MAX_TOAST_LENGTH) return full;
+  return `${full.slice(0, MAX_TOAST_LENGTH - 1)}…`;
+}
 
 /**
  * Cold-launch entry. Fetches the current device push token, registers it with

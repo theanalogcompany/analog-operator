@@ -65,7 +65,7 @@ describe('wireNotifications — toast surfacing on registration failure', () => 
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(toast.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('fetch-token'),
+      'Push registration failed (fetch-token): NETWORK — apns unavailable',
     );
   });
 
@@ -92,7 +92,7 @@ describe('wireNotifications — toast surfacing on registration failure', () => 
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(toast.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('post-token'),
+      'Push registration failed (post-token): HTTP 500 — server down',
     );
   });
 
