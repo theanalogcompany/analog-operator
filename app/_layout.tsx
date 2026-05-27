@@ -7,7 +7,7 @@ import {
   InterTight_500Medium,
   useFonts as useInterTight,
 } from '@expo-google-fonts/inter-tight';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -24,6 +24,8 @@ import { wireAuthAutoRefresh } from '@/lib/auth/app-state';
 import { logAuthCallbackUrl } from '@/lib/auth/dev-log';
 import { wireOperatorCacheClear } from '@/lib/auth/operator';
 import { useSession } from '@/lib/auth/use-session';
+import { subscribeToTaps } from '@/lib/notifications/tap-handler';
+import { wireNotifications } from '@/lib/notifications/wire';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -35,6 +37,7 @@ export default function RootLayout() {
   });
   const fontsLoaded = frauncesLoaded && interTightLoaded;
   const session = useSession();
+  const router = useRouter();
 
   useEffect(() => {
     logAuthCallbackUrl();
@@ -42,12 +45,26 @@ export default function RootLayout() {
     const stopUndoClear = wireUndoAutoClearOnSignOut();
     const stopAutoRefresh = wireAuthAutoRefresh();
     const stopOperatorCacheClear = wireOperatorCacheClear();
+    const stopNotifications = wireNotifications();
     return () => {
       stopUndoClear();
       stopAutoRefresh();
       stopOperatorCacheClear();
+      stopNotifications();
     };
   }, []);
+
+  // Route notification taps to /queue once the session is resolved as signed-in.
+  // Pattern (a) per TAC-288: cold-launch taps land before the auth gate clears,
+  // so the tap-handler module holds the pending guestId and this effect fires
+  // router.push() only when we're sure the gate won't bounce us to sign-in.
+  // The queue screen reads consumePendingTap() on mount to surface the card.
+  useEffect(() => {
+    if (session.status !== 'signed-in') return;
+    return subscribeToTaps(() => {
+      router.push('/queue');
+    });
+  }, [session.status, router]);
 
   useEffect(() => {
     if (fontsLoaded && session.status !== 'loading') {
