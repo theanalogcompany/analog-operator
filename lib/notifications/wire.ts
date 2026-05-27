@@ -1,5 +1,8 @@
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { showToast } from '@/components/auth/toast';
+
+import { logDiag } from './diag';
 import {
   refreshPermissionStatus,
   subscribeToPermissionStatus,
@@ -16,6 +19,7 @@ import { fetchAndRegisterDeviceToken, wireTokenRotationListener } from './token'
  * listener must survive sign-out → sign-in cycles per TAC-288 settled decision.
  */
 export function wireNotifications(): () => void {
+  logDiag('wireNotifications attaching');
   const stopRotation = wireTokenRotationListener();
   const stopTapListener = wireTapResponseListener();
 
@@ -25,11 +29,18 @@ export function wireNotifications(): () => void {
   // When permission becomes 'granted' (either at boot or after the operator
   // returns from iOS Settings flipping it on), kick off token registration.
   // Dedupe via AsyncStorage means repeated calls with the same token are
-  // cheap — the no-op skip path is hit in steady state.
+  // cheap — the no-op skip path is hit in steady state. Failures surface via
+  // a toast so UAT operators see something concrete; the diag logs in
+  // token.ts carry the full forensic detail.
   const stopPermissionWatch = subscribeToPermissionStatus((status) => {
-    if (status === 'granted') {
-      void fetchAndRegisterDeviceToken();
-    }
+    logDiag('permission status', { status });
+    if (status !== 'granted') return;
+    void (async () => {
+      const result = await fetchAndRegisterDeviceToken();
+      if (!result.ok) {
+        showToast(`Push registration failed (${result.error.stage}) — pull device logs`);
+      }
+    })();
   });
 
   // Re-check permission on foreground so the banner unmounts when the operator
