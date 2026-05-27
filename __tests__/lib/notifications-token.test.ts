@@ -101,6 +101,24 @@ describe('fetchAndRegisterDeviceToken', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe('NETWORK');
   });
+
+  it("tags fetch-token failures with stage='fetch-token'", async () => {
+    getDevicePushTokenAsyncMock.mockRejectedValueOnce(new Error('apns unavailable'));
+    const result = await fetchAndRegisterDeviceToken();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.stage).toBe('fetch-token');
+  });
+
+  it("tags post-token failures with stage='post-token'", async () => {
+    getDevicePushTokenAsyncMock.mockResolvedValueOnce({ type: 'ios', data: 'tok-NEW' });
+    jest.spyOn(devicesApi, 'registerDeviceToken').mockResolvedValueOnce({
+      ok: false,
+      error: { kind: 'HTTP', status: 500, message: 'server down' },
+    });
+    const result = await fetchAndRegisterDeviceToken();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.stage).toBe('post-token');
+  });
 });
 
 describe('wireTokenRotationListener', () => {
