@@ -24,6 +24,7 @@ import { wireAuthAutoRefresh } from '@/lib/auth/app-state';
 import { logAuthCallbackUrl } from '@/lib/auth/dev-log';
 import { wireOperatorCacheClear } from '@/lib/auth/operator';
 import { useSession } from '@/lib/auth/use-session';
+import { requestPermissionIfUndetermined } from '@/lib/notifications/permissions';
 import { subscribeToTaps } from '@/lib/notifications/tap-handler';
 import { wireNotifications } from '@/lib/notifications/wire';
 
@@ -65,6 +66,20 @@ export default function RootLayout() {
       router.push('/queue');
     });
   }, [session.status, router]);
+
+  // Fire the iOS push-permission prompt on the first authenticated render
+  // (TAC-288 settled-decision #5). Lives here — NOT in wireNotifications —
+  // because the prompt must wait for the auth gate to clear; we don't want
+  // to ask an unauthenticated visitor for push permissions. Fires for both
+  // the SecureStore auto-login path (session.status: loading → signed-in)
+  // and the SMS-OTP path (signed-out → signed-in). iOS only shows the
+  // prompt once per install regardless; the `Undetermined`-guard in the
+  // helper keeps us from re-invoking requestPermissionsAsync after the
+  // operator has answered. (TAC-288 follow-up.)
+  useEffect(() => {
+    if (session.status !== 'signed-in') return;
+    void requestPermissionIfUndetermined();
+  }, [session.status]);
 
   useEffect(() => {
     if (fontsLoaded && session.status !== 'loading') {

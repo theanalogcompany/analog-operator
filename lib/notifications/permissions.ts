@@ -61,6 +61,21 @@ export async function requestPermission(): Promise<Result<PermissionStatus>> {
   }
 }
 
+/**
+ * Fire the iOS permission prompt only if the operator hasn't been asked yet.
+ * Called from `app/_layout.tsx` on the first signed-in render (per TAC-288
+ * settled-decision #5: "Immediately on first authenticated render"). Granted /
+ * denied statuses short-circuit so the prompt is never re-shown after the
+ * operator's initial decision — iOS won't show it again anyway, but skipping
+ * the request keeps the JS side honest.
+ */
+export async function requestPermissionIfUndetermined(): Promise<Result<PermissionStatus>> {
+  const current = await refreshPermissionStatus();
+  if (!current.ok) return current;
+  if (current.data !== 'undetermined') return current;
+  return requestPermission();
+}
+
 // Test-only reset. Avoids cross-test leakage of the module-level emitter.
 export function __resetPermissionStateForTests(): void {
   currentStatus = 'loading';
