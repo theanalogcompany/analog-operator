@@ -1,8 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -18,9 +20,54 @@ import { FlaggedBanner } from '@/components/queue/flagged-banner';
 import { queueCardDisplayName } from '@/components/queue/queue-card';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
 import { clearUndoState, setUndoState } from '@/hooks/use-undo-state';
-import { editAndSend, skipDraft } from '@/lib/api/queue';
+import { useThreadRealtime } from '@/hooks/use-thread-realtime';
+import { type ThreadMessage, editAndSend, getThread, skipDraft } from '@/lib/api/queue';
+import { thread as threadTheme } from '@/lib/theme';
+import { computeItems } from '@/lib/thread-cluster';
 
 import { useQueueContext } from './_layout';
+
+type ThreadState =
+  | { kind: 'loading'; messages: ThreadMessage[] }
+  | { kind: 'ready'; messages: ThreadMessage[] }
+  | { kind: 'error'; messages: ThreadMessage[] };
+
+// Replace-by-id for any message already in the list, otherwise insert at the
+// correct chronological position. Used both for Realtime INSERTs (where the
+// echo of an optimistic outbound dedupes against itself) and UPDATEs (where
+// a row mutates after being seen).
+function mergeMessage(
+  current: ThreadMessage[],
+  next: ThreadMessage,
+): ThreadMessage[] {
+  const existingIdx = current.findIndex((m) => m.id === next.id);
+  if (existingIdx >= 0) {
+    const out = current.slice();
+    out[existingIdx] = next;
+    return out;
+  }
+  const nextMs = Date.parse(next.createdAt);
+  for (let i = current.length - 1; i >= 0; i--) {
+    if (Date.parse(current[i].createdAt) <= nextMs) {
+      return [...current.slice(0, i + 1), next, ...current.slice(i + 1)];
+    }
+  }
+  return [next, ...current];
+}
+
+// When the fetched thread arrives, merge any Realtime messages that landed
+// during the fetch window so we don't drop a live arrival. Server response
+// is authoritative; we add only ids not already present.
+function reconcileFetchedThread(
+  fetched: ThreadMessage[],
+  liveDuringLoad: ThreadMessage[],
+): ThreadMessage[] {
+  if (liveDuringLoad.length === 0) return fetched;
+  const fetchedIds = new Set(fetched.map((m) => m.id));
+  const survivors = liveDuringLoad.filter((m) => !fetchedIds.has(m.id));
+  if (survivors.length === 0) return fetched;
+  return survivors.reduce<ThreadMessage[]>((acc, m) => mergeMessage(acc, m), fetched);
+}
 
 export default function EditScreen() {
   const router = useRouter();
@@ -34,6 +81,119 @@ export default function EditScreen() {
 
   const [text, setText] = useState<string>(params.prefill ?? draft?.draftBody ?? '');
   const [submitting, setSubmitting] = useState<'edit' | 'skip' | null>(null);
+  // Thread state initialized with `recentContext` (oldest-first per the
+  // PendingDraftSchema parse-boundary sort) so the screen renders bubbles
+  // immediately on mount instead of an empty loading state. The fetched full
+  // thread replaces this once `getThread` resolves; on error we keep
+  // recentContext as the fallback per ticket spec. `RecentContextEntry` and
+  // `ThreadMessage` are structurally identical (same four fields), so the
+  // assignment is direct.
+  const initialMessages = useMemo<ThreadMessage[]>(
+    () => draft?.recentContext ?? [],
+    [draft],
+  );
+  const [threadState, setThreadState] = useState<ThreadState>({
+    kind: 'loading',
+    messages: initialMessages,
+  });
+
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  // `isNearBottomRef` tracks the most recent scroll position so Realtime
+  // inserts can decide whether to auto-scroll. Ref (not state) so the
+  // gesture-of-record doesn't trigger re-renders on every onScroll event.
+  const isNearBottomRef = useRef<boolean>(true);
+  const hasScrolledToBottomOnReadyRef = useRef<boolean>(false);
+  const timezone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    [],
+  );
+
+  const messageId = draft?.messageId;
+  useEffect(() => {
+    if (!messageId) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await getThread(messageId);
+      if (cancelled) return;
+      if (result.ok) {
+        // Reconcile against any Realtime messages that landed during the
+        // fetch window — the server response is authoritative for messages
+        // it includes, but we don't want to drop a live arrival that beat
+        // the response back. Anything `prev.messages` carries beyond
+        // `recentContext` came from `handleInsert`/`handleUpdate`.
+        setThreadState((prev) => ({
+          kind: 'ready',
+          messages: reconcileFetchedThread(result.data, prev.messages),
+        }));
+      } else {
+        // Fall back to recentContext (already in initialMessages) per ticket
+        // spec — uniform 401/404/500 handling, don't break the screen.
+        setThreadState((prev) => ({ kind: 'error', messages: prev.messages }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [messageId]);
+
+  const handleInsert = useCallback((message: ThreadMessage) => {
+    setThreadState((prev) => ({
+      kind: prev.kind,
+      messages: mergeMessage(prev.messages, message),
+    }));
+    // Auto-scroll only if the operator is currently near the bottom — don't
+    // yank them mid-read (per ticket UAT step 5).
+    if (isNearBottomRef.current) {
+      requestAnimationFrame(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      });
+    }
+  }, []);
+
+  const handleUpdate = useCallback((message: ThreadMessage) => {
+    setThreadState((prev) => ({
+      kind: prev.kind,
+      messages: mergeMessage(prev.messages, message),
+    }));
+  }, []);
+
+  // Open the Realtime channel for this guest-at-venue while the screen is
+  // mounted. Hook is a no-op when there's no draft (early-return below
+  // handles the not-found UI; calling hooks conditionally is invalid React,
+  // so we pass an empty guard pair instead).
+  useThreadRealtime({
+    venueId: draft?.venueId ?? '',
+    guestId: draft?.guestId ?? '',
+    onInsert: handleInsert,
+    onUpdate: handleUpdate,
+  });
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentSize, layoutMeasurement, contentOffset } = event.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - layoutMeasurement.height - contentOffset.y;
+      isNearBottomRef.current = distanceFromBottom < threadTheme.nearBottomPx;
+    },
+    [],
+  );
+
+  // Scroll to the bottom on the first ready render (full thread fetched) so
+  // the operator opens at the most recent message. Subsequent updates honor
+  // the near-bottom rule above.
+  useEffect(() => {
+    if (threadState.kind !== 'ready') return;
+    if (hasScrolledToBottomOnReadyRef.current) return;
+    hasScrolledToBottomOnReadyRef.current = true;
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [threadState.kind]);
+
+  const items = useMemo(
+    () => computeItems(threadState.messages, timezone),
+    [threadState.messages, timezone],
+  );
 
   if (!draft) {
     return (
@@ -145,37 +305,61 @@ export default function EditScreen() {
         />
 
         <ScrollView
+          ref={scrollViewRef}
           className="flex-1"
-          contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 16, gap: 8 }}
+          contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 16, gap: 4 }}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
         >
-          {draft.recentContext.map((m) => (
-            <View
-              key={m.id}
-              className={
-                m.direction === 'inbound'
-                  ? 'self-start rounded-[18px] bg-inbound'
-                  : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
-              }
-              style={{
-                maxWidth: '80%',
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderBottomLeftRadius: m.direction === 'inbound' ? 6 : 18,
-                borderBottomRightRadius: m.direction === 'outbound' ? 6 : 18,
-              }}
-            >
-              <Text
-                className="font-inter-tight"
+          {items.map((item) => {
+            if (item.kind === 'timestamp') {
+              return (
+                <View key={item.key} style={{ alignItems: 'center', paddingVertical: 8 }}>
+                  <Text
+                    className="font-inter-tight uppercase text-ink-faint"
+                    style={{ fontSize: 10, letterSpacing: 1.5 }}
+                  >
+                    {item.label}
+                  </Text>
+                </View>
+              );
+            }
+            const { message: m, position } = item;
+            // Tail corner only on 'only' and 'last' — chained bubbles
+            // ('first', 'middle') get full 18px on both bottom corners so
+            // they read as a continuous chain.
+            const hasTail = position === 'only' || position === 'last';
+            const inbound = m.direction === 'inbound';
+            return (
+              <View
+                key={item.key}
+                className={
+                  inbound
+                    ? 'self-start rounded-[18px] bg-inbound'
+                    : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
+                }
                 style={{
-                  color: m.direction === 'inbound' ? '#F0EDE7' : '#1C1814',
-                  fontSize: 14,
-                  lineHeight: 20,
+                  maxWidth: '80%',
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  marginTop: position === 'first' || position === 'only' ? 4 : 0,
+                  borderBottomLeftRadius: inbound && hasTail ? 6 : 18,
+                  borderBottomRightRadius: !inbound && hasTail ? 6 : 18,
                 }}
               >
-                {m.body}
-              </Text>
-            </View>
-          ))}
+                <Text
+                  className="font-inter-tight"
+                  style={{
+                    color: inbound ? '#F0EDE7' : '#1C1814',
+                    fontSize: 14,
+                    lineHeight: 20,
+                  }}
+                >
+                  {m.body}
+                </Text>
+              </View>
+            );
+          })}
         </ScrollView>
 
         <View

@@ -1,14 +1,17 @@
 import { ScrollView } from 'react-native';
 
-import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 
 import EditScreen from '@/app/queue/edit';
 import { type UseQueueResult } from '@/hooks/use-queue';
+import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { clearUndoState, getUndoState } from '@/hooks/use-undo-state';
 import {
   type PendingDraft,
+  type ThreadMessage,
   PendingDraftSchema,
   editAndSend,
+  getThread,
   skipDraft,
 } from '@/lib/api/queue';
 
@@ -50,8 +53,13 @@ jest.mock('@/lib/api/queue', () => {
     ...actual,
     editAndSend: jest.fn(),
     skipDraft: jest.fn(),
+    getThread: jest.fn(),
   };
 });
+
+jest.mock('@/hooks/use-thread-realtime', () => ({
+  useThreadRealtime: jest.fn(),
+}));
 
 function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
   return {
@@ -86,6 +94,15 @@ beforeEach(async () => {
   mockRouter.back.mockReset();
   (editAndSend as jest.Mock).mockReset();
   (skipDraft as jest.Mock).mockReset();
+  (getThread as jest.Mock).mockReset();
+  (useThreadRealtime as jest.Mock).mockReset();
+  // Default thread fetch: error → screen falls back to recentContext. Most
+  // existing tests assert against recentContext rendering, so this preserves
+  // them without each one having to wire its own mock.
+  (getThread as jest.Mock).mockResolvedValue({
+    ok: false,
+    error: { kind: 'HTTP', status: 500, message: 'mocked' },
+  });
   (mockQueue.optimisticallyRemove as jest.Mock).mockReset();
   (mockQueue.restore as jest.Mock).mockReset();
   mockQueue.drafts = [makeDraft()];
@@ -97,20 +114,29 @@ afterEach(async () => {
   await clearUndoState();
 });
 
+// Renders EditScreen and awaits the on-mount thread-fetch effect, so the
+// subsequent assertions don't trigger act() warnings from the async state
+// update that fires after the initial sync render. Existing tests that
+// already `await waitFor(...)` on a separate signal handle their own drain.
+async function renderAndDrain(): Promise<void> {
+  render(<EditScreen />);
+  await waitFor(() => expect(getThread).toHaveBeenCalled());
+}
+
 describe('EditScreen', () => {
-  it('prefills the textarea from agent_draft when no prefill param', () => {
-    render(<EditScreen />);
+  it('prefills the textarea from agent_draft when no prefill param', async () => {
+    await renderAndDrain();
     expect(screen.getByLabelText('Edit the draft before sending').props.value).toBe(
       "Yes — patio's open until 9.",
     );
   });
 
-  it('prefills from the prefill param when present (failure-retry path)', () => {
+  it('prefills from the prefill param when present (failure-retry path)', async () => {
     mockRouter.params = {
       messageId: mockQueue.drafts[0].messageId,
       prefill: 'my partially-typed retry attempt',
     };
-    render(<EditScreen />);
+    await renderAndDrain();
     expect(screen.getByLabelText('Edit the draft before sending').props.value).toBe(
       'my partially-typed retry attempt',
     );
@@ -119,6 +145,8 @@ describe('EditScreen', () => {
   it('renders the "draft no longer pending" fallback when the draft is gone', () => {
     mockQueue.drafts = [];
     render(<EditScreen />);
+    // No thread fetch fires here (draft is null, effect early-returns), so
+    // no drain needed.
     expect(screen.getByText('That draft is no longer pending.')).toBeTruthy();
   });
 
@@ -182,7 +210,7 @@ describe('EditScreen', () => {
   });
 
   it('does not call setUndoState until a real send happens (blank body bails)', async () => {
-    render(<EditScreen />);
+    await renderAndDrain();
     fireEvent.changeText(screen.getByLabelText('Edit the draft before sending'), '   ');
     fireEvent.press(screen.getByLabelText('Send my version'));
     // No need to wait — the early return is synchronous.
@@ -190,7 +218,7 @@ describe('EditScreen', () => {
     expect(getUndoState()).toBeNull();
   });
 
-  it('renders oldest-first when the upstream server payload was newest-first (parse-boundary sort lock-in)', () => {
+  it('renders oldest-first when the upstream server payload was newest-first (parse-boundary sort lock-in)', async () => {
     // Defensive guard for the parse-boundary sort in `lib/api/queue.ts`. The
     // edit screen iterates `draft.recentContext` in array order; on its own
     // it would render whatever order the server provided. The Zod
@@ -236,7 +264,7 @@ describe('EditScreen', () => {
     const parsed = PendingDraftSchema.parse(newestFirstPayload);
     mockQueue.drafts = [parsed];
     mockRouter.params = { messageId: parsed.messageId };
-    render(<EditScreen />);
+    await renderAndDrain();
     const bodies = screen.getAllByText(
       /(first inbound|middle outbound|latest inbound)/,
     );
@@ -247,7 +275,7 @@ describe('EditScreen', () => {
     ]);
   });
 
-  it('renders the full chronological recentContext inside the ScrollView (regression guard)', () => {
+  it('renders the full chronological recentContext inside the ScrollView (regression guard)', async () => {
     mockQueue.drafts = [
       makeDraft({
         recentContext: [
@@ -273,18 +301,18 @@ describe('EditScreen', () => {
       }),
     ];
     mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
-    render(<EditScreen />);
+    await renderAndDrain();
     expect(screen.getByText('first inbound')).toBeTruthy();
     expect(screen.getByText('middle outbound')).toBeTruthy();
     expect(screen.getByText('latest inbound')).toBeTruthy();
   });
 
-  it('renders agentReasoning outside the ScrollView when non-null', () => {
+  it('renders agentReasoning outside the ScrollView when non-null', async () => {
     mockQueue.drafts = [
       makeDraft({ agentReasoning: 'lean into the warmth' }),
     ];
     mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
-    render(<EditScreen />);
+    await renderAndDrain();
     const reasoning = screen.getByLabelText('Agent reasoning');
     const scrollView = screen.UNSAFE_getByType(ScrollView);
     let cursor: typeof reasoning.parent | null = reasoning.parent;
@@ -300,18 +328,104 @@ describe('EditScreen', () => {
     expect(screen.getByText('lean into the warmth')).toBeTruthy();
   });
 
-  it('omits agentReasoning render when null', () => {
+  it('omits agentReasoning render when null', async () => {
     mockQueue.drafts = [makeDraft({ agentReasoning: null })];
     mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
-    render(<EditScreen />);
+    await renderAndDrain();
     expect(screen.queryByLabelText('Agent reasoning')).toBeNull();
   });
 
-  it('omits agentReasoning render when empty string (defensive trim)', () => {
+  it('omits agentReasoning render when empty string (defensive trim)', async () => {
     mockQueue.drafts = [makeDraft({ agentReasoning: '   ' })];
     mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
-    render(<EditScreen />);
+    await renderAndDrain();
     expect(screen.queryByLabelText('Agent reasoning')).toBeNull();
+  });
+
+  it('renders the full thread from getThread on mount (replacing the recentContext loading placeholder)', async () => {
+    const fullThread: ThreadMessage[] = [
+      {
+        id: '00000000-0000-4000-8000-000000000001',
+        direction: 'inbound',
+        body: 'older history line 1',
+        createdAt: '2026-05-14T15:00:00.000Z',
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000002',
+        direction: 'outbound',
+        body: 'older history line 2',
+        createdAt: '2026-05-14T15:30:00.000Z',
+      },
+      {
+        id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+        direction: 'inbound',
+        body: 'is the patio open',
+        createdAt: '2026-05-14T16:00:00.000Z',
+      },
+    ];
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: fullThread });
+
+    render(<EditScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('older history line 1')).toBeTruthy();
+    });
+    expect(screen.getByText('older history line 2')).toBeTruthy();
+    expect(screen.getByText('is the patio open')).toBeTruthy();
+  });
+
+  it('falls back to recentContext when getThread returns an error', async () => {
+    // Default beforeEach mock is already error — assert the fallback path.
+    render(<EditScreen />);
+    // recentContext entry from makeDraft is "is the patio open"; should be
+    // visible in the loading placeholder AND remain visible after the error
+    // resolves (state.kind transitions loading → error, messages preserved).
+    expect(screen.getByText('is the patio open')).toBeTruthy();
+    // Let the effect resolve and ensure no crash / re-render fails.
+    await waitFor(() => {
+      expect(getThread).toHaveBeenCalledWith(mockQueue.drafts[0].messageId);
+    });
+    expect(screen.getByText('is the patio open')).toBeTruthy();
+  });
+
+  it('appends a new bubble when useThreadRealtime fires onInsert (and dedupes by id)', async () => {
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+          direction: 'inbound',
+          body: 'first',
+          createdAt: '2026-05-14T16:00:00.000Z',
+        },
+      ],
+    });
+    // Capture onInsert from the hook so we can fire it synthetically.
+    let captured: { onInsert: (m: ThreadMessage) => void } | null = null;
+    (useThreadRealtime as jest.Mock).mockImplementation((opts) => {
+      captured = opts;
+    });
+
+    render(<EditScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('first')).toBeTruthy();
+    });
+
+    const newInbound: ThreadMessage = {
+      id: '33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a',
+      direction: 'inbound',
+      body: 'live message',
+      createdAt: '2026-05-14T16:01:00.000Z',
+    };
+    act(() => {
+      captured!.onInsert(newInbound);
+    });
+    expect(screen.getByText('live message')).toBeTruthy();
+
+    // Re-fire the same id — should NOT render twice (dedupe).
+    act(() => {
+      captured!.onInsert(newInbound);
+    });
+    expect(screen.getAllByText('live message')).toHaveLength(1);
   });
 });
 

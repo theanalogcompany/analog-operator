@@ -21,6 +21,20 @@ export const RecentContextEntrySchema = z.object({
 });
 export type RecentContextEntry = z.infer<typeof RecentContextEntrySchema>;
 
+// Full-thread message — same shape as RecentContextEntry, distinct type so
+// callers reading "thread" don't conflate it with the queue's last-3 preview.
+// Intentionally NOT `.strict()`: TAC-277's Out-of-Scope preserves forward-compat
+// ("Response schema can be extended later without breaking existing clients"),
+// so any future additive field (editedAt, voiceFidelity, etc.) drops silently
+// instead of failing every pre-update client on every fetch. (TAC-290.)
+export const ThreadMessageSchema = z.object({
+  id: z.string().uuid(),
+  direction: z.enum(['inbound', 'outbound']),
+  body: z.string(),
+  createdAt: z.string(),
+});
+export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;
+
 // Matches `QueueDraft` from analog-guest/lib/operator/queue.ts (TAC-258).
 // All camelCase per the server contract.
 //
@@ -65,6 +79,13 @@ export type PendingDraft = z.infer<typeof PendingDraftSchema>;
 // route.ts. Parse the envelope and unwrap before returning.
 const ListQueueResponseSchema = z.object({
   drafts: z.array(PendingDraftSchema),
+});
+
+// `GET /api/operator/messages/:messageId/thread` returns
+// `{ messages: ThreadMessage[] }` per the TAC-277/TAC-290 Contract. Parsed and
+// unwrapped to a bare array, mirroring `listQueue`'s `{ drafts }` unwrap.
+const GetThreadResponseSchema = z.object({
+  messages: z.array(ThreadMessageSchema),
 });
 
 export function isFixtureMode(): boolean {
@@ -139,6 +160,29 @@ export async function skipDraft(messageId: string): Promise<Result<void>> {
   );
   if (!result.ok) return result;
   return emptyOkOrError(result.data);
+}
+
+export async function getThread(
+  messageId: string,
+): Promise<Result<ThreadMessage[]>> {
+  if (isFixtureMode()) {
+    return ok(fixtures.getThreadFixture(messageId));
+  }
+  const result = await authedFetch(
+    `/api/operator/messages/${encodeURIComponent(messageId)}/thread`,
+    { method: 'GET' },
+  );
+  if (!result.ok) return result;
+  if (!result.data.ok) return err<ApiError>(await parseHttpError(result.data));
+  let json: unknown;
+  try {
+    json = await result.data.json();
+  } catch (e) {
+    return parseFailure(e instanceof Error ? e.message : 'invalid json');
+  }
+  const parsed = GetThreadResponseSchema.safeParse(json);
+  if (!parsed.success) return parseFailure(parsed.error.message);
+  return ok(parsed.data.messages);
 }
 
 export async function undoAction(messageId: string): Promise<Result<void>> {

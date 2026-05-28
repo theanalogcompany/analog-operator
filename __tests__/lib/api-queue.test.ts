@@ -3,6 +3,7 @@ import {
   type PendingDraft,
   approveDraft,
   editAndSend,
+  getThread,
   listQueue,
   skipDraft,
   undoAction,
@@ -61,6 +62,31 @@ describe('lib/api/queue in fixture mode', () => {
     await undoAction(target);
     const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
     expect(after.data.find((d) => d.messageId === target)).toBeDefined();
+  });
+
+  it('getThread returns the fixture thread including seed extensions for known messageIds', async () => {
+    const before = (await listQueue()) as { ok: true; data: PendingDraft[] };
+    const mayaDraft = before.data.find(
+      (d) => d.messageId === '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    );
+    expect(mayaDraft).toBeDefined();
+    const result = await getThread('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
+    expect(result.ok).toBe(true);
+    if (result.ok && mayaDraft) {
+      // Fixture should return more than just `recentContext` — the seed
+      // extension prepends older history for the edit-screen demo.
+      expect(result.data.length).toBeGreaterThan(mayaDraft.recentContext.length);
+      // Returned messages are ASC by createdAt.
+      const timestamps = result.data.map((m) => Date.parse(m.createdAt));
+      const sorted = [...timestamps].sort((a, b) => a - b);
+      expect(timestamps).toEqual(sorted);
+    }
+  });
+
+  it('getThread returns [] for an unknown messageId (graceful empty)', async () => {
+    const result = await getThread('00000000-0000-4000-8000-000000000000');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toEqual([]);
   });
 
   it('seeded drafts have real-shaped UUIDs for messageId + guestId + venueId', async () => {
@@ -264,6 +290,98 @@ describe('lib/api/queue HTTP shape', () => {
     if (result.ok) {
       const bodies = result.data[0].recentContext.map((m) => m.body);
       expect(bodies).toEqual(['oldest', 'middle', 'newest']);
+    }
+  });
+
+  it('getThread GETs /api/operator/messages/:id/thread and unwraps the { messages } envelope', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          messages: [
+            {
+              id: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+              direction: 'inbound',
+              body: 'hi',
+              createdAt: '2026-05-14T16:00:00.000Z',
+            },
+            {
+              id: 'bb22e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+              direction: 'outbound',
+              body: 'hey',
+              createdAt: '2026-05-14T16:00:30.000Z',
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await getThread('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(
+      'https://api.test/api/operator/messages/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/thread',
+    );
+    expect(init.method).toBe('GET');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0].body).toBe('hi');
+      expect(result.data[1].direction).toBe('outbound');
+    }
+  });
+
+  it('getThread returns HTTP error on 404 / 500 (caller treats uniformly)', async () => {
+    // 401/403 routes through `authedFetch`'s refresh-and-retry path and
+    // surfaces NO_SESSION when refresh fails — that's owned by the
+    // authedFetch tests, not getThread's. Here we cover the
+    // non-auth-affected statuses; the edit screen treats every error
+    // (HTTP / NO_SESSION / NETWORK / PARSE) uniformly as fallback to
+    // recentContext.
+    for (const status of [404, 500]) {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'oops' }), { status }),
+      );
+      const result = await getThread('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.kind).toBe('HTTP');
+    }
+  });
+
+  it('getThread returns PARSE when the response is malformed (no messages envelope)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([{ id: 'x' }]), { status: 200 }),
+    );
+    const result = await getThread('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('PARSE');
+  });
+
+  it('getThread schema is forward-compat (unknown server fields drop silently, no PARSE)', async () => {
+    // TAC-277 Out-of-Scope explicitly preserves forward-compat: response
+    // schema can be extended later without breaking existing clients. Adding
+    // .strict() would regress this. Guards against accidentally tightening
+    // the schema in a follow-up.
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          messages: [
+            {
+              id: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+              direction: 'inbound',
+              body: 'hi',
+              createdAt: '2026-05-14T16:00:00.000Z',
+              futureField: 'whatever-future-server-adds',
+              anotherFuture: { nested: true },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await getThread('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].body).toBe('hi');
     }
   });
 
