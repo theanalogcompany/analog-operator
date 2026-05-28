@@ -1,13 +1,16 @@
 import {
   type PendingDraft,
   type RecognitionState,
+  type ThreadMessage,
 } from '@/lib/api/queue';
 import { type ApiError, type Result, ok } from '@/lib/api/errors';
-// import type only — avoids a circular import with the realtime channel,
-// which imports subscribeQueueFixture from this file.
+// import type only — avoids a circular import with the realtime channels,
+// which import subscribe*Fixture from this file.
 import type { QueueChannelEvent } from '@/lib/realtime/queue-channel';
+import type { ThreadChannelEvent } from '@/lib/realtime/thread-channel';
 
 type Subscriber = (event: QueueChannelEvent) => void;
+type ThreadSubscriber = (event: ThreadChannelEvent) => void;
 
 type ArchiveEntry = {
   draft: PendingDraft;
@@ -255,6 +258,80 @@ export function undoActionFixture(messageId: string): Result<void, ApiError> {
 export function triggerQueueAddedFixture(d: PendingDraft): void {
   queue.set(d.messageId, d);
   emit();
+}
+
+// Synthetic fuller thread for the edit screen in fixture mode. For drafts in
+// the seed list we extend their `recentContext` with older messages so the
+// thread view shows what a real conversation looks like; for unknown
+// messageIds (e.g. mid-test inserts) we just return whatever `recentContext`
+// the draft already carries. Empty array if neither resolves. (TAC-290.)
+export function getThreadFixture(messageId: string): ThreadMessage[] {
+  const seedExtensions: Record<string, ThreadMessage[]> = {
+    // Maya R. — earlier history before the patio confirmation thread
+    '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d': [
+      {
+        id: 'aa00d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        direction: 'inbound',
+        body: 'hey! is dinner walk-in friendly tonight?',
+        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60_000).toISOString(),
+      },
+      {
+        id: 'aa01d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        direction: 'outbound',
+        body: 'walk-ins welcome — patio runs first-come on weekday nights.',
+        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60_000 + 90_000).toISOString(),
+      },
+      {
+        id: 'aa02d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        direction: 'inbound',
+        body: 'perfect, see you around 7',
+        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60_000 + 4 * 60_000).toISOString(),
+      },
+    ],
+    // Devon L. — earlier rosemary-loaf preamble
+    '33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a': [
+      {
+        id: 'aa03d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        direction: 'inbound',
+        body: 'the buckwheat cake last sunday was unreal',
+        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60_000).toISOString(),
+      },
+      {
+        id: 'aa04d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        direction: 'outbound',
+        body: 'so glad — we play with that recipe quarterly, this batch had the flax.',
+        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60_000 + 2 * 60_000).toISOString(),
+      },
+    ],
+  };
+
+  const existing = queue.get(messageId);
+  const baseRecent = existing?.recentContext ?? [];
+  const recent: ThreadMessage[] = baseRecent.map((m) => ({
+    id: m.id,
+    direction: m.direction,
+    body: m.body,
+    createdAt: m.createdAt,
+  }));
+  const extension = seedExtensions[messageId] ?? [];
+  // Both arrays are oldest-first; the extension comes before recent context.
+  return [...extension, ...recent];
+}
+
+const threadSubscribers: Set<ThreadSubscriber> = new Set();
+
+/**
+ * No-op-by-default fixture-mode subscription for the open-thread Realtime
+ * channel. Matches `createThreadChannel`'s shape so the channel doesn't crash
+ * in fixture mode. We don't emit synthetic inbound bubbles here — fixture
+ * mode is for offline UI dev, not for exercising Realtime; the queue fixture
+ * subscriber path already emits `queue_changed` when triggered. (TAC-290.)
+ */
+export function subscribeThreadFixture(fn: ThreadSubscriber): () => void {
+  threadSubscribers.add(fn);
+  return () => {
+    threadSubscribers.delete(fn);
+  };
 }
 
 export function resetQueueFixture(): void {
