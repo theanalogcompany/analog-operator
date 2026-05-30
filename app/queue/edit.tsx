@@ -228,13 +228,13 @@ export default function EditScreen() {
       return;
     }
     setSubmitting('edit');
-    queue.optimisticallyRemove(draft.messageId);
+    queue.optimisticallyRemoveDraft(draft.messageId);
     void setUndoState({ action: 'edit', draft, body });
     router.back();
     const result = await editAndSend(draft.messageId, body);
     if (!result.ok) {
       void clearUndoState();
-      queue.restore(draft);
+      queue.restoreDraft(draft);
       showToast("Couldn't send — tap to retry");
       // Re-open the takeover with the operator's typed text preserved (settled decision: their text is sacred).
       router.push({
@@ -248,13 +248,13 @@ export default function EditScreen() {
   const handleSkip = async (): Promise<void> => {
     if (submitting) return;
     setSubmitting('skip');
-    queue.optimisticallyRemove(draft.messageId);
+    queue.optimisticallyRemoveDraft(draft.messageId);
     void setUndoState({ action: 'skip', draft });
     router.back();
     const result = await skipDraft(draft.messageId);
     if (!result.ok) {
       void clearUndoState();
-      queue.restore(draft);
+      queue.restoreDraft(draft);
       showToast("Couldn't skip — tap to retry");
     }
     setSubmitting(null);

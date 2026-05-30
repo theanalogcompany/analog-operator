@@ -1,16 +1,26 @@
 import * as Notifications from 'expo-notifications';
 import { z } from 'zod';
 
-// APNs custom data per TAC-207 settled-decision #7. `guestId` is the routing key;
-// `draftId` + `operatorId` are informational only. Strict parse — malformed
-// payloads are dropped so a junk push never navigates the operator anywhere.
+// APNs custom data. Originally TAC-207 settled-decision #7 keyed on `guestId`
+// alone. TAC-298 adds `commitmentId` for heads-up commitment pushes (see
+// analog-guest `send-commitment-push.ts`) — when present, the queue screen
+// surfaces the matching commitment card preferentially over a guest-id match
+// (handles the case where a guest has both a draft and a heads-up at once).
+// Both ids parsed as optional UUIDs; `guestId` stays required as the legacy
+// routing key. Strict parse — malformed payloads are dropped silently.
 const TapPayloadSchema = z.object({
   guestId: z.string().uuid(),
   draftId: z.string().uuid().optional(),
   operatorId: z.string().uuid().optional(),
+  commitmentId: z.string().uuid().optional(),
 });
 
-export function parseTapPayload(data: unknown): string | null {
+export type PendingTap = {
+  guestId: string;
+  commitmentId: string | null;
+};
+
+export function parseTapPayload(data: unknown): PendingTap | null {
   const parsed = TapPayloadSchema.safeParse(data);
   if (!parsed.success) {
     if (__DEV__) {
@@ -18,34 +28,37 @@ export function parseTapPayload(data: unknown): string | null {
     }
     return null;
   }
-  return parsed.data.guestId;
+  return {
+    guestId: parsed.data.guestId,
+    commitmentId: parsed.data.commitmentId ?? null,
+  };
 }
 
-let pendingGuestId: string | null = null;
-const subscribers = new Set<(guestId: string) => void>();
+let pendingTap: PendingTap | null = null;
+const subscribers = new Set<(tap: PendingTap) => void>();
 
-export function setPendingTap(guestId: string): void {
-  pendingGuestId = guestId;
-  subscribers.forEach((fn) => fn(guestId));
+export function setPendingTap(tap: PendingTap): void {
+  pendingTap = tap;
+  subscribers.forEach((fn) => fn(tap));
 }
 
-export function consumePendingTap(): string | null {
-  const v = pendingGuestId;
-  pendingGuestId = null;
+export function consumePendingTap(): PendingTap | null {
+  const v = pendingTap;
+  pendingTap = null;
   return v;
 }
 
 /**
  * Subscribe to tap events. If a tap is already pending at subscribe time
  * (cold-launch race: `setPendingTap` fired before any subscriber registered)
- * the callback fires immediately with that guestId. The ref is NOT drained by
- * this — the queue screen owns drain via `consumePendingTap()` on mount so the
- * surface-on-top behavior gets exactly one guestId per tap.
+ * the callback fires immediately with that tap. The ref is NOT drained by
+ * this — the queue screen owns drain via `consumePendingTap()` on mount so
+ * the surface-on-top behavior gets exactly one tap per fire.
  */
-export function subscribeToTaps(fn: (guestId: string) => void): () => void {
+export function subscribeToTaps(fn: (tap: PendingTap) => void): () => void {
   subscribers.add(fn);
-  if (pendingGuestId !== null) {
-    fn(pendingGuestId);
+  if (pendingTap !== null) {
+    fn(pendingTap);
   }
   return () => {
     subscribers.delete(fn);
@@ -60,8 +73,8 @@ export async function captureInitialTap(): Promise<void> {
   try {
     const response = await Notifications.getLastNotificationResponseAsync();
     if (!response) return;
-    const guestId = parseTapPayload(response.notification.request.content.data);
-    if (guestId) setPendingTap(guestId);
+    const tap = parseTapPayload(response.notification.request.content.data);
+    if (tap) setPendingTap(tap);
   } catch (e) {
     if (__DEV__) {
       console.warn('[notifications/tap] initial-response fetch failed', e);
@@ -74,14 +87,14 @@ export async function captureInitialTap(): Promise<void> {
  */
 export function wireTapResponseListener(): () => void {
   const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-    const guestId = parseTapPayload(response.notification.request.content.data);
-    if (guestId) setPendingTap(guestId);
+    const tap = parseTapPayload(response.notification.request.content.data);
+    if (tap) setPendingTap(tap);
   });
   return () => sub.remove();
 }
 
 // Test-only reset.
 export function __resetTapStateForTests(): void {
-  pendingGuestId = null;
+  pendingTap = null;
   subscribers.clear();
 }

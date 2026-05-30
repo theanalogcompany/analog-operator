@@ -7,11 +7,20 @@ import {
   __resetTapStateForTests,
   setPendingTap,
 } from '@/lib/notifications/tap-handler';
+import { type QueueCard } from '@/lib/queue/cards';
 
-type CardStackProps = {
-  drafts: { messageId: string; guestId: string }[];
+type DraftHandlers = {
   onApprove: (draft: { messageId: string; guestId: string }) => void;
   onEdit: (draft: { messageId: string; guestId: string }) => void;
+};
+type HeadsUpHandlers = {
+  onAcknowledge: (commitment: { id: string }) => void;
+  onDecline: (commitment: { id: string }) => void;
+};
+type CardStackProps = {
+  cards: QueueCard[];
+  draftHandlers: DraftHandlers;
+  headsUpHandlers: HeadsUpHandlers;
 };
 let lastCardStackProps: CardStackProps | null = null;
 
@@ -19,11 +28,14 @@ type SessionStub = { status: 'signed-in'; session: { user: { email: string | nul
 
 const mockQueue: UseQueueResult = {
   drafts: [],
+  commitments: [],
   status: 'ready',
   error: null,
   reload: jest.fn().mockResolvedValue(undefined),
-  optimisticallyRemove: jest.fn(),
-  restore: jest.fn(),
+  optimisticallyRemoveDraft: jest.fn(),
+  restoreDraft: jest.fn(),
+  optimisticallyRemoveCommitment: jest.fn(),
+  restoreCommitment: jest.fn(),
 };
 
 let mockSession: SessionStub = {
@@ -56,6 +68,7 @@ jest.mock('@/components/queue/empty-state', () => {
 
 beforeEach(() => {
   mockQueue.drafts = [];
+  mockQueue.commitments = [];
   mockSession = {
     status: 'signed-in',
     session: { user: { email: 'jaipal@theanalog.company' } },
@@ -86,7 +99,7 @@ describe('QueueScreen header surface', () => {
     expect(screen.getByText(/Good (morning|afternoon|evening)\./)).toBeTruthy();
   });
 
-  it('renders the drafts + need-your-input meta row (no sent-today segment)', () => {
+  it('renders the queue + need-your-input meta row (no sent-today segment)', () => {
     mockQueue.drafts = [
       {
         messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
@@ -125,7 +138,7 @@ describe('QueueScreen header surface', () => {
     ];
     render(<QueueScreen />);
     expect(screen.getByText('2')).toBeTruthy();
-    expect(screen.getByText('drafts')).toBeTruthy();
+    expect(screen.getByText('in queue')).toBeTruthy();
     expect(screen.getByText('1')).toBeTruthy();
     expect(screen.getByText('need your input')).toBeTruthy();
     expect(screen.queryByText(/sent today/)).toBeNull();
@@ -167,17 +180,20 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
     langfuseTraceId: null,
   });
 
+  const guestIdOfCard = (c: QueueCard): string =>
+    c.type === 'draft_review' ? c.draft.guestId : '';
+
   it('surfaces the pushed guest on top of the FIFO stack on mount', () => {
     mockQueue.drafts = [
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       draftFor(THIRD_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       draftFor(TARGET_GUEST_ID, '33a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
-    setPendingTap(TARGET_GUEST_ID);
+    setPendingTap({ guestId: TARGET_GUEST_ID, commitmentId: null });
     render(<QueueScreen />);
     expect(lastCardStackProps).not.toBeNull();
-    expect(lastCardStackProps!.drafts[0].guestId).toBe(TARGET_GUEST_ID);
-    expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
+    expect(guestIdOfCard(lastCardStackProps!.cards[0])).toBe(TARGET_GUEST_ID);
+    expect(lastCardStackProps!.cards.map(guestIdOfCard)).toEqual([
       TARGET_GUEST_ID,
       OTHER_GUEST_ID,
       THIRD_GUEST_ID,
@@ -189,9 +205,9 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       draftFor(THIRD_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
-    setPendingTap(TARGET_GUEST_ID); // not in drafts
+    setPendingTap({ guestId: TARGET_GUEST_ID, commitmentId: null }); // not in drafts
     render(<QueueScreen />);
-    expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
+    expect(lastCardStackProps!.cards.map(guestIdOfCard)).toEqual([
       OTHER_GUEST_ID,
       THIRD_GUEST_ID,
     ]);
@@ -202,16 +218,16 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       draftFor(TARGET_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
-    setPendingTap(TARGET_GUEST_ID);
+    setPendingTap({ guestId: TARGET_GUEST_ID, commitmentId: null });
     render(<QueueScreen />);
-    expect(lastCardStackProps!.drafts[0].guestId).toBe(TARGET_GUEST_ID);
+    expect(guestIdOfCard(lastCardStackProps!.cards[0])).toBe(TARGET_GUEST_ID);
 
     // Simulate the operator approving the surfaced card. The screen calls
-    // optimisticallyRemove (here a no-op mock — we control drafts directly)
-    // and clears surfacedGuestId. We assert by feeding new drafts and
+    // optimisticallyRemoveDraft (no-op mock here — we control drafts directly)
+    // and clears the pending tap. We assert by feeding new drafts and
     // re-rendering: natural FIFO order should be honored.
     act(() => {
-      lastCardStackProps!.onApprove(
+      lastCardStackProps!.draftHandlers.onApprove(
         draftFor(TARGET_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       );
     });
@@ -221,7 +237,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
     render(<QueueScreen />);
-    expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
+    expect(lastCardStackProps!.cards.map(guestIdOfCard)).toEqual([
       OTHER_GUEST_ID,
     ]);
   });

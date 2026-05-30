@@ -32,9 +32,16 @@ type ChangeHandler = (payload: {
   old?: Record<string, unknown> | null;
 }) => void;
 
+type Subscription = {
+  event: string;
+  table: string;
+  filter: string;
+  handler: ChangeHandler;
+};
+
 type ChannelHandle = {
   channelName: string;
-  subscriptions: { event: string; filter: string; handler: ChangeHandler }[];
+  subscriptions: Subscription[];
   fireStatus: (status: string) => void;
 };
 
@@ -49,7 +56,7 @@ function mockLiveChannel(): ChannelHandle {
     type ChannelLike = {
       on: (
         kind: string,
-        opts: { event: string; filter: string },
+        opts: { event: string; table: string; filter: string },
         handler: ChangeHandler,
       ) => ChannelLike;
       subscribe: (cb: (status: string) => void) => ChannelLike;
@@ -58,6 +65,7 @@ function mockLiveChannel(): ChannelHandle {
       on: (_kind, opts, handler) => {
         handle.subscriptions.push({
           event: opts.event,
+          table: opts.table,
           filter: opts.filter,
           handler,
         });
@@ -71,6 +79,18 @@ function mockLiveChannel(): ChannelHandle {
     return ch;
   });
   return handle;
+}
+
+function messagesHandlers(handle: ChannelHandle): ChangeHandler[] {
+  return handle.subscriptions
+    .filter((s) => s.table === 'messages')
+    .map((s) => s.handler);
+}
+
+function commitmentsHandlers(handle: ChannelHandle): ChangeHandler[] {
+  return handle.subscriptions
+    .filter((s) => s.table === 'guest_commitments')
+    .map((s) => s.handler);
 }
 
 beforeEach(() => {
@@ -114,7 +134,7 @@ describe('createQueueChannel — live mode', () => {
     channel.unsubscribe();
   });
 
-  it('sets the realtime auth token, opens INSERT + UPDATE on messages with the venue_id filter', () => {
+  it('sets the realtime auth token, opens INSERT + UPDATE on both messages + guest_commitments with the venue_id filter', () => {
     const handle = mockLiveChannel();
     const onEvent = jest.fn();
     createQueueChannel({
@@ -126,16 +146,21 @@ describe('createQueueChannel — live mode', () => {
 
     expect(setAuth).toHaveBeenCalledWith('tok');
     expect(handle.channelName).toBe(`operator-queue-${OPERATOR_ID}`);
-    expect(handle.subscriptions.map((s) => s.event)).toEqual([
-      'INSERT',
-      'UPDATE',
+    // TAC-298 adds parallel guest_commitments subscriptions alongside the
+    // existing messages ones — both tables, both INSERT + UPDATE, same
+    // venue_id filter.
+    expect(handle.subscriptions.map((s) => ({ event: s.event, table: s.table }))).toEqual([
+      { event: 'INSERT', table: 'messages' },
+      { event: 'UPDATE', table: 'messages' },
+      { event: 'INSERT', table: 'guest_commitments' },
+      { event: 'UPDATE', table: 'guest_commitments' },
     ]);
     for (const sub of handle.subscriptions) {
       expect(sub.filter).toBe(`venue_id=in.(${VENUE_A},${VENUE_B})`);
     }
   });
 
-  it('emits queue_changed only on direction=outbound payloads', () => {
+  it('messages handler emits queue_changed only on direction=outbound payloads', () => {
     const handle = mockLiveChannel();
     const onEvent = jest.fn();
     createQueueChannel({
@@ -145,7 +170,7 @@ describe('createQueueChannel — live mode', () => {
       onEvent,
     });
 
-    const insertHandler = handle.subscriptions[0].handler;
+    const [insertHandler] = messagesHandlers(handle);
 
     insertHandler({ new: { direction: 'inbound' } });
     expect(onEvent).not.toHaveBeenCalled();
@@ -158,6 +183,32 @@ describe('createQueueChannel — live mode', () => {
     // soft-removed (REPLICA IDENTITY FULL means old is populated)
     onEvent.mockClear();
     insertHandler({ new: null, old: { direction: 'outbound' } });
+    expect(onEvent).toHaveBeenCalledWith({ type: 'queue_changed' });
+  });
+
+  it('commitments handler emits queue_changed on any payload (no direction filter)', () => {
+    // guest_commitments doesn't have `direction`; status-transition rows
+    // (open/pending_ack/acknowledged/cancelled) are all interesting to the
+    // queue because the endpoint shows only `pending_ack` — any change
+    // could add or remove a card. (TAC-298.)
+    const handle = mockLiveChannel();
+    const onEvent = jest.fn();
+    createQueueChannel({
+      operatorId: OPERATOR_ID,
+      venueIds: [VENUE_A],
+      accessToken: 'tok',
+      onEvent,
+    });
+
+    const [insertHandler, updateHandler] = commitmentsHandlers(handle);
+
+    insertHandler({ new: { status: 'pending_ack' } });
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledWith({ type: 'queue_changed' });
+
+    onEvent.mockClear();
+    updateHandler({ new: { status: 'acknowledged' }, old: { status: 'pending_ack' } });
+    expect(onEvent).toHaveBeenCalledTimes(1);
     expect(onEvent).toHaveBeenCalledWith({ type: 'queue_changed' });
   });
 

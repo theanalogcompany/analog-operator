@@ -23,11 +23,14 @@ const mockRouter = {
 
 const mockQueue: UseQueueResult = {
   drafts: [],
+  commitments: [],
   status: 'ready',
   error: null,
   reload: jest.fn().mockResolvedValue(undefined),
-  optimisticallyRemove: jest.fn(),
-  restore: jest.fn(),
+  optimisticallyRemoveDraft: jest.fn(),
+  restoreDraft: jest.fn(),
+  optimisticallyRemoveCommitment: jest.fn(),
+  restoreCommitment: jest.fn(),
 };
 
 jest.mock('expo-router', () => ({
@@ -103,8 +106,8 @@ beforeEach(async () => {
     ok: false,
     error: { kind: 'HTTP', status: 500, message: 'mocked' },
   });
-  (mockQueue.optimisticallyRemove as jest.Mock).mockReset();
-  (mockQueue.restore as jest.Mock).mockReset();
+  (mockQueue.optimisticallyRemoveDraft as jest.Mock).mockReset();
+  (mockQueue.restoreDraft as jest.Mock).mockReset();
   mockQueue.drafts = [makeDraft()];
   mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
   await clearUndoState();
@@ -173,7 +176,7 @@ describe('EditScreen', () => {
         prefill: 'my version of the reply',
       },
     });
-    expect(mockQueue.restore).toHaveBeenCalledWith(mockQueue.drafts[0]);
+    expect(mockQueue.restoreDraft).toHaveBeenCalledWith(mockQueue.drafts[0]);
     // The undo toast must NOT be sticking around after failure.
     expect(getUndoState()).toBeNull();
   });
@@ -188,7 +191,7 @@ describe('EditScreen', () => {
 
     await waitFor(() => expect(skipDraft).toHaveBeenCalled());
     expect(skipDraft).toHaveBeenCalledWith(mockQueue.drafts[0].messageId);
-    expect(mockQueue.restore).toHaveBeenCalledWith(mockQueue.drafts[0]);
+    expect(mockQueue.restoreDraft).toHaveBeenCalledWith(mockQueue.drafts[0]);
     expect(getUndoState()).toBeNull();
     // Skip failure does NOT re-open the takeover (no typed text to preserve).
     expect(mockRouter.push).not.toHaveBeenCalled();
