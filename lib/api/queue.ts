@@ -1,17 +1,23 @@
 import { z } from 'zod';
 
 import * as fixtures from '@/lib/fixtures/queue';
+import {
+  HeadsUpCommitmentSchema,
+  type HeadsUpCommitment,
+} from '@/lib/api/commitments';
+import {
+  RecognitionStateSchema,
+  type RecognitionState,
+  isFixtureMode,
+} from '@/lib/api/shared';
 
 import { authedFetch, parseHttpError } from './client';
 import { type ApiError, type Result, err, ok } from './errors';
 
-export const RecognitionStateSchema = z.enum([
-  'new',
-  'returning',
-  'regular',
-  'raving_fan',
-]);
-export type RecognitionState = z.infer<typeof RecognitionStateSchema>;
+// Back-compat re-exports — existing call sites import these from `@/lib/api/queue`.
+// New code should import directly from `@/lib/api/shared`.
+export { RecognitionStateSchema, isFixtureMode };
+export type { RecognitionState };
 
 export const RecentContextEntrySchema = z.object({
   id: z.string().uuid(),
@@ -74,12 +80,32 @@ export const PendingDraftSchema = z
   }));
 export type PendingDraft = z.infer<typeof PendingDraftSchema>;
 
-// Server (`analog-guest` GET /api/operator/queue) returns the array wrapped
-// in a { drafts: [...] } envelope — see analog-guest/app/api/operator/queue/
-// route.ts. Parse the envelope and unwrap before returning.
-const ListQueueResponseSchema = z.object({
+// Server (`analog-guest` GET /api/operator/queue) returns both pending drafts
+// and `pending_ack` heads-up commitments in a single envelope —
+// `{ drafts: [...], commitments: [...] }`. See
+// analog-guest/app/api/operator/queue/route.ts. The `commitments` field was
+// added in TAC-297 + extended in TAC-299; `.default([])` keeps this client
+// parsing cleanly against older deploys / future drift. (TAC-298.)
+//
+// `commitments` is parsed as `z.array(z.unknown())` at the envelope level so
+// the OUTER parse never fails on a single drifted item. Each item is then
+// run through `HeadsUpCommitmentSchema.safeParse` individually — successful
+// items render; failures are dropped with a __DEV__ warn carrying the field
+// path. The same cross-repo rationale that drove tolerant nullable+default()
+// at the FIELD level (CLAUDE.md "Tolerant Zod chains during cross-repo
+// rollouts") applies at the ARRAY level: one drifted commitment must never
+// cascade into the entire queue going error-state. Drafts stay strict at the
+// schema level — that contract has been live and stable since TAC-258. (TAC-298
+// UAT follow-up.)
+const ListQueueEnvelopeSchema = z.object({
   drafts: z.array(PendingDraftSchema),
+  commitments: z.array(z.unknown()).default([]),
 });
+
+export type ListQueueResult = {
+  drafts: PendingDraft[];
+  commitments: HeadsUpCommitment[];
+};
 
 // `GET /api/operator/messages/:messageId/thread` returns
 // `{ messages: ThreadMessage[] }` per the TAC-277/TAC-290 Contract. Parsed and
@@ -87,10 +113,6 @@ const ListQueueResponseSchema = z.object({
 const GetThreadResponseSchema = z.object({
   messages: z.array(ThreadMessageSchema),
 });
-
-export function isFixtureMode(): boolean {
-  return process.env.EXPO_PUBLIC_USE_FIXTURES === 'true';
-}
 
 function parseFailure(reason: string): { ok: false; error: ApiError } {
   return err<ApiError>({ kind: 'PARSE', message: reason });
@@ -101,9 +123,12 @@ async function emptyOkOrError(response: Response): Promise<Result<void>> {
   return err<ApiError>(await parseHttpError(response));
 }
 
-export async function listQueue(): Promise<Result<PendingDraft[]>> {
+export async function listQueue(): Promise<Result<ListQueueResult>> {
   if (isFixtureMode()) {
-    return ok(fixtures.listQueueFixture());
+    return ok({
+      drafts: fixtures.listQueueFixture(),
+      commitments: fixtures.listCommitmentsFixture(),
+    });
   }
   const result = await authedFetch('/api/operator/queue', { method: 'GET' });
   if (!result.ok) return result;
@@ -114,9 +139,35 @@ export async function listQueue(): Promise<Result<PendingDraft[]>> {
   } catch (e) {
     return parseFailure(e instanceof Error ? e.message : 'invalid json');
   }
-  const parsed = ListQueueResponseSchema.safeParse(json);
+  const parsed = ListQueueEnvelopeSchema.safeParse(json);
   if (!parsed.success) return parseFailure(parsed.error.message);
-  return ok(parsed.data.drafts);
+  const commitments: HeadsUpCommitment[] = [];
+  for (const raw of parsed.data.commitments) {
+    const r = HeadsUpCommitmentSchema.safeParse(raw);
+    if (r.success) {
+      commitments.push(r.data);
+    } else if (__DEV__) {
+      // Drift surfaces here. Most likely cause is a server field whose shape
+      // diverged from `HeadsUpCommitmentSchema` (e.g. an additive enum value
+      // or a UUID field that came back malformed) — issues include the
+      // failing field path, which is the fast path to the root cause.
+      console.warn(
+        '[lib/api/queue] dropped malformed commitment',
+        JSON.stringify(r.error.issues),
+        'raw=',
+        raw,
+      );
+    }
+  }
+  if (__DEV__ && parsed.data.commitments.length !== commitments.length) {
+    console.warn(
+      `[lib/api/queue] commitments raw=${parsed.data.commitments.length} parsed=${commitments.length} (drift: ${parsed.data.commitments.length - commitments.length} dropped)`,
+    );
+  }
+  return ok({
+    drafts: parsed.data.drafts,
+    commitments,
+  });
 }
 
 export async function approveDraft(messageId: string): Promise<Result<void>> {

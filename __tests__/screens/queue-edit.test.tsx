@@ -23,11 +23,14 @@ const mockRouter = {
 
 const mockQueue: UseQueueResult = {
   drafts: [],
+  commitments: [],
   status: 'ready',
   error: null,
   reload: jest.fn().mockResolvedValue(undefined),
-  optimisticallyRemove: jest.fn(),
-  restore: jest.fn(),
+  optimisticallyRemoveDraft: jest.fn(),
+  restoreDraft: jest.fn(),
+  optimisticallyRemoveCommitment: jest.fn(),
+  restoreCommitment: jest.fn(),
 };
 
 jest.mock('expo-router', () => ({
@@ -103,8 +106,8 @@ beforeEach(async () => {
     ok: false,
     error: { kind: 'HTTP', status: 500, message: 'mocked' },
   });
-  (mockQueue.optimisticallyRemove as jest.Mock).mockReset();
-  (mockQueue.restore as jest.Mock).mockReset();
+  (mockQueue.optimisticallyRemoveDraft as jest.Mock).mockReset();
+  (mockQueue.restoreDraft as jest.Mock).mockReset();
   mockQueue.drafts = [makeDraft()];
   mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
   await clearUndoState();
@@ -142,12 +145,43 @@ describe('EditScreen', () => {
     );
   });
 
-  it('renders the "draft no longer pending" fallback when the draft is gone', () => {
+  it('renders the "draft no longer pending" fallback when the draft is gone (queue is ready, draft truly absent)', () => {
     mockQueue.drafts = [];
+    mockQueue.status = 'ready';
     render(<EditScreen />);
     // No thread fetch fires here (draft is null, effect early-returns), so
     // no drain needed.
     expect(screen.getByText('That draft is no longer pending.')).toBeTruthy();
+    mockQueue.status = 'ready';
+  });
+
+  it('renders a loading spinner (NOT "no longer pending") when the draft is missing and the queue is mid-reload (TAC-298 UAT #4)', () => {
+    // After swipe-left on a heads-up card, handleDecline fires
+    // queue.reload() and navigates immediately — the freshly-created
+    // decline draft isn't in queue.drafts yet but the queue is in flight.
+    // The edit screen must show a spinner during this brief window
+    // instead of the terminal "no longer pending" fallback (which would
+    // re-introduce the UAT #3 dead-end symptom).
+    mockQueue.drafts = [];
+    mockQueue.status = 'loading';
+    render(<EditScreen />);
+    expect(screen.getByLabelText('Loading draft')).toBeTruthy();
+    expect(screen.queryByText('That draft is no longer pending.')).toBeNull();
+    mockQueue.status = 'ready';
+  });
+
+  it('renders an error fallback with retry when the draft is missing and the queue reload failed', () => {
+    // If the background reload after declineDraft fails, the edit screen
+    // surfaces the error with a retry button (instead of leaving the
+    // spinner spinning forever or showing the misleading "no longer
+    // pending" copy).
+    mockQueue.drafts = [];
+    mockQueue.status = 'error';
+    render(<EditScreen />);
+    expect(screen.getByText("Couldn't load the draft.")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Try loading the draft again'));
+    expect(mockQueue.reload).toHaveBeenCalled();
+    mockQueue.status = 'ready';
   });
 
   it('on edit failure: clears undo + restores card + re-opens takeover with typed body', async () => {
@@ -173,7 +207,7 @@ describe('EditScreen', () => {
         prefill: 'my version of the reply',
       },
     });
-    expect(mockQueue.restore).toHaveBeenCalledWith(mockQueue.drafts[0]);
+    expect(mockQueue.restoreDraft).toHaveBeenCalledWith(mockQueue.drafts[0]);
     // The undo toast must NOT be sticking around after failure.
     expect(getUndoState()).toBeNull();
   });
@@ -188,7 +222,7 @@ describe('EditScreen', () => {
 
     await waitFor(() => expect(skipDraft).toHaveBeenCalled());
     expect(skipDraft).toHaveBeenCalledWith(mockQueue.drafts[0].messageId);
-    expect(mockQueue.restore).toHaveBeenCalledWith(mockQueue.drafts[0]);
+    expect(mockQueue.restoreDraft).toHaveBeenCalledWith(mockQueue.drafts[0]);
     expect(getUndoState()).toBeNull();
     // Skip failure does NOT re-open the takeover (no typed text to preserve).
     expect(mockRouter.push).not.toHaveBeenCalled();

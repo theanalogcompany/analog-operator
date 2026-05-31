@@ -17,12 +17,19 @@ import {
   setUndoState,
 } from '@/hooks/use-undo-state';
 import { useSession } from '@/lib/auth/use-session';
+import {
+  type HeadsUpCommitment,
+  acknowledgeCommitment,
+  declineDraft,
+} from '@/lib/api/commitments';
 import { type PendingDraft, approveDraft, undoAction } from '@/lib/api/queue';
 import { setBadgeCount } from '@/lib/notifications/badge';
 import {
+  type PendingTap,
   consumePendingTap,
   subscribeToTaps,
 } from '@/lib/notifications/tap-handler';
+import { type QueueCard, interleaveCards } from '@/lib/queue/cards';
 import { supabase } from '@/lib/supabase/client';
 
 import { useQueueContext } from './_layout';
@@ -59,19 +66,19 @@ function Greeting({ name }: { name: string | null }) {
 }
 
 function MetaRow({
-  draftCount,
+  cardCount,
   needsInputCount,
 }: {
-  draftCount: number;
+  cardCount: number;
   needsInputCount: number;
 }) {
   return (
     <View className="flex-row items-baseline" style={{ marginTop: 8, gap: 8 }}>
       <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 13 }}>
-        {draftCount}
+        {cardCount}
       </Text>
       <Text className="font-inter-tight text-ink-faint" style={{ fontSize: 13 }}>
-        drafts
+        in queue
       </Text>
       <Text className="font-inter-tight text-ink-faint" style={{ fontSize: 13 }}>
         ·
@@ -116,89 +123,193 @@ function Footer() {
   );
 }
 
+// Tap-driven surfacing: when a push tap arrives, the matching card floats to
+// the top of the stack for this mount. `commitmentId` takes precedence over
+// `guestId` when both are present — commitment pushes carry both fields and
+// the operator is being routed to the specific heads-up card. (TAC-298.)
+function surfaceCards(
+  baseCards: QueueCard[],
+  pending: PendingTap | null,
+): QueueCard[] {
+  if (!pending) return baseCards;
+  // Prefer exact commitment match.
+  if (pending.commitmentId) {
+    const idx = baseCards.findIndex(
+      (c) =>
+        c.type === 'heads_up' && c.commitment.id === pending.commitmentId,
+    );
+    if (idx !== -1) {
+      return [
+        baseCards[idx],
+        ...baseCards.slice(0, idx),
+        ...baseCards.slice(idx + 1),
+      ];
+    }
+  }
+  // Fall back to guest match (legacy draft-push behavior).
+  const idx = baseCards.findIndex((c) => {
+    if (c.type === 'draft_review') return c.draft.guestId === pending.guestId;
+    return false; // commitments don't expose guestId in HeadsUpCommitment payload
+  });
+  if (idx === -1) return baseCards;
+  return [
+    baseCards[idx],
+    ...baseCards.slice(0, idx),
+    ...baseCards.slice(idx + 1),
+  ];
+}
+
 export default function QueueScreen() {
   const queue = useQueueContext();
   const router = useRouter();
   const session = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [surfacedGuestId, setSurfacedGuestId] = useState<string | null>(null);
+  const [pendingTap, setPendingTap] = useState<PendingTap | null>(null);
 
   const operatorEmail =
     session.status === 'signed-in' ? session.session.user.email ?? null : null;
   const operatorFirstName = firstNameFromEmail(operatorEmail);
-  const draftCount = queue.drafts.length;
+
+  const baseCards = useMemo(
+    () => interleaveCards(queue.drafts, queue.commitments),
+    [queue.drafts, queue.commitments],
+  );
+  const cards = useMemo(
+    () => surfaceCards(baseCards, pendingTap),
+    [baseCards, pendingTap],
+  );
+
+  const cardCount = cards.length;
+  // "Needs your input" counts drafts with a reviewReason. Commitments
+  // don't carry that signal (the whole point is that no action is needed
+  // unless the operator chooses to decline) — so they're excluded from
+  // this count by design.
   const needsInputCount = queue.drafts.filter((d) => !!d.reviewReason).length;
 
   // Drain any pending notification-tap on mount (cold-launch case) and subscribe
-  // for warm-launch taps that land while the queue is mounted. Surfacing reorders
-  // the FIFO list so that guest's card lands on top of the stack for this mount;
-  // normal FIFO resumes once the surfaced card is dispatched. Per TAC-288
-  // settled-decision #4.
+  // for warm-launch taps that land while the queue is mounted. Per TAC-288
+  // settled-decision #4, surfacing reorders the FIFO list so the pushed card
+  // lands on top of the stack for this mount; FIFO resumes once dispatched.
+  // TAC-298 extends the pending-tap shape with optional `commitmentId` —
+  // commitment pushes preferentially surface the matching commitment card.
   useEffect(() => {
     const pending = consumePendingTap();
-    if (pending) setSurfacedGuestId(pending);
-    return subscribeToTaps((guestId) => {
+    if (pending) setPendingTap(pending);
+    return subscribeToTaps((tap) => {
       consumePendingTap();
-      setSurfacedGuestId(guestId);
+      setPendingTap(tap);
     });
   }, []);
 
-  // Surface the pushed guest's card on top of the FIFO stack for this mount.
-  // If the surfaced guest is no longer in the queue (sent / skipped from
-  // another device, or just dispatched here), fall back to the natural order.
-  const displayDrafts = useMemo(() => {
-    if (!surfacedGuestId) return queue.drafts;
-    const idx = queue.drafts.findIndex((d) => d.guestId === surfacedGuestId);
-    if (idx === -1) return queue.drafts;
-    return [
-      queue.drafts[idx],
-      ...queue.drafts.slice(0, idx),
-      ...queue.drafts.slice(idx + 1),
-    ];
-  }, [queue.drafts, surfacedGuestId]);
-
-  // Badge mirrors the visible queue. Sync on every drafts change (covers swipe
-  // approve + restore + realtime updates + reload) and on foreground transitions
-  // (covers server-driven badge updates that drift from the local count while
-  // the app was backgrounded). Queue length is the source of truth — brief
-  // divergence under the TAC-37 undo flow is by design.
+  // Badge mirrors the visible queue. Sync on every card-count change (covers
+  // swipe approve/acknowledge/decline + restore + realtime updates + reload)
+  // and on foreground transitions (covers server-driven badge updates that
+  // drift from the local count while the app was backgrounded).
   useEffect(() => {
-    void setBadgeCount(queue.drafts.length);
-  }, [queue.drafts.length]);
+    void setBadgeCount(cardCount);
+  }, [cardCount]);
 
-  // Track latest drafts.length in a ref so the AppState subscription stays
-  // mounted across re-renders. Subscribing on every count change would tear
-  // down and re-attach the listener for no benefit.
-  const draftCountRef = useRef(queue.drafts.length);
-  draftCountRef.current = queue.drafts.length;
+  const cardCountRef = useRef(cardCount);
+  cardCountRef.current = cardCount;
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void setBadgeCount(draftCountRef.current);
+        void setBadgeCount(cardCountRef.current);
       }
     });
     return () => sub.remove();
   }, []);
 
   const handleApprove = async (draft: PendingDraft): Promise<void> => {
-    queue.optimisticallyRemove(draft.messageId);
-    if (draft.guestId === surfacedGuestId) setSurfacedGuestId(null);
+    queue.optimisticallyRemoveDraft(draft.messageId);
+    if (
+      pendingTap &&
+      !pendingTap.commitmentId &&
+      draft.guestId === pendingTap.guestId
+    ) {
+      setPendingTap(null);
+    }
     void setUndoState({ action: 'approve', draft });
     const result = await approveDraft(draft.messageId);
     if (!result.ok) {
-      queue.restore(draft);
+      queue.restoreDraft(draft);
       void clearUndoState();
       showToast("Couldn't send — tap to retry");
     }
   };
 
   const handleEdit = (draft: PendingDraft): void => {
-    if (draft.guestId === surfacedGuestId) setSurfacedGuestId(null);
+    if (
+      pendingTap &&
+      !pendingTap.commitmentId &&
+      draft.guestId === pendingTap.guestId
+    ) {
+      setPendingTap(null);
+    }
     router.push({ pathname: '/queue/edit', params: { messageId: draft.messageId } });
   };
 
+  // Swipe-right on a heads-up commitment card. Calls the acknowledge
+  // endpoint (server transitions `pending_ack → acknowledged`). Per the
+  // CRITICAL no-send guard in the ticket Notes: this MUST NEVER touch
+  // `approveDraft` / `editAndSend` — the queue-card-stack handler split
+  // makes the wrong wiring impossible to compile. No undo (one-shot, no
+  // server reverse endpoint; acknowledge means "I saw it").
+  const handleAcknowledge = async (
+    commitment: HeadsUpCommitment,
+  ): Promise<void> => {
+    queue.optimisticallyRemoveCommitment(commitment.id);
+    if (pendingTap?.commitmentId === commitment.id) setPendingTap(null);
+    const result = await acknowledgeCommitment(commitment.id);
+    if (!result.ok) {
+      queue.restoreCommitment(commitment);
+      showToast("Couldn't acknowledge — tap to retry");
+    }
+  };
+
+  // Swipe-left on a heads-up commitment card. Calls the draft-decline
+  // endpoint (TAC-299) which: (a) generates an apology decline draft and
+  // persists it as `messages.review_state='pending'` (NOT sent), and (b)
+  // transitions the commitment to `cancelled` server-side. On success we
+  // fire a queue refetch in the background (non-silent so its `loading`
+  // status is observable) and navigate to the edit screen immediately —
+  // the edit screen branches on `queue.status` to show a brief spinner
+  // while `queue.drafts` catches up, then re-renders with the prefilled
+  // apology once the new draft lands. The UAT #3 fix that awaited the
+  // reload before navigating cost 5–10s of perceived latency on top of
+  // the (already slow) AI generation in `declineDraft`; firing-and-
+  // forgetting + letting the edit screen handle the in-flight state cuts
+  // the user-perceived wait to just the `declineDraft` round trip. On 409
+  // `invalid_state` (commitment already cancelled, e.g. re-swipe-left),
+  // no restore and a softer "already handled" toast. (TAC-298 UAT #4.)
+  const handleDecline = async (
+    commitment: HeadsUpCommitment,
+  ): Promise<void> => {
+    queue.optimisticallyRemoveCommitment(commitment.id);
+    if (pendingTap?.commitmentId === commitment.id) setPendingTap(null);
+    const result = await declineDraft(commitment.id);
+    if (!result.ok) {
+      const is409 =
+        result.error.kind === 'HTTP' && result.error.status === 409;
+      if (is409) {
+        // Don't restore — commitment is already cancelled server-side.
+        showToast('Already handled — refreshing queue');
+        void queue.reload();
+        return;
+      }
+      queue.restoreCommitment(commitment);
+      showToast("Couldn't draft decline — tap to retry");
+      return;
+    }
+    void queue.reload();
+    router.push({
+      pathname: '/queue/edit',
+      params: { messageId: result.data.messageId },
+    });
+  };
+
   const handleUndo = (record: UndoRecord): void => {
-    queue.restore(record.draft);
+    queue.restoreDraft(record.draft);
     void undoAction(record.message_id);
   };
 
@@ -238,15 +349,15 @@ export default function QueueScreen() {
         <>
           <View style={{ paddingHorizontal: 22, paddingTop: 12, paddingBottom: 4 }}>
             <Greeting name={operatorFirstName} />
-            <MetaRow draftCount={draftCount} needsInputCount={needsInputCount} />
+            <MetaRow cardCount={cardCount} needsInputCount={needsInputCount} />
           </View>
-          {displayDrafts.length === 0 ? (
+          {cards.length === 0 ? (
             <EmptyState />
           ) : (
             <QueueCardStack
-              drafts={displayDrafts}
-              onApprove={handleApprove}
-              onEdit={handleEdit}
+              cards={cards}
+              draftHandlers={{ onApprove: handleApprove, onEdit: handleEdit }}
+              headsUpHandlers={{ onAcknowledge: handleAcknowledge, onDecline: handleDecline }}
             />
           )}
           <Footer />

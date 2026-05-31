@@ -3,6 +3,7 @@ import {
   type RecognitionState,
   type ThreadMessage,
 } from '@/lib/api/queue';
+import { type HeadsUpCommitment } from '@/lib/api/commitments';
 import { type ApiError, type Result, ok } from '@/lib/api/errors';
 // import type only — avoids a circular import with the realtime channels,
 // which import subscribe*Fixture from this file.
@@ -180,10 +181,52 @@ const queue: Map<string, PendingDraft> = new Map();
 const archive: Map<string, ArchiveEntry> = new Map();
 const subscribers: Set<Subscriber> = new Set();
 
+// Heads-up commitment fixtures (TAC-298). Same subscriber set as drafts —
+// any change to either list emits a single `queue_changed` event, matching
+// the realtime contract.
+const commitments: Map<string, HeadsUpCommitment> = new Map();
+// Synthetic draft store keyed by the messageId returned from
+// `declineDraftFixture`. `editAndSendFixture`/`skipDraftFixture` already
+// tolerate unknown messageIds (they no-op), so we don't need to inject the
+// stub into the main `queue` map — but we do need to remember the mapping
+// so the second swipe-left can return 409 (commitment already cancelled,
+// see TAC-299 Decision 1: trigger-time cancel).
+const cancelledCommitments: Set<string> = new Set();
+
+function seedCommitments(): HeadsUpCommitment[] {
+  return [
+    {
+      id: 'aabbccdd-1111-4222-8333-444455556666',
+      type: 'comp',
+      guestName: 'Maya',
+      description: 'oat latte on the house',
+      code: '7K2P',
+      expectedArrival: new Date(Date.now() + 5 * 60_000).toISOString(),
+      createdAt: new Date(Date.now() - 8 * 60_000).toISOString(),
+      recognitionState: 'returning',
+      sourceMessageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    },
+    {
+      id: 'eeff0011-2222-4333-8444-555566667777',
+      type: 'recommendation',
+      guestName: 'Devon',
+      description: 'rosemary loaf ready around 7',
+      code: null,
+      expectedArrival: new Date(Date.now() + 60 * 60_000).toISOString(),
+      createdAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+      recognitionState: 'raving_fan',
+      sourceMessageId: null,
+    },
+  ];
+}
+
 function reseed(): void {
   queue.clear();
   archive.clear();
   for (const d of seedDrafts()) queue.set(d.messageId, d);
+  commitments.clear();
+  cancelledCommitments.clear();
+  for (const c of seedCommitments()) commitments.set(c.id, c);
 }
 
 reseed();
@@ -257,6 +300,62 @@ export function undoActionFixture(messageId: string): Result<void, ApiError> {
  * dev tooling / storybook to exercise the realtime path without a backend. */
 export function triggerQueueAddedFixture(d: PendingDraft): void {
   queue.set(d.messageId, d);
+  emit();
+}
+
+// Heads-up commitment fixture surface (TAC-298). Mirrors the draft fixture
+// shape — same in-memory map pattern, same emit() on mutation.
+
+export function listCommitmentsFixture(): HeadsUpCommitment[] {
+  // Oldest-first — matches the server's FIFO ordering for the heads-up queue.
+  return Array.from(commitments.values()).sort(
+    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
+  );
+}
+
+export function acknowledgeCommitmentFixture(commitmentId: string): Result<void> {
+  commitments.delete(commitmentId);
+  return ok(undefined);
+}
+
+/** Synthetic draft-decline: removes the commitment from the heads-up list
+ * (server-side this is `cancelled` on trigger per TAC-299 Decision 1) and
+ * returns a fresh fixture messageId. A second call on the same commitment
+ * returns the cancelled-already shape (HTTP 409 in production), surfaced
+ * here as a PARSE error so the screen path treats it like the live failure
+ * mode. (TAC-298.) */
+export function declineDraftFixture(
+  commitmentId: string,
+): Result<{ messageId: string }> {
+  if (cancelledCommitments.has(commitmentId)) {
+    return {
+      ok: false,
+      error: {
+        kind: 'HTTP',
+        status: 409,
+        message: JSON.stringify({ error: 'invalid_state' }),
+      },
+    };
+  }
+  if (!commitments.has(commitmentId)) {
+    return {
+      ok: false,
+      error: {
+        kind: 'HTTP',
+        status: 404,
+        message: JSON.stringify({ error: 'not_found' }),
+      },
+    };
+  }
+  commitments.delete(commitmentId);
+  cancelledCommitments.add(commitmentId);
+  return ok({ messageId: fixtureUuid() });
+}
+
+/** Inserts a synthetic commitment and broadcasts a queue_changed event.
+ * Used by dev tooling / storybook to exercise the realtime path. */
+export function triggerCommitmentAddedFixture(c: HeadsUpCommitment): void {
+  commitments.set(c.id, c);
   emit();
 }
 

@@ -8,29 +8,56 @@ import Animated, {
 
 import { useHaptics } from '@/hooks/use-haptics';
 import { type SwipeDirection, useQueueSwipe } from '@/hooks/use-queue-swipe';
+import { type HeadsUpCommitment } from '@/lib/api/commitments';
 import { type PendingDraft } from '@/lib/api/queue';
+import { type QueueCard, cardKey } from '@/lib/queue/cards';
 import { peekCard, swipeHint } from '@/lib/theme';
 
-import { QueueCard } from './queue-card';
+import { HeadsUpCard } from './heads-up-card';
+import { QueueCard as DraftQueueCard } from './queue-card';
 import { SwipeOverlay } from './swipe-overlay';
 
-type FrontCardProps = {
-  draft: PendingDraft;
+type DraftHandlers = {
   onApprove: (draft: PendingDraft) => void;
   onEdit: (draft: PendingDraft) => void;
 };
 
-function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
-  if (__DEV__) console.log('[render] FrontCard mounted');
+type HeadsUpHandlers = {
+  onAcknowledge: (commitment: HeadsUpCommitment) => void;
+  onDecline: (commitment: HeadsUpCommitment) => void;
+};
+
+type FrontCardProps = {
+  card: QueueCard;
+  draftHandlers: DraftHandlers;
+  headsUpHandlers: HeadsUpHandlers;
+};
+
+function FrontCard({ card, draftHandlers, headsUpHandlers }: FrontCardProps) {
+  if (__DEV__) console.log('[render] FrontCard mounted', card.type);
   const haptics = useHaptics();
 
+  // Branch swipe routing by card.type. This is the spot the CRITICAL no-send
+  // guard tests against: swipe-right on a heads-up card MUST hit
+  // `onAcknowledge`, never the draft `onApprove` path; swipe-left on a
+  // heads-up card MUST hit `onDecline` (which calls draft-decline, persists
+  // pending — no send), never the draft `onEdit` path. The handler shape
+  // makes the wrong wiring impossible to compile. (TAC-298.)
   const handleRight = (): void => {
     haptics.swipeRightSuccess();
-    onApprove(draft);
+    if (card.type === 'draft_review') {
+      draftHandlers.onApprove(card.draft);
+    } else {
+      headsUpHandlers.onAcknowledge(card.commitment);
+    }
   };
   const handleLeft = (): void => {
     haptics.swipeLeftEdit();
-    onEdit(draft);
+    if (card.type === 'draft_review') {
+      draftHandlers.onEdit(card.draft);
+    } else {
+      headsUpHandlers.onDecline(card.commitment);
+    }
   };
 
   const { pan, translateX, rotation, direction, intensity } = useQueueSwipe({
@@ -55,19 +82,26 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
           className="w-full"
           style={[{ maxWidth: 354, zIndex: 3 }, cardStyle]}
         >
-          <QueueCard draft={draft} onPressDraftBubble={() => onEdit(draft)} />
+          {card.type === 'draft_review' ? (
+            <DraftQueueCard
+              draft={card.draft}
+              onPressDraftBubble={() => draftHandlers.onEdit(card.draft)}
+            />
+          ) : (
+            <HeadsUpCard commitment={card.commitment} />
+          )}
         </Animated.View>
       </GestureDetector>
-      <SwipeHints direction={direction} intensity={intensity} />
+      <SwipeHints direction={direction} intensity={intensity} cardType={card.type} />
     </>
   );
 }
 
 type PeekCardProps = {
-  draft: PendingDraft;
+  card: QueueCard;
 };
 
-function PeekCard({ draft }: PeekCardProps) {
+function PeekCard({ card }: PeekCardProps) {
   return (
     <View
       pointerEvents="none"
@@ -86,7 +120,11 @@ function PeekCard({ draft }: PeekCardProps) {
           transformOrigin: 'top center',
         }}
       >
-        <QueueCard draft={draft} />
+        {card.type === 'draft_review' ? (
+          <DraftQueueCard draft={card.draft} />
+        ) : (
+          <HeadsUpCard commitment={card.commitment} />
+        )}
       </View>
     </View>
   );
@@ -95,9 +133,10 @@ function PeekCard({ draft }: PeekCardProps) {
 type SwipeHintsProps = {
   direction: SharedValue<SwipeDirection>;
   intensity: SharedValue<number>;
+  cardType: QueueCard['type'];
 };
 
-function SwipeHints({ direction, intensity }: SwipeHintsProps) {
+function SwipeHints({ direction, intensity, cardType }: SwipeHintsProps) {
   const leftStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
       direction.value === -1 ? intensity.value : 0,
@@ -113,31 +152,36 @@ function SwipeHints({ direction, intensity }: SwipeHintsProps) {
     ),
   }));
 
+  const leftLabel =
+    cardType === 'draft_review' ? '← Swipe left to edit' : '← Swipe left to decline';
+  const rightLabel =
+    cardType === 'draft_review' ? 'Swipe right to send →' : 'Swipe right to acknowledge →';
+
   return (
     <View
       className="w-full flex-row justify-between"
       style={{ maxWidth: 354, paddingHorizontal: 8, paddingTop: 12 }}
     >
       <Animated.Text className="font-inter-tight" style={[{ fontSize: 13 }, leftStyle]}>
-        ← Swipe left to edit
+        {leftLabel}
       </Animated.Text>
       <Animated.Text className="font-inter-tight" style={[{ fontSize: 13 }, rightStyle]}>
-        Swipe right to send →
+        {rightLabel}
       </Animated.Text>
     </View>
   );
 }
 
 type Props = {
-  drafts: PendingDraft[];
-  onApprove: (draft: PendingDraft) => void;
-  onEdit: (draft: PendingDraft) => void;
+  cards: QueueCard[];
+  draftHandlers: DraftHandlers;
+  headsUpHandlers: HeadsUpHandlers;
 };
 
-export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
-  if (__DEV__) console.log('[render] stack mounted, count:', drafts.length);
-  const top = drafts[0];
-  const peek = drafts[1];
+export function QueueCardStack({ cards, draftHandlers, headsUpHandlers }: Props) {
+  if (__DEV__) console.log('[render] stack mounted, count:', cards.length);
+  const top = cards[0];
+  const peek = cards[1];
 
   if (!top) return null;
 
@@ -146,12 +190,12 @@ export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
       className="relative flex-1 items-center overflow-visible"
       style={{ paddingHorizontal: 18, paddingTop: 16 }}
     >
-      {peek ? <PeekCard draft={peek} /> : null}
+      {peek ? <PeekCard card={peek} /> : null}
       <FrontCard
-        key={top.messageId}
-        draft={top}
-        onApprove={onApprove}
-        onEdit={onEdit}
+        key={cardKey(top)}
+        card={top}
+        draftHandlers={draftHandlers}
+        headsUpHandlers={headsUpHandlers}
       />
     </View>
   );

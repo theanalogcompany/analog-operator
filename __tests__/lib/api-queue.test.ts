@@ -23,50 +23,79 @@ beforeEach(() => {
 });
 
 describe('lib/api/queue in fixture mode', () => {
-  it('listQueue returns the fixture seed', async () => {
+  it('listQueue returns the fixture seed (drafts + commitments)', async () => {
     const result = await listQueue();
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data.length).toBeGreaterThan(0);
+      expect(result.data.drafts.length).toBeGreaterThan(0);
+      // Commitments seed should also populate (TAC-298 fixture additions).
+      expect(result.data.commitments.length).toBeGreaterThan(0);
     }
   });
 
   it('approveDraft removes the draft from the fixture queue', async () => {
-    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    const target = before.data[0].messageId;
+    const before = (await listQueue()) as {
+      ok: true;
+      data: { drafts: { messageId: string }[] };
+    };
+    const target = before.data.drafts[0].messageId;
     await approveDraft(target);
-    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    expect(after.data.find((d) => d.messageId === target)).toBeUndefined();
+    const after = (await listQueue()) as {
+      ok: true;
+      data: { drafts: { messageId: string }[] };
+    };
+    expect(after.data.drafts.find((d) => d.messageId === target)).toBeUndefined();
   });
 
   it('skipDraft removes the draft', async () => {
-    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    const target = before.data[0].messageId;
+    const before = (await listQueue()) as {
+      ok: true;
+      data: { drafts: { messageId: string }[] };
+    };
+    const target = before.data.drafts[0].messageId;
     await skipDraft(target);
-    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    expect(after.data.find((d) => d.messageId === target)).toBeUndefined();
+    const after = (await listQueue()) as {
+      ok: true;
+      data: { drafts: { messageId: string }[] };
+    };
+    expect(after.data.drafts.find((d) => d.messageId === target)).toBeUndefined();
   });
 
   it('editAndSend removes the draft on first call', async () => {
-    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    const target = before.data[0].messageId;
+    const before = (await listQueue()) as {
+      ok: true;
+      data: { drafts: { messageId: string }[] };
+    };
+    const target = before.data.drafts[0].messageId;
     await editAndSend(target, 'my version');
-    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    expect(after.data.find((d) => d.messageId === target)).toBeUndefined();
+    const after = (await listQueue()) as {
+      ok: true;
+      data: { drafts: { messageId: string }[] };
+    };
+    expect(after.data.drafts.find((d) => d.messageId === target)).toBeUndefined();
   });
 
   it('undoAction restores a removed draft', async () => {
-    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    const target = before.data[0].messageId;
+    const before = (await listQueue()) as {
+      ok: true;
+      data: { drafts: { messageId: string }[] };
+    };
+    const target = before.data.drafts[0].messageId;
     await approveDraft(target);
     await undoAction(target);
-    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    expect(after.data.find((d) => d.messageId === target)).toBeDefined();
+    const after = (await listQueue()) as {
+      ok: true;
+      data: { drafts: { messageId: string }[] };
+    };
+    expect(after.data.drafts.find((d) => d.messageId === target)).toBeDefined();
   });
 
   it('getThread returns the fixture thread including seed extensions for known messageIds', async () => {
-    const before = (await listQueue()) as { ok: true; data: PendingDraft[] };
-    const mayaDraft = before.data.find(
+    const before = (await listQueue()) as {
+      ok: true;
+      data: { drafts: PendingDraft[] };
+    };
+    const mayaDraft = before.data.drafts.find(
       (d) => d.messageId === '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     );
     expect(mayaDraft).toBeDefined();
@@ -94,7 +123,7 @@ describe('lib/api/queue in fixture mode', () => {
     if (!result.ok) throw new Error('listQueue should succeed in fixture mode');
     const uuidRe =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    for (const d of result.data) {
+    for (const d of result.data.drafts) {
       expect(uuidRe.test(d.messageId)).toBe(true);
       expect(uuidRe.test(d.guestId)).toBe(true);
       expect(uuidRe.test(d.venueId)).toBe(true);
@@ -180,7 +209,9 @@ describe('lib/api/queue HTTP shape', () => {
       langfuseTraceId: null,
     };
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ drafts: [draft] }), { status: 200 }),
+      new Response(JSON.stringify({ drafts: [draft], commitments: [] }), {
+        status: 200,
+      }),
     );
 
     const result = await listQueue();
@@ -189,9 +220,10 @@ describe('lib/api/queue HTTP shape', () => {
     expect(init.method).toBe('GET');
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].messageId).toBe(draft.messageId);
-      expect(result.data[0].agentReasoning).toBe('lean into the warmth');
+      expect(result.data.drafts).toHaveLength(1);
+      expect(result.data.drafts[0].messageId).toBe(draft.messageId);
+      expect(result.data.drafts[0].agentReasoning).toBe('lean into the warmth');
+      expect(result.data.commitments).toEqual([]);
     }
   });
 
@@ -225,16 +257,17 @@ describe('lib/api/queue HTTP shape', () => {
       langfuseTraceId: null,
     };
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ drafts: [draftWithoutReasoning] }), {
-        status: 200,
-      }),
+      new Response(
+        JSON.stringify({ drafts: [draftWithoutReasoning], commitments: [] }),
+        { status: 200 },
+      ),
     );
 
     const result = await listQueue();
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].agentReasoning).toBeNull();
+      expect(result.data.drafts).toHaveLength(1);
+      expect(result.data.drafts[0].agentReasoning).toBeNull();
     }
   });
 
@@ -280,15 +313,16 @@ describe('lib/api/queue HTTP shape', () => {
       langfuseTraceId: null,
     };
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ drafts: [newestFirstPayload] }), {
-        status: 200,
-      }),
+      new Response(
+        JSON.stringify({ drafts: [newestFirstPayload], commitments: [] }),
+        { status: 200 },
+      ),
     );
 
     const result = await listQueue();
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const bodies = result.data[0].recentContext.map((m) => m.body);
+      const bodies = result.data.drafts[0].recentContext.map((m) => m.body);
       expect(bodies).toEqual(['oldest', 'middle', 'newest']);
     }
   });
@@ -404,15 +438,93 @@ describe('lib/api/queue HTTP shape', () => {
       langfuseTraceId: null,
     };
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ drafts: [draftWithNullReasoning] }), {
-        status: 200,
-      }),
+      new Response(
+        JSON.stringify({ drafts: [draftWithNullReasoning], commitments: [] }),
+        { status: 200 },
+      ),
     );
 
     const result = await listQueue();
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data[0].agentReasoning).toBeNull();
+      expect(result.data.drafts[0].agentReasoning).toBeNull();
+    }
+  });
+
+  it('listQueue tolerates server omitting commitments (older deploy / TAC-298 rollout)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ drafts: [] }), { status: 200 }),
+    );
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.drafts).toEqual([]);
+      expect(result.data.commitments).toEqual([]);
+    }
+  });
+
+  it('listQueue keeps healthy commitments when a sibling commitment is malformed (per-item resilience)', async () => {
+    // TAC-298 UAT follow-up: a single drifted commitment must NOT take the
+    // whole queue down. The envelope parse uses z.array(z.unknown()) so the
+    // outer parse succeeds; per-item safeParse then drops the malformed entry
+    // and logs in dev. Regression guard against reverting to
+    // z.array(HeadsUpCommitmentSchema), which would error-state the queue.
+    const healthy = {
+      id: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+      type: 'comp',
+      guest: { name: 'Demo' },
+      description: 'oat latte on the house',
+      code: 'JX6E',
+      expected_arrival: '2026-05-31T16:00:00.000Z',
+      created_at: '2026-05-31T15:55:00.000Z',
+      recognitionState: 'returning',
+      sourceMessageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    };
+    const malformed = {
+      ...healthy,
+      id: 'f47ac10b-58cc-4372-a567-0e02b2c3d480',
+      // Drift: a future server adds a new enum value not in the client.
+      recognitionState: 'vip',
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ drafts: [], commitments: [healthy, malformed] }),
+        { status: 200 },
+      ),
+    );
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await listQueue();
+    warnSpy.mockRestore();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.commitments).toHaveLength(1);
+      expect(result.data.commitments[0].id).toBe(healthy.id);
+      expect(result.data.commitments[0].guestName).toBe('Demo');
+    }
+  });
+
+  it('listQueue parses successfully with empty commitments when ALL commitments are malformed', async () => {
+    // Edge case: every server-side commitment fails to parse. The queue still
+    // resolves ok with commitments=[] so the operator sees drafts (if any)
+    // and EmptyState (if not), never a blocking error screen.
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          drafts: [],
+          commitments: [
+            { id: 'not-a-uuid', wrong: 'shape' },
+            { totally: 'unrelated' },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await listQueue();
+    warnSpy.mockRestore();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.commitments).toEqual([]);
     }
   });
 });

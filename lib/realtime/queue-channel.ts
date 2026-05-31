@@ -37,11 +37,14 @@ function readDirection(row: unknown): string | null {
 
 /**
  * Returns a channel that emits live queue events. In fixture mode, delegates
- * to the in-memory emitter from `@/lib/fixtures/queue`. In live mode, opens a
- * Supabase Realtime postgres_changes subscription on the `messages` table
- * filtered to the operator's venue allowlist (the only thing keeping
- * cross-venue events out of an operator's stream while RLS is deferred — see
- * TAC-271).
+ * to the in-memory emitter from `@/lib/fixtures/queue`. In live mode, opens
+ * Supabase Realtime postgres_changes subscriptions on both the `messages`
+ * table (drafts — TAC-270) and the `guest_commitments` table (heads-up
+ * commitments — TAC-298), filtered to the operator's venue allowlist (the
+ * only thing keeping cross-venue events out of an operator's stream while
+ * RLS is deferred — see TAC-271). Both subscriptions emit the same
+ * `{type:'queue_changed'}` event; the consumer (`useQueue.reload()`)
+ * refetches the entire queue on any signal.
  */
 export function createQueueChannel(opts: QueueChannelOptions): QueueChannel {
   if (isFixtureMode()) {
@@ -70,11 +73,23 @@ export function createQueueChannel(opts: QueueChannelOptions): QueueChannel {
   // only — keeping `review_state` out of the filter so pending → sent /
   // skipped / approved transitions also trigger a refetch (those drop the
   // card from the queue).
-  const handle = (
+  const handleMessages = (
     payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>,
   ): void => {
     const direction = readDirection(payload.new) ?? readDirection(payload.old);
     if (direction !== 'outbound') return;
+    opts.onEvent({ type: 'queue_changed' });
+  };
+
+  // Commitments: any insert / update to guest_commitments triggers a reload.
+  // We don't post-filter by status here — the queue endpoint enforces
+  // `status='pending_ack'` server-side, so a refetch shows or hides the
+  // card per the current row state. Events on rows transitioning into OR
+  // out of `pending_ack` are both interesting (a new heads-up appears or
+  // an acknowledged/cancelled one disappears).
+  const handleCommitments = (
+    _payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>,
+  ): void => {
     opts.onEvent({ type: 'queue_changed' });
   };
 
@@ -88,7 +103,7 @@ export function createQueueChannel(opts: QueueChannelOptions): QueueChannel {
         table: 'messages',
         filter: venueFilter,
       },
-      handle,
+      handleMessages,
     )
     .on(
       'postgres_changes',
@@ -98,7 +113,27 @@ export function createQueueChannel(opts: QueueChannelOptions): QueueChannel {
         table: 'messages',
         filter: venueFilter,
       },
-      handle,
+      handleMessages,
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'guest_commitments',
+        filter: venueFilter,
+      },
+      handleCommitments,
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'guest_commitments',
+        filter: venueFilter,
+      },
+      handleCommitments,
     )
     .subscribe((status) => {
       const reconnected =

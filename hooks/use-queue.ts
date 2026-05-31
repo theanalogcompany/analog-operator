@@ -3,19 +3,36 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueueRealtime } from '@/hooks/use-queue-realtime';
 import { type ApiError } from '@/lib/api/errors';
 import { type PendingDraft, listQueue } from '@/lib/api/queue';
+import { type HeadsUpCommitment } from '@/lib/api/commitments';
 import { type QueueChannelEvent } from '@/lib/realtime/queue-channel';
 
 export type QueueStatus = 'loading' | 'ready' | 'error';
 
 export type UseQueueResult = {
   drafts: PendingDraft[];
+  commitments: HeadsUpCommitment[];
   status: QueueStatus;
   error: ApiError | null;
+  /**
+   * Refetch the queue from the server. Synchronously flips `status` to
+   * `'loading'` before awaiting `listQueue` — this pre-await ordering is
+   * load-bearing for `app/queue/index.tsx::handleDecline`, which fires
+   * `reload()` and navigates immediately in the same tick (so the edit
+   * screen reads `status === 'loading'` and renders a spinner instead of
+   * the terminal "no longer pending" fallback while `queue.drafts`
+   * catches up). Pushing `setStatus('loading')` behind the network call
+   * would reintroduce the UAT #3 dead-end symptom.
+   */
   reload: () => Promise<void>;
   /** Remove a draft from the local list (after a swipe commit, before the API resolves). */
-  optimisticallyRemove: (messageId: string) => void;
+  optimisticallyRemoveDraft: (messageId: string) => void;
   /** Restore a draft into the local list (called on API failure or undo). */
-  restore: (draft: PendingDraft) => void;
+  restoreDraft: (draft: PendingDraft) => void;
+  /** Remove a commitment from the local list (after swipe-right / swipe-left). */
+  optimisticallyRemoveCommitment: (commitmentId: string) => void;
+  /** Restore a commitment (called on API failure for the acknowledge or decline path,
+   *  EXCEPT the decline 409 case — that's an already-cancelled signal, no restore). */
+  restoreCommitment: (commitment: HeadsUpCommitment) => void;
 };
 
 // FIFO: `pendingSinceMs` is elapsed milliseconds since the draft was
@@ -24,8 +41,18 @@ function sortByPendingDesc(list: PendingDraft[]): PendingDraft[] {
   return [...list].sort((a, b) => b.pendingSinceMs - a.pendingSinceMs);
 }
 
+// FIFO for commitments: older `created_at` first. Wire is ISO string.
+function sortCommitmentsByCreatedAsc(
+  list: HeadsUpCommitment[],
+): HeadsUpCommitment[] {
+  return [...list].sort(
+    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
+  );
+}
+
 export function useQueue(): UseQueueResult {
   const [drafts, setDrafts] = useState<PendingDraft[]>([]);
+  const [commitments, setCommitments] = useState<HeadsUpCommitment[]>([]);
   const [status, setStatus] = useState<QueueStatus>('loading');
   const [error, setError] = useState<ApiError | null>(null);
   const mounted = useRef(true);
@@ -36,7 +63,8 @@ export function useQueue(): UseQueueResult {
     const result = await listQueue();
     if (!mounted.current) return;
     if (result.ok) {
-      setDrafts(sortByPendingDesc(result.data));
+      setDrafts(sortByPendingDesc(result.data.drafts));
+      setCommitments(sortCommitmentsByCreatedAsc(result.data.commitments));
       setStatus('ready');
     } else {
       setError(result.error);
@@ -53,8 +81,8 @@ export function useQueue(): UseQueueResult {
   }, [reload]);
 
   // All realtime events trigger a reload — we don't patch state locally
-  // because the raw `messages` payload doesn't carry the JOINed
-  // PendingDraft fields the queue needs.
+  // because the raw `messages` / `guest_commitments` payloads don't carry
+  // the joined fields the queue needs.
   const onRealtimeEvent = useCallback(
     (_event: QueueChannelEvent): void => {
       void reload();
@@ -63,16 +91,43 @@ export function useQueue(): UseQueueResult {
   );
   useQueueRealtime(onRealtimeEvent);
 
-  const optimisticallyRemove = useCallback((messageId: string): void => {
+  const optimisticallyRemoveDraft = useCallback((messageId: string): void => {
     setDrafts((prev) => prev.filter((d) => d.messageId !== messageId));
   }, []);
 
-  const restore = useCallback((draft: PendingDraft): void => {
+  const restoreDraft = useCallback((draft: PendingDraft): void => {
     setDrafts((prev) => {
       if (prev.some((d) => d.messageId === draft.messageId)) return prev;
       return sortByPendingDesc([...prev, draft]);
     });
   }, []);
 
-  return { drafts, status, error, reload, optimisticallyRemove, restore };
+  const optimisticallyRemoveCommitment = useCallback(
+    (commitmentId: string): void => {
+      setCommitments((prev) => prev.filter((c) => c.id !== commitmentId));
+    },
+    [],
+  );
+
+  const restoreCommitment = useCallback(
+    (commitment: HeadsUpCommitment): void => {
+      setCommitments((prev) => {
+        if (prev.some((c) => c.id === commitment.id)) return prev;
+        return sortCommitmentsByCreatedAsc([...prev, commitment]);
+      });
+    },
+    [],
+  );
+
+  return {
+    drafts,
+    commitments,
+    status,
+    error,
+    reload,
+    optimisticallyRemoveDraft,
+    restoreDraft,
+    optimisticallyRemoveCommitment,
+    restoreCommitment,
+  };
 }
