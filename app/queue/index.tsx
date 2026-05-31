@@ -271,10 +271,15 @@ export default function QueueScreen() {
   // endpoint (TAC-299) which: (a) generates an apology decline draft and
   // persists it as `messages.review_state='pending'` (NOT sent), and (b)
   // transitions the commitment to `cancelled` server-side. On success we
-  // route to the existing edit screen on the returned `messageId` — the
-  // standard edit/send flow takes over, and the operator either sends or
-  // skips. On 409 `invalid_state` (commitment already cancelled, e.g.
-  // re-swipe-left), no restore and a softer "already handled" toast.
+  // refetch the queue silently (so the new draft lands in `queue.drafts`)
+  // and then route to the edit screen — the edit screen looks the draft up
+  // by `messageId` from `queue.drafts`, so without the reload it would
+  // render its "no longer pending" fallback and the operator would need to
+  // force-restart the app to see the prefilled apology (TAC-298 UAT #3).
+  // The silent flag prevents the queue from flashing a loading spinner
+  // mid-swipe; the standard edit/send flow takes over from there. On 409
+  // `invalid_state` (commitment already cancelled, e.g. re-swipe-left), no
+  // restore and a softer "already handled" toast.
   const handleDecline = async (
     commitment: HeadsUpCommitment,
   ): Promise<void> => {
@@ -292,6 +297,18 @@ export default function QueueScreen() {
       }
       queue.restoreCommitment(commitment);
       showToast("Couldn't draft decline — tap to retry");
+      return;
+    }
+    const reloadResult = await queue.reload({ silent: true });
+    if (!reloadResult.ok) {
+      // Decline succeeded server-side (commitment cancelled, draft persisted)
+      // but the silent refetch failed — navigating now would land the
+      // operator on the "no longer pending" fallback because the new draft
+      // isn't in queue.drafts yet. Surface a toast instead so they know
+      // the decline took, then let pull-to-refresh / next mount pick the
+      // draft up. (Skipping this guard re-introduces the UAT #3 symptom on
+      // a flaky refetch.)
+      showToast('Decline saved — refresh to edit the draft');
       return;
     }
     router.push({

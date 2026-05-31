@@ -8,12 +8,31 @@ import { type QueueChannelEvent } from '@/lib/realtime/queue-channel';
 
 export type QueueStatus = 'loading' | 'ready' | 'error';
 
+/**
+ * Reload options. `silent: true` skips the visible `status` transitions —
+ * the queue stays on its current `ready` view while the refetch is in
+ * flight, and a failure does NOT flip the queue to `error` (which would
+ * wipe the visible cards). Used when the caller has a follow-up navigation
+ * that needs the latest server state in `queue.drafts` (TAC-298 UAT #3:
+ * swipe-left → draft-decline → reload({silent}) → router.push edit screen)
+ * but doesn't want the queue to flash a loading spinner mid-swipe.
+ *
+ * Silent callers MUST branch on the returned `{ok}` — `reload` swallows
+ * errors at the screen level in silent mode, so the caller is the only
+ * surface that can recover. Navigating to an edit screen on a silent
+ * failure leaves the operator at the "no longer pending" fallback (the
+ * exact UAT #3 bug); a non-silent failure flips status to 'error' and the
+ * queue screen renders the retry UI itself.
+ */
+export type ReloadOptions = { silent?: boolean };
+export type ReloadResult = { ok: boolean };
+
 export type UseQueueResult = {
   drafts: PendingDraft[];
   commitments: HeadsUpCommitment[];
   status: QueueStatus;
   error: ApiError | null;
-  reload: () => Promise<void>;
+  reload: (options?: ReloadOptions) => Promise<ReloadResult>;
   /** Remove a draft from the local list (after a swipe commit, before the API resolves). */
   optimisticallyRemoveDraft: (messageId: string) => void;
   /** Restore a draft into the local list (called on API failure or undo). */
@@ -47,20 +66,32 @@ export function useQueue(): UseQueueResult {
   const [error, setError] = useState<ApiError | null>(null);
   const mounted = useRef(true);
 
-  const reload = useCallback(async (): Promise<void> => {
-    setStatus('loading');
-    setError(null);
-    const result = await listQueue();
-    if (!mounted.current) return;
-    if (result.ok) {
-      setDrafts(sortByPendingDesc(result.data.drafts));
-      setCommitments(sortCommitmentsByCreatedAsc(result.data.commitments));
-      setStatus('ready');
-    } else {
-      setError(result.error);
-      setStatus('error');
-    }
-  }, []);
+  const reload = useCallback(
+    async (options: ReloadOptions = {}): Promise<ReloadResult> => {
+      if (!options.silent) {
+        setStatus('loading');
+        setError(null);
+      }
+      const result = await listQueue();
+      if (!mounted.current) return { ok: false };
+      if (result.ok) {
+        setDrafts(sortByPendingDesc(result.data.drafts));
+        setCommitments(sortCommitmentsByCreatedAsc(result.data.commitments));
+        setStatus('ready');
+        return { ok: true };
+      }
+      if (!options.silent) {
+        setError(result.error);
+        setStatus('error');
+      }
+      // Silent failure: leave the queue on its current `ready` view rather
+      // than wiping it to the error screen. The caller (e.g.
+      // app/queue/index.tsx::handleDecline) MUST branch on `{ok}` to
+      // decide how to recover.
+      return { ok: false };
+    },
+    [],
+  );
 
   useEffect(() => {
     mounted.current = true;
