@@ -106,22 +106,84 @@ describe('HeadsUpCard — thread fetch on mount (conditional on sourceMessageId)
     expect(getThreadMock).not.toHaveBeenCalled();
   });
 
-  it('renders fetched inbound messages once getThread resolves', async () => {
+  it('renders the source message inline once getThread resolves', async () => {
+    // The bubble that renders inline is the one whose id matches
+    // sourceMessageId — that's the inbound that triggered the commitment,
+    // the context the operator needs to see.
     getThreadMock.mockResolvedValueOnce({
       ok: true,
       data: [
         {
-          id: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+          id: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
           direction: 'inbound',
-          body: 'I promised the latte earlier',
+          body: 'omw walking over now',
           createdAt: '2026-05-30T15:50:00.000Z',
         },
       ],
     });
     render(<HeadsUpCard commitment={makeCommitment()} />);
     await waitFor(() => {
-      expect(screen.getByText('I promised the latte earlier')).toBeTruthy();
+      expect(screen.getByText('omw walking over now')).toBeTruthy();
     });
+  });
+
+  it('renders ONLY the source message when getThread returns a multi-message thread (TAC-298 UAT #2 regression guard)', async () => {
+    // The server's `/thread` endpoint returns the FULL conversation (TAC-277).
+    // The card MUST NOT render every message inline — on a real pilot guest
+    // that's dozens of bubbles spanning days, which collapses the card into
+    // a screen-dominating wall of message bubbles. The fix filters to the
+    // SINGLE message whose id matches sourceMessageId; this test asserts the
+    // unrelated history bubbles never render.
+    getThreadMock.mockResolvedValueOnce({
+      ok: true,
+      data: [
+        {
+          id: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+          direction: 'inbound',
+          body: 'omw walking over now',
+          createdAt: '2026-05-30T15:50:00.000Z',
+        },
+        {
+          id: 'aa11aaaa-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+          direction: 'inbound',
+          body: 'hello from days ago',
+          createdAt: '2026-05-28T10:00:00.000Z',
+        },
+        {
+          id: 'bb22bbbb-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+          direction: 'outbound',
+          body: 'thanks for stopping by',
+          createdAt: '2026-05-28T10:05:00.000Z',
+        },
+      ],
+    });
+    render(<HeadsUpCard commitment={makeCommitment()} />);
+    await waitFor(() => {
+      expect(screen.getByText('omw walking over now')).toBeTruthy();
+    });
+    // Historical bubbles do NOT render — only the source message bubble does.
+    expect(screen.queryByText('hello from days ago')).toBeNull();
+    expect(screen.queryByText('thanks for stopping by')).toBeNull();
+  });
+
+  it('renders no thread block when source message id is absent from the response (graceful drift)', async () => {
+    // Server drift / deleted row: sourceMessageId not in the returned thread.
+    // Render no thread block — FlaggedBecause + CodeChip carry the context.
+    getThreadMock.mockResolvedValueOnce({
+      ok: true,
+      data: [
+        {
+          id: 'cccccccc-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+          direction: 'inbound',
+          body: 'unrelated message',
+          createdAt: '2026-05-30T15:50:00.000Z',
+        },
+      ],
+    });
+    render(<HeadsUpCard commitment={makeCommitment()} />);
+    // Other card content still renders; the unrelated message does not.
+    expect(screen.getByText('Maya')).toBeTruthy();
+    expect(screen.queryByText('unrelated message')).toBeNull();
   });
 
   it('leaves the thread block empty when getThread errors (graceful degradation)', async () => {

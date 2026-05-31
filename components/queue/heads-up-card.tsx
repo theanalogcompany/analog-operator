@@ -41,11 +41,18 @@ const cardShadow = {
 } as const;
 
 export function HeadsUpCard({ commitment }: Props) {
-  // Inbound thread render is conditional on `sourceMessageId` (TAC-299
-  // payload). Falsy → render only flagged-because + code + status (still a
-  // useful card; just thinner). Per the ticket: "tolerant-Zod on the client
-  // (graceful degradation if a field is absent)."
-  const [thread, setThread] = useState<ThreadMessage[]>([]);
+  // Inline-context bubble: the SINGLE inbound that triggered the commitment
+  // (the row whose id === sourceMessageId). NOT the full thread —
+  // `getThread()` returns the entire conversation (TAC-277), which on a real
+  // pilot guest is dozens of bubbles spanning days, and rendering all of
+  // them inline made the card a screen-dominating wall of message bubbles
+  // that the operator mistook for the edit screen having auto-navigated.
+  // The point of `sourceMessageId` (TAC-299) is to surface THAT specific
+  // message — "here's what the guest said that flagged this" — not to
+  // re-render the conversation view. If the source message isn't in the
+  // response (server drift, deleted row), render no thread block at all
+  // and let FlaggedBecause + CodeChip carry the context. (TAC-298 UAT #2.)
+  const [contextMessage, setContextMessage] = useState<ThreadMessage | null>(null);
   const { sourceMessageId } = commitment;
 
   useEffect(() => {
@@ -55,7 +62,8 @@ export function HeadsUpCard({ commitment }: Props) {
       const result = await getThread(sourceMessageId);
       if (cancelled) return;
       if (result.ok) {
-        setThread(result.data);
+        const source = result.data.find((m) => m.id === sourceMessageId) ?? null;
+        setContextMessage(source);
       }
       // On error: leave thread empty (degrades gracefully — the rest of the
       // card still renders). Uniform with the edit screen's getThread
@@ -104,36 +112,34 @@ export function HeadsUpCard({ commitment }: Props) {
 
       <View className="h-[0.5px] bg-hairline" style={{ marginHorizontal: 18 }} />
 
-      {thread.length > 0 ? (
+      {contextMessage !== null ? (
         <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
-          {thread.map((m) => (
-            <View
-              key={m.id}
-              className={
-                m.direction === 'inbound'
-                  ? 'self-start rounded-[18px] bg-inbound'
-                  : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
-              }
+          <View
+            className={
+              contextMessage.direction === 'inbound'
+                ? 'self-start rounded-[18px] bg-inbound'
+                : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
+            }
+            style={{
+              maxWidth: '86%',
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderBottomLeftRadius: contextMessage.direction === 'inbound' ? 6 : 18,
+              borderBottomRightRadius:
+                contextMessage.direction === 'outbound' ? 6 : 18,
+            }}
+          >
+            <Text
+              className="font-inter-tight"
               style={{
-                maxWidth: '86%',
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderBottomLeftRadius: m.direction === 'inbound' ? 6 : 18,
-                borderBottomRightRadius: m.direction === 'outbound' ? 6 : 18,
+                color: contextMessage.direction === 'inbound' ? '#F0EDE7' : '#1C1814',
+                fontSize: 14,
+                lineHeight: 20,
               }}
             >
-              <Text
-                className="font-inter-tight"
-                style={{
-                  color: m.direction === 'inbound' ? '#F0EDE7' : '#1C1814',
-                  fontSize: 14,
-                  lineHeight: 20,
-                }}
-              >
-                {m.body}
-              </Text>
-            </View>
-          ))}
+              {contextMessage.body}
+            </Text>
+          </View>
         </View>
       ) : null}
 
