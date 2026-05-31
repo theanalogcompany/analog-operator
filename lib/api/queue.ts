@@ -86,9 +86,20 @@ export type PendingDraft = z.infer<typeof PendingDraftSchema>;
 // analog-guest/app/api/operator/queue/route.ts. The `commitments` field was
 // added in TAC-297 + extended in TAC-299; `.default([])` keeps this client
 // parsing cleanly against older deploys / future drift. (TAC-298.)
-const ListQueueResponseSchema = z.object({
+//
+// `commitments` is parsed as `z.array(z.unknown())` at the envelope level so
+// the OUTER parse never fails on a single drifted item. Each item is then
+// run through `HeadsUpCommitmentSchema.safeParse` individually — successful
+// items render; failures are dropped with a __DEV__ warn carrying the field
+// path. The same cross-repo rationale that drove tolerant nullable+default()
+// at the FIELD level (CLAUDE.md "Tolerant Zod chains during cross-repo
+// rollouts") applies at the ARRAY level: one drifted commitment must never
+// cascade into the entire queue going error-state. Drafts stay strict at the
+// schema level — that contract has been live and stable since TAC-258. (TAC-298
+// UAT follow-up.)
+const ListQueueEnvelopeSchema = z.object({
   drafts: z.array(PendingDraftSchema),
-  commitments: z.array(HeadsUpCommitmentSchema).default([]),
+  commitments: z.array(z.unknown()).default([]),
 });
 
 export type ListQueueResult = {
@@ -128,11 +139,34 @@ export async function listQueue(): Promise<Result<ListQueueResult>> {
   } catch (e) {
     return parseFailure(e instanceof Error ? e.message : 'invalid json');
   }
-  const parsed = ListQueueResponseSchema.safeParse(json);
+  const parsed = ListQueueEnvelopeSchema.safeParse(json);
   if (!parsed.success) return parseFailure(parsed.error.message);
+  const commitments: HeadsUpCommitment[] = [];
+  for (const raw of parsed.data.commitments) {
+    const r = HeadsUpCommitmentSchema.safeParse(raw);
+    if (r.success) {
+      commitments.push(r.data);
+    } else if (__DEV__) {
+      // Drift surfaces here. Most likely cause is a server field whose shape
+      // diverged from `HeadsUpCommitmentSchema` (e.g. an additive enum value
+      // or a UUID field that came back malformed) — issues include the
+      // failing field path, which is the fast path to the root cause.
+      console.warn(
+        '[lib/api/queue] dropped malformed commitment',
+        JSON.stringify(r.error.issues),
+        'raw=',
+        raw,
+      );
+    }
+  }
+  if (__DEV__ && parsed.data.commitments.length !== commitments.length) {
+    console.warn(
+      `[lib/api/queue] commitments raw=${parsed.data.commitments.length} parsed=${commitments.length} (drift: ${parsed.data.commitments.length - commitments.length} dropped)`,
+    );
+  }
   return ok({
     drafts: parsed.data.drafts,
-    commitments: parsed.data.commitments,
+    commitments,
   });
 }
 

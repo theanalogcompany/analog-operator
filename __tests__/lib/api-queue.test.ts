@@ -462,4 +462,69 @@ describe('lib/api/queue HTTP shape', () => {
       expect(result.data.commitments).toEqual([]);
     }
   });
+
+  it('listQueue keeps healthy commitments when a sibling commitment is malformed (per-item resilience)', async () => {
+    // TAC-298 UAT follow-up: a single drifted commitment must NOT take the
+    // whole queue down. The envelope parse uses z.array(z.unknown()) so the
+    // outer parse succeeds; per-item safeParse then drops the malformed entry
+    // and logs in dev. Regression guard against reverting to
+    // z.array(HeadsUpCommitmentSchema), which would error-state the queue.
+    const healthy = {
+      id: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+      type: 'comp',
+      guest: { name: 'Demo' },
+      description: 'oat latte on the house',
+      code: 'JX6E',
+      expected_arrival: '2026-05-31T16:00:00.000Z',
+      created_at: '2026-05-31T15:55:00.000Z',
+      recognitionState: 'returning',
+      sourceMessageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    };
+    const malformed = {
+      ...healthy,
+      id: 'f47ac10b-58cc-4372-a567-0e02b2c3d480',
+      // Drift: a future server adds a new enum value not in the client.
+      recognitionState: 'vip',
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ drafts: [], commitments: [healthy, malformed] }),
+        { status: 200 },
+      ),
+    );
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await listQueue();
+    warnSpy.mockRestore();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.commitments).toHaveLength(1);
+      expect(result.data.commitments[0].id).toBe(healthy.id);
+      expect(result.data.commitments[0].guestName).toBe('Demo');
+    }
+  });
+
+  it('listQueue parses successfully with empty commitments when ALL commitments are malformed', async () => {
+    // Edge case: every server-side commitment fails to parse. The queue still
+    // resolves ok with commitments=[] so the operator sees drafts (if any)
+    // and EmptyState (if not), never a blocking error screen.
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          drafts: [],
+          commitments: [
+            { id: 'not-a-uuid', wrong: 'shape' },
+            { totally: 'unrelated' },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await listQueue();
+    warnSpy.mockRestore();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.commitments).toEqual([]);
+    }
+  });
 });
