@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -196,23 +197,50 @@ export default function EditScreen() {
   );
 
   if (!draft) {
+    // The draft might not be in queue.drafts yet — most commonly because we
+    // just navigated here from `handleDecline` on the queue screen, which
+    // fires a background reload and navigates immediately so the operator
+    // doesn't wait through a second blocking round trip after declineDraft.
+    // While that reload is in flight (`status === 'loading'`), render a
+    // spinner instead of the terminal "no longer pending" fallback — the
+    // freshly-created draft will land in `queue.drafts` within a few hundred
+    // ms and this view will re-render. The "no longer pending" fallback is
+    // reserved for the case where the queue HAS loaded and the draft is
+    // genuinely absent (gone from the server side). Error state renders the
+    // same fallback but with a retry button. (TAC-298 UAT #4.)
+    if (queue.status === 'loading') {
+      return (
+        <SafeAreaView className="flex-1 bg-white">
+          <View
+            accessibilityRole="progressbar"
+            accessibilityLabel="Loading draft"
+            className="flex-1 items-center justify-center"
+          >
+            <ActivityIndicator color="#C66A4A" />
+          </View>
+        </SafeAreaView>
+      );
+    }
+    const isError = queue.status === 'error';
     return (
       <SafeAreaView className="flex-1 bg-white">
         <View className="flex-1 items-center justify-center px-8">
           <Text className="font-fraunces text-ink" style={{ fontSize: 22, textAlign: 'center' }}>
-            That draft is no longer pending.
+            {isError
+              ? "Couldn't load the draft."
+              : 'That draft is no longer pending.'}
           </Text>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => (isError ? void queue.reload() : router.back())}
             accessibilityRole="button"
-            accessibilityLabel="Back to queue"
+            accessibilityLabel={isError ? 'Try loading the draft again' : 'Back to queue'}
             className="mt-6 rounded-lg border-[0.5px] border-hairline px-5 py-3"
           >
             <Text
               className="font-inter-tight-medium uppercase text-ink"
               style={{ fontSize: 10, letterSpacing: 1.8 }}
             >
-              Back
+              {isError ? 'Try again' : 'Back'}
             </Text>
           </Pressable>
         </View>

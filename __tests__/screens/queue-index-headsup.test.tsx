@@ -74,7 +74,7 @@ const mockQueue: UseQueueResult = {
   commitments: [commitment],
   status: 'ready',
   error: null,
-  reload: jest.fn().mockResolvedValue({ ok: true }),
+  reload: jest.fn().mockResolvedValue(undefined),
   optimisticallyRemoveDraft: jest.fn(),
   restoreDraft: jest.fn(),
   optimisticallyRemoveCommitment: jest.fn(),
@@ -127,11 +127,7 @@ beforeEach(() => {
   (mockQueue.optimisticallyRemoveCommitment as jest.Mock).mockReset();
   (mockQueue.restoreCommitment as jest.Mock).mockReset();
   (mockQueue.reload as jest.Mock).mockReset();
-  // Default to a successful silent reload so the handleDecline happy path
-  // routes through to router.push. Individual tests override this with
-  // mockResolvedValueOnce / mockImplementation when they need to exercise
-  // the silent-failure branch or observe call ordering.
-  (mockQueue.reload as jest.Mock).mockResolvedValue({ ok: true });
+  (mockQueue.reload as jest.Mock).mockResolvedValue(undefined);
   lastCardStackProps = null;
   __resetTapStateForTests();
 });
@@ -204,48 +200,31 @@ describe('Heads-up card no-send guard (swipe-left = decline draft ONLY, never di
     });
   });
 
-  it('awaits a silent queue.reload BEFORE navigating to /queue/edit (TAC-298 UAT #3 regression guard)', async () => {
-    // The edit screen looks up the draft from queue.drafts by messageId.
-    // Without the reload, queue.drafts doesn't yet contain the freshly-
-    // created decline draft, so the edit screen renders its "no longer
-    // pending" fallback and the operator has to force-restart the app to
-    // see the prefilled apology. The fix is: refetch the queue silently
-    // (no loading flash) BEFORE router.push so the lookup succeeds. This
-    // test asserts both that reload is called with {silent:true} and that
-    // it completes before navigation fires.
+  it('fires queue.reload WITHOUT awaiting before navigating (TAC-298 UAT #4 perf fix)', async () => {
+    // The prior UAT #3 fix awaited the reload before router.push, which
+    // chained a second full listQueue round trip onto the already-slow
+    // declineDraft API and created a 5–10s perceived wait between the
+    // swipe and the edit screen opening. The fix is to fire the reload
+    // and navigate immediately — the edit screen handles the brief window
+    // where queue.drafts hasn't caught up yet via its `status === 'loading'`
+    // branch (see __tests__/screens/queue-edit.test.tsx). This test makes
+    // reload's promise hang indefinitely; if the handler awaits it the
+    // test hangs too. If it fires-and-forgets, router.push fires
+    // synchronously after the reload call.
     const callOrder: string[] = [];
-    (mockQueue.reload as jest.Mock).mockImplementation(async () => {
+    (mockQueue.reload as jest.Mock).mockImplementation(() => {
       callOrder.push('reload');
-      return { ok: true };
+      return new Promise(() => undefined); // never resolves
     });
     mockRouterPush.mockImplementation(() => {
       callOrder.push('push');
     });
     render(<QueueScreen />);
     await act(async () => {
-      lastCardStackProps!.headsUpHandlers.onDecline(commitment);
+      await lastCardStackProps!.headsUpHandlers.onDecline(commitment);
     });
-    expect(mockQueue.reload).toHaveBeenCalledWith({ silent: true });
+    expect(mockQueue.reload).toHaveBeenCalledTimes(1);
     expect(callOrder).toEqual(['reload', 'push']);
-  });
-
-  it('on silent reload failure after a successful declineDraft, shows a toast and does NOT navigate (avoids the "no longer pending" trap)', async () => {
-    // Decline succeeded server-side (commitment cancelled, draft persisted)
-    // but the silent refetch failed — navigating now would land the
-    // operator on the edit screen's "no longer pending" fallback because
-    // the new draft isn't in the stale queue.drafts. The handler MUST
-    // detect this and skip the push (with a recovery toast).
-    const { showToast } = jest.requireMock('@/components/auth/toast');
-    (showToast as jest.Mock).mockClear();
-    (mockQueue.reload as jest.Mock).mockResolvedValueOnce({ ok: false });
-    render(<QueueScreen />);
-    await act(async () => {
-      lastCardStackProps!.headsUpHandlers.onDecline(commitment);
-    });
-    expect(mockRouterPush).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringMatching(/refresh.*edit.*draft/i),
-    );
   });
 
   it('on 409 invalid_state, does NOT restore (commitment is already cancelled server-side) and reloads', async () => {

@@ -145,12 +145,43 @@ describe('EditScreen', () => {
     );
   });
 
-  it('renders the "draft no longer pending" fallback when the draft is gone', () => {
+  it('renders the "draft no longer pending" fallback when the draft is gone (queue is ready, draft truly absent)', () => {
     mockQueue.drafts = [];
+    mockQueue.status = 'ready';
     render(<EditScreen />);
     // No thread fetch fires here (draft is null, effect early-returns), so
     // no drain needed.
     expect(screen.getByText('That draft is no longer pending.')).toBeTruthy();
+    mockQueue.status = 'ready';
+  });
+
+  it('renders a loading spinner (NOT "no longer pending") when the draft is missing and the queue is mid-reload (TAC-298 UAT #4)', () => {
+    // After swipe-left on a heads-up card, handleDecline fires
+    // queue.reload() and navigates immediately — the freshly-created
+    // decline draft isn't in queue.drafts yet but the queue is in flight.
+    // The edit screen must show a spinner during this brief window
+    // instead of the terminal "no longer pending" fallback (which would
+    // re-introduce the UAT #3 dead-end symptom).
+    mockQueue.drafts = [];
+    mockQueue.status = 'loading';
+    render(<EditScreen />);
+    expect(screen.getByLabelText('Loading draft')).toBeTruthy();
+    expect(screen.queryByText('That draft is no longer pending.')).toBeNull();
+    mockQueue.status = 'ready';
+  });
+
+  it('renders an error fallback with retry when the draft is missing and the queue reload failed', () => {
+    // If the background reload after declineDraft fails, the edit screen
+    // surfaces the error with a retry button (instead of leaving the
+    // spinner spinning forever or showing the misleading "no longer
+    // pending" copy).
+    mockQueue.drafts = [];
+    mockQueue.status = 'error';
+    render(<EditScreen />);
+    expect(screen.getByText("Couldn't load the draft.")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Try loading the draft again'));
+    expect(mockQueue.reload).toHaveBeenCalled();
+    mockQueue.status = 'ready';
   });
 
   it('on edit failure: clears undo + restores card + re-opens takeover with typed body', async () => {

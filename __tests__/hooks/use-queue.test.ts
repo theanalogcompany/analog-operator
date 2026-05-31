@@ -1,8 +1,13 @@
 // Hook-level tests for `useQueue`. Most behavior is covered end-to-end
-// through the queue screen tests (`__tests__/screens/queue-index*.test.tsx`),
-// but the `reload({silent})` contract has direct callers (`handleDecline`
-// awaits it before navigating to /queue/edit per TAC-298 UAT #3) so we
-// guard its semantics in isolation.
+// through the queue screen tests (`__tests__/screens/queue-index*.test.tsx`).
+// What's worth pinning at the hook level is the load-bearing pre-await
+// ordering of `setStatus('loading')` — `app/queue/index.tsx::handleDecline`
+// fires `reload()` and navigates immediately in the same tick, relying on
+// the synchronous status flip so the edit screen mounts with
+// `status === 'loading'` and shows a spinner instead of the terminal
+// "no longer pending" fallback while `queue.drafts` catches up. If a
+// future refactor pushes the setState behind the network call, that
+// invariant breaks and the UAT #3 dead-end symptom returns.
 
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
@@ -17,31 +22,11 @@ jest.mock('@/lib/api/queue', () => {
   };
 });
 
-// useQueueRealtime opens a Supabase channel; stub it out so the hook tests
-// don't touch network or Realtime singletons.
 jest.mock('@/hooks/use-queue-realtime', () => ({
   useQueueRealtime: () => undefined,
 }));
 
 const listQueueMock = queueApi.listQueue as jest.Mock;
-
-const draft = {
-  messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-  venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-  venueSlug: 'mock',
-  guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-  guestDisplayName: 'Maya',
-  guestPhoneFallback: '+15551110001',
-  draftBody: 'sorry, we are out',
-  category: null,
-  voiceFidelity: null,
-  reviewReason: null,
-  recognitionState: null,
-  agentReasoning: null,
-  pendingSinceMs: 60_000,
-  recentContext: [],
-  langfuseTraceId: null,
-};
 
 beforeEach(() => {
   listQueueMock.mockReset();
@@ -51,21 +36,45 @@ beforeEach(() => {
   });
 });
 
-describe('useQueue.reload — default behavior', () => {
-  it('flips status to "loading" while in flight, then to "ready" on success', async () => {
+describe('useQueue.reload', () => {
+  it('flips status to "loading" synchronously (before awaiting listQueue) — TAC-298 UAT #4 invariant', async () => {
     const { result } = renderHook(() => useQueue());
     await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    // Suspend the next listQueue resolution so we can observe status
+    // mid-flight. The status flip MUST happen synchronously when reload
+    // is called, before the network round trip — handleDecline depends
+    // on this ordering to mount the edit screen in a 'loading' state
+    // (renders a spinner instead of the terminal "no longer pending"
+    // fallback) while the freshly-created decline draft catches up.
+    let resolveListQueue: (value: {
+      ok: true;
+      data: { drafts: never[]; commitments: never[] };
+    }) => void = () => undefined;
+    listQueueMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveListQueue = resolve;
+        }),
+    );
+
+    let reloadPromise: Promise<void> = Promise.resolve();
+    act(() => {
+      reloadPromise = result.current.reload();
+    });
+    expect(result.current.status).toBe('loading');
+
     await act(async () => {
-      await result.current.reload();
+      resolveListQueue({
+        ok: true,
+        data: { drafts: [], commitments: [] },
+      });
+      await reloadPromise;
     });
     expect(result.current.status).toBe('ready');
   });
 
   it('flips status to "error" on failure', async () => {
-    listQueueMock.mockResolvedValueOnce({
-      ok: true,
-      data: { drafts: [], commitments: [] },
-    });
     const { result } = renderHook(() => useQueue());
     await waitFor(() => expect(result.current.status).toBe('ready'));
     listQueueMock.mockResolvedValueOnce({
@@ -76,99 +85,5 @@ describe('useQueue.reload — default behavior', () => {
       await result.current.reload();
     });
     expect(result.current.status).toBe('error');
-  });
-});
-
-describe('useQueue.reload({silent: true}) — TAC-298 UAT #3', () => {
-  it('does NOT flip status away from "ready" while the silent reload is in flight', async () => {
-    const { result } = renderHook(() => useQueue());
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-
-    // Suspend the next listQueue resolution so we can observe status
-    // mid-flight. Without the silent flag, status would flip to 'loading'
-    // and the queue screen would flash an ActivityIndicator mid-swipe.
-    let resolveListQueue: (
-      value: { ok: true; data: { drafts: typeof draft[]; commitments: never[] } },
-    ) => void = () => undefined;
-    listQueueMock.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveListQueue = resolve;
-        }),
-    );
-
-    let reloadPromise: Promise<{ ok: boolean }> = Promise.resolve({ ok: true });
-    act(() => {
-      reloadPromise = result.current.reload({ silent: true });
-    });
-    expect(result.current.status).toBe('ready');
-
-    await act(async () => {
-      resolveListQueue({
-        ok: true,
-        data: { drafts: [draft], commitments: [] },
-      });
-      await reloadPromise;
-    });
-    expect(result.current.status).toBe('ready');
-    expect(result.current.drafts).toHaveLength(1);
-    expect(result.current.drafts[0].messageId).toBe(draft.messageId);
-  });
-
-  it('does NOT flip status to "error" on silent failure — keeps the visible queue intact', async () => {
-    const { result } = renderHook(() => useQueue());
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-    listQueueMock.mockResolvedValueOnce({
-      ok: false,
-      error: { kind: 'HTTP', status: 500, message: 'boom' },
-    });
-    await act(async () => {
-      await result.current.reload({ silent: true });
-    });
-    // Silent failure: status stays 'ready' so the queue screen doesn't
-    // wipe to the error UI mid-swipe. The caller (handleDecline) decides
-    // how to recover.
-    expect(result.current.status).toBe('ready');
-  });
-
-  it('still updates drafts/commitments on silent success (the whole point — handleDecline relies on this)', async () => {
-    const { result } = renderHook(() => useQueue());
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-    listQueueMock.mockResolvedValueOnce({
-      ok: true,
-      data: { drafts: [draft], commitments: [] },
-    });
-    await act(async () => {
-      await result.current.reload({ silent: true });
-    });
-    expect(result.current.drafts).toHaveLength(1);
-    expect(result.current.drafts[0].messageId).toBe(draft.messageId);
-  });
-
-  it('returns {ok:true} on silent success and {ok:false} on silent failure (handleDecline branches on this)', async () => {
-    const { result } = renderHook(() => useQueue());
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-
-    listQueueMock.mockResolvedValueOnce({
-      ok: true,
-      data: { drafts: [], commitments: [] },
-    });
-    let silentOk: { ok: boolean } = { ok: false };
-    await act(async () => {
-      silentOk = await result.current.reload({ silent: true });
-    });
-    expect(silentOk).toEqual({ ok: true });
-
-    listQueueMock.mockResolvedValueOnce({
-      ok: false,
-      error: { kind: 'NETWORK', message: 'offline' },
-    });
-    let silentFail: { ok: boolean } = { ok: true };
-    await act(async () => {
-      silentFail = await result.current.reload({ silent: true });
-    });
-    expect(silentFail).toEqual({ ok: false });
-    // Status stays ready even on silent failure — the caller decides.
-    expect(result.current.status).toBe('ready');
   });
 });

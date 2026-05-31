@@ -271,15 +271,17 @@ export default function QueueScreen() {
   // endpoint (TAC-299) which: (a) generates an apology decline draft and
   // persists it as `messages.review_state='pending'` (NOT sent), and (b)
   // transitions the commitment to `cancelled` server-side. On success we
-  // refetch the queue silently (so the new draft lands in `queue.drafts`)
-  // and then route to the edit screen — the edit screen looks the draft up
-  // by `messageId` from `queue.drafts`, so without the reload it would
-  // render its "no longer pending" fallback and the operator would need to
-  // force-restart the app to see the prefilled apology (TAC-298 UAT #3).
-  // The silent flag prevents the queue from flashing a loading spinner
-  // mid-swipe; the standard edit/send flow takes over from there. On 409
-  // `invalid_state` (commitment already cancelled, e.g. re-swipe-left), no
-  // restore and a softer "already handled" toast.
+  // fire a queue refetch in the background (non-silent so its `loading`
+  // status is observable) and navigate to the edit screen immediately —
+  // the edit screen branches on `queue.status` to show a brief spinner
+  // while `queue.drafts` catches up, then re-renders with the prefilled
+  // apology once the new draft lands. The UAT #3 fix that awaited the
+  // reload before navigating cost 5–10s of perceived latency on top of
+  // the (already slow) AI generation in `declineDraft`; firing-and-
+  // forgetting + letting the edit screen handle the in-flight state cuts
+  // the user-perceived wait to just the `declineDraft` round trip. On 409
+  // `invalid_state` (commitment already cancelled, e.g. re-swipe-left),
+  // no restore and a softer "already handled" toast. (TAC-298 UAT #4.)
   const handleDecline = async (
     commitment: HeadsUpCommitment,
   ): Promise<void> => {
@@ -299,18 +301,7 @@ export default function QueueScreen() {
       showToast("Couldn't draft decline — tap to retry");
       return;
     }
-    const reloadResult = await queue.reload({ silent: true });
-    if (!reloadResult.ok) {
-      // Decline succeeded server-side (commitment cancelled, draft persisted)
-      // but the silent refetch failed — navigating now would land the
-      // operator on the "no longer pending" fallback because the new draft
-      // isn't in queue.drafts yet. Surface a toast instead so they know
-      // the decline took, then let pull-to-refresh / next mount pick the
-      // draft up. (Skipping this guard re-introduces the UAT #3 symptom on
-      // a flaky refetch.)
-      showToast('Decline saved — refresh to edit the draft');
-      return;
-    }
+    void queue.reload();
     router.push({
       pathname: '/queue/edit',
       params: { messageId: result.data.messageId },
