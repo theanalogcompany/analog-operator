@@ -48,6 +48,12 @@ export const PendingDraftSchema = z
     messageId: z.string().uuid(),
     venueId: z.string().uuid(),
     venueSlug: z.string(),
+    // Venue IANA timezone for rendering times in venue-local time instead of
+    // the device timezone. Optional (no default) so it's absent → `undefined`
+    // when the backend deploy predates this field; consumers fall back to the
+    // device tz via `?? `. (Distinct from `agentReasoning`'s `.default(null)`
+    // because we don't want every PendingDraft literal to have to carry it.)
+    venueTimezone: z.string().nullable().optional(),
     guestId: z.string().uuid(),
     guestDisplayName: z.string().nullable(),
     guestPhoneFallback: z.string(),

@@ -3,9 +3,9 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { QueueHeader } from '@/components/queue/queue-header';
 
 describe('QueueHeader', () => {
-  it('renders the wordmark text', () => {
+  it('renders the logo', () => {
     render(<QueueHeader onMenuPress={() => {}} />);
-    expect(screen.getByText('the analog company')).toBeTruthy();
+    expect(screen.getByLabelText('Analog')).toBeTruthy();
   });
 
   it('exposes a labelled menu button', () => {

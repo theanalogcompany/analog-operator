@@ -103,9 +103,11 @@ export default function EditScreen() {
   // gesture-of-record doesn't trigger re-renders on every onScroll event.
   const isNearBottomRef = useRef<boolean>(true);
   const hasScrolledToBottomOnReadyRef = useRef<boolean>(false);
+  // Prefer the venue's timezone (from the queue payload) so times read as
+  // venue-local; fall back to the device timezone when it's absent.
   const timezone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
-    [],
+    () => draft?.venueTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    [draft?.venueTimezone],
   );
 
   const messageId = draft?.messageId;
