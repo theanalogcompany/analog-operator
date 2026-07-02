@@ -2,6 +2,8 @@ import { View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   type SharedValue,
+  Extrapolation,
+  interpolate,
   interpolateColor,
   useAnimatedStyle,
 } from 'react-native-reanimated';
@@ -16,11 +18,12 @@ import { SwipeOverlay } from './swipe-overlay';
 
 type FrontCardProps = {
   draft: PendingDraft;
+  peek?: PendingDraft;
   onApprove: (draft: PendingDraft) => void;
   onEdit: (draft: PendingDraft) => void;
 };
 
-function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
+function FrontCard({ draft, peek, onApprove, onEdit }: FrontCardProps) {
   if (__DEV__) console.log('[render] FrontCard mounted');
   const haptics = useHaptics();
 
@@ -49,15 +52,21 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
   return (
     <>
       <SwipeOverlay direction={direction} intensity={intensity} />
-      <GestureDetector gesture={pan}>
-        <Animated.View
-          collapsable={false}
-          className="w-full"
-          style={[{ maxWidth: 354, zIndex: 3 }, cardStyle]}
-        >
-          <QueueCard draft={draft} onPressDraftBubble={() => onEdit(draft)} />
-        </Animated.View>
-      </GestureDetector>
+      <View
+        className="w-full"
+        style={{ flex: 1, maxWidth: 354, position: 'relative' }}
+      >
+        {peek ? <PeekCard draft={peek} intensity={intensity} /> : null}
+        <GestureDetector gesture={pan}>
+          <Animated.View
+            collapsable={false}
+            className="w-full"
+            style={[{ flex: 1, zIndex: 3 }, cardStyle]}
+          >
+            <QueueCard draft={draft} onPressDraftBubble={() => onEdit(draft)} />
+          </Animated.View>
+        </GestureDetector>
+      </View>
       <SwipeHints direction={direction} intensity={intensity} />
     </>
   );
@@ -65,28 +74,27 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
 
 type PeekCardProps = {
   draft: PendingDraft;
+  intensity: SharedValue<number>;
 };
 
-function PeekCard({ draft }: PeekCardProps) {
+function PeekCard({ draft, intensity }: PeekCardProps) {
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      intensity.value,
+      [0, 1],
+      [peekCard.revealMinOpacity, 1],
+      Extrapolation.CLAMP,
+    ),
+  }));
   return (
     <View
       pointerEvents="none"
-      className="absolute left-0 right-0 items-center"
-      style={{
-        top: peekCard.topOffsetPx,
-        opacity: peekCard.opacity,
-        zIndex: 2,
-      }}
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 2 }}
     >
-      <View
-        style={{
-          maxWidth: 354,
-          width: '100%',
-          transform: [{ scale: peekCard.scale }],
-          transformOrigin: 'top center',
-        }}
-      >
-        <QueueCard draft={draft} />
+      <View style={{ flex: 1, backgroundColor: '#FFFFFF', borderRadius: 20 }}>
+        <Animated.View style={[{ flex: 1 }, revealStyle]}>
+          <QueueCard draft={draft} elevated={false} />
+        </Animated.View>
       </View>
     </View>
   );
@@ -116,7 +124,7 @@ function SwipeHints({ direction, intensity }: SwipeHintsProps) {
   return (
     <View
       className="w-full flex-row justify-between"
-      style={{ maxWidth: 354, paddingHorizontal: 8, paddingTop: 12 }}
+      style={{ maxWidth: 354, paddingHorizontal: 8, paddingTop: 20, paddingBottom: 10 }}
     >
       <Animated.Text className="font-inter-tight" style={[{ fontSize: 13 }, leftStyle]}>
         ← Swipe left to edit
@@ -146,10 +154,10 @@ export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
       className="relative flex-1 items-center overflow-visible"
       style={{ paddingHorizontal: 18, paddingTop: 16 }}
     >
-      {peek ? <PeekCard draft={peek} /> : null}
       <FrontCard
         key={top.messageId}
         draft={top}
+        peek={peek}
         onApprove={onApprove}
         onEdit={onEdit}
       />

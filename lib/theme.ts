@@ -29,9 +29,7 @@ export const undoToast = {
 } as const;
 
 export const peekCard = {
-  topOffsetPx: 8,
-  scale: 0.965,
-  opacity: 0.55,
+  revealMinOpacity: 0.55,
 } as const;
 
 export const easing = {
