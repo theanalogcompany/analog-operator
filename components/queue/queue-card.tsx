@@ -2,8 +2,8 @@ import { Feather } from '@expo/vector-icons';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { type PendingDraft } from '@/lib/api/queue';
+import { queueCard } from '@/lib/theme';
 
-import { AgentReasoning } from './agent-reasoning';
 import { FlaggedBanner } from './flagged-banner';
 import { RecognitionBadge } from './recognition-badge';
 
@@ -55,7 +55,7 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
       className={cardOuterClass}
-      style={[elevated ? cardShadow : null, { flex: 1 }]}
+      style={[elevated ? cardShadow : null, { maxHeight: queueCard.maxHeightPx }]}
     >
       <View className="flex-row items-center gap-[10px] px-[18px] pb-[14px] pt-[18px]">
         <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
@@ -70,17 +70,14 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
         </Text>
       </View>
 
-      <AgentReasoning
-        reasoning={draft.agentReasoning}
-        paddingTop={0}
-        paddingBottom={12}
+      <FlaggedBanner
+        label={draft.reviewReason}
+        detail={draft.agentReasoning}
       />
-
-      <FlaggedBanner reason={draft.reviewReason} />
 
       <View className="h-[0.5px] bg-hairline" style={{ marginHorizontal: 18 }} />
 
-      <ScrollView style={{ flex: 1 }}>
+      <ScrollView style={{ flexShrink: 1 }}>
         {thread.length > 0 ? (
           <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
             {thread.map((m) => (

@@ -11,7 +11,7 @@ import Animated, {
 import { useHaptics } from '@/hooks/use-haptics';
 import { type SwipeDirection, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type PendingDraft } from '@/lib/api/queue';
-import { peekCard, swipeHint } from '@/lib/theme';
+import { swipeHint } from '@/lib/theme';
 
 import { QueueCard } from './queue-card';
 import { SwipeOverlay } from './swipe-overlay';
@@ -52,16 +52,13 @@ function FrontCard({ draft, peek, onApprove, onEdit }: FrontCardProps) {
   return (
     <>
       <SwipeOverlay direction={direction} intensity={intensity} />
-      <View
-        className="w-full"
-        style={{ flex: 1, maxWidth: 354, position: 'relative' }}
-      >
+      <View className="w-full" style={{ maxWidth: 354, position: 'relative' }}>
         {peek ? <PeekCard draft={peek} intensity={intensity} /> : null}
         <GestureDetector gesture={pan}>
           <Animated.View
             collapsable={false}
             className="w-full"
-            style={[{ flex: 1, zIndex: 3 }, cardStyle]}
+            style={[{ zIndex: 3 }, cardStyle]}
           >
             <QueueCard draft={draft} onPressDraftBubble={() => onEdit(draft)} />
           </Animated.View>
@@ -79,24 +76,18 @@ type PeekCardProps = {
 
 function PeekCard({ draft, intensity }: PeekCardProps) {
   const revealStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      intensity.value,
-      [0, 1],
-      [peekCard.revealMinOpacity, 1],
-      Extrapolation.CLAMP,
-    ),
+    opacity: interpolate(intensity.value, [0, 0.02], [0, 1], Extrapolation.CLAMP),
   }));
   return (
-    <View
+    <Animated.View
       pointerEvents="none"
-      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 2 }}
+      style={[
+        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },
+        revealStyle,
+      ]}
     >
-      <View style={{ flex: 1, backgroundColor: '#FFFFFF', borderRadius: 20 }}>
-        <Animated.View style={[{ flex: 1 }, revealStyle]}>
-          <QueueCard draft={draft} elevated={false} />
-        </Animated.View>
-      </View>
-    </View>
+      <QueueCard draft={draft} elevated={false} />
+    </Animated.View>
   );
 }
 

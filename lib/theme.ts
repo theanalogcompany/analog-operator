@@ -28,8 +28,8 @@ export const undoToast = {
   fadeOutDurationMs: 180,
 } as const;
 
-export const peekCard = {
-  revealMinOpacity: 0.55,
+export const queueCard = {
+  maxHeightPx: 520,
 } as const;
 
 export const easing = {

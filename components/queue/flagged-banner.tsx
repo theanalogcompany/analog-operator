@@ -6,7 +6,8 @@ import { Text, View } from 'react-native';
 type Variant = 'card' | 'edit';
 
 type Props = {
-  reason: string | null | undefined;
+  label: string | null | undefined;
+  detail?: string | null;
   variant?: Variant;
 };
 
@@ -27,20 +28,32 @@ const VARIANTS: Record<
   },
 };
 
-export function FlaggedBanner({ reason, variant = 'card' }: Props) {
-  if (!reason) return null;
+export function FlaggedBanner({ label, detail, variant = 'card' }: Props) {
+  const hasDetail = !!detail && detail.trim().length > 0;
+  if (!label && !hasDetail) return null;
   const styles = VARIANTS[variant];
   return (
     <View
       className={`${styles.container} rounded-[4px] border-l-2 border-clay bg-sand`}
       style={{ paddingHorizontal: 14, paddingVertical: 12 }}
     >
-      <Text className="font-inter-tight text-ink" style={styles.text}>
-        <Text className="font-inter-tight-medium text-clay-deep">
-          Flagged because:{' '}
+      {label ? (
+        <Text className="font-inter-tight text-ink" style={styles.text}>
+          <Text className="font-inter-tight-medium text-clay-deep">
+            Flagged because:{' '}
+          </Text>
+          {label}
         </Text>
-        {reason}
-      </Text>
+      ) : null}
+      {hasDetail ? (
+        <Text
+          accessibilityLabel="Agent reasoning"
+          className="font-fraunces text-ink"
+          style={{ marginTop: 6, fontSize: 13, lineHeight: 18 }}
+        >
+          {detail}
+        </Text>
+      ) : null}
     </View>
   );
 }
