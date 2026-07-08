@@ -11,7 +11,7 @@ import Animated, {
 import { useHaptics } from '@/hooks/use-haptics';
 import { type SwipeDirection, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type PendingDraft } from '@/lib/api/queue';
-import { swipeHint } from '@/lib/theme';
+import { peekCard, queueCard, swipeHint } from '@/lib/theme';
 
 import { QueueCard } from './queue-card';
 import { SwipeOverlay } from './swipe-overlay';
@@ -51,14 +51,17 @@ function FrontCard({ draft, peek, onApprove, onEdit }: FrontCardProps) {
 
   return (
     <>
-      <SwipeOverlay direction={direction} intensity={intensity} />
-      <View className="w-full" style={{ maxWidth: 354, position: 'relative' }}>
+      <View
+        className="w-full items-center"
+        style={{ height: queueCard.heightPx, position: 'relative' }}
+      >
+        <SwipeOverlay direction={direction} intensity={intensity} />
         {peek ? <PeekCard draft={peek} intensity={intensity} /> : null}
         <GestureDetector gesture={pan}>
           <Animated.View
             collapsable={false}
             className="w-full"
-            style={[{ zIndex: 3 }, cardStyle]}
+            style={[{ maxWidth: 354, height: '100%', zIndex: 3 }, cardStyle]}
           >
             <QueueCard draft={draft} onPressDraftBubble={() => onEdit(draft)} />
           </Animated.View>
@@ -75,18 +78,38 @@ type PeekCardProps = {
 };
 
 function PeekCard({ draft, intensity }: PeekCardProps) {
-  const revealStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(intensity.value, [0, 0.02], [0, 1], Extrapolation.CLAMP),
+  const deckStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(
+          intensity.value,
+          [0, 1],
+          [peekCard.translateYPx, 0],
+          Extrapolation.CLAMP,
+        ),
+      },
+      {
+        scale: interpolate(
+          intensity.value,
+          [0, 1],
+          [peekCard.scale, 1],
+          Extrapolation.CLAMP,
+        ),
+      },
+    ],
   }));
   return (
     <Animated.View
       pointerEvents="none"
+      className="w-full items-center"
       style={[
-        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },
-        revealStyle,
+        { position: 'absolute', top: 0, left: 0, right: 0, height: '100%', zIndex: 2 },
+        deckStyle,
       ]}
     >
-      <QueueCard draft={draft} elevated={false} />
+      <View className="w-full" style={{ maxWidth: 354, height: '100%' }}>
+        <QueueCard draft={draft} elevated={false} />
+      </View>
     </Animated.View>
   );
 }

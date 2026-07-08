@@ -29,7 +29,12 @@ export const undoToast = {
 } as const;
 
 export const queueCard = {
-  maxHeightPx: 520,
+  heightPx: 450,
+} as const;
+
+export const peekCard = {
+  scale: 0.97,
+  translateYPx: 16,
 } as const;
 
 export const easing = {

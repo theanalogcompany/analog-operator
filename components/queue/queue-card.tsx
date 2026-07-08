@@ -2,7 +2,6 @@ import { Feather } from '@expo/vector-icons';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { type PendingDraft } from '@/lib/api/queue';
-import { queueCard } from '@/lib/theme';
 
 import { FlaggedBanner } from './flagged-banner';
 import { RecognitionBadge } from './recognition-badge';
@@ -55,7 +54,7 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
       className={cardOuterClass}
-      style={[elevated ? cardShadow : null, { maxHeight: queueCard.maxHeightPx }]}
+      style={[elevated ? cardShadow : null, { flex: 1 }]}
     >
       <View className="flex-row items-center gap-[10px] px-[18px] pb-[14px] pt-[18px]">
         <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
@@ -77,9 +76,10 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
 
       <View className="h-[0.5px] bg-hairline" style={{ marginHorizontal: 18 }} />
 
-      <ScrollView style={{ flexShrink: 1 }}>
-        {thread.length > 0 ? (
-          <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
+      <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 18 }}>
+        <ScrollView style={{ flex: 1 }}>
+          {thread.length > 0 ? (
+          <View className="flex-col gap-[6px]" style={{ paddingBottom: 14 }}>
             {thread.map((m) => (
               <View
                 key={m.id}
@@ -111,10 +111,7 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
           </View>
         ) : null}
 
-        <View
-          className="flex-row justify-end"
-          style={{ paddingHorizontal: 18, paddingBottom: 18, paddingTop: 14 }}
-        >
+        <View className="flex-row justify-end">
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Edit draft"
@@ -166,7 +163,8 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
             </View>
           </Pressable>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
     </View>
   );
 }
