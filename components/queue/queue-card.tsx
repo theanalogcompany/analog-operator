@@ -1,7 +1,9 @@
 import { Feather } from '@expo/vector-icons';
+import { type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { type PendingDraft } from '@/lib/api/queue';
+import { queueCard } from '@/lib/theme';
 
 import { FlaggedBanner } from './flagged-banner';
 import { RecognitionBadge } from './recognition-badge';
@@ -32,6 +34,9 @@ type Props = {
    */
   onPressDraftBubble?: () => void;
   elevated?: boolean;
+  /** Rendered absolutely over the card content, clipped to the card's rounded
+   *  corners (e.g. the swipe-direction gradient on the front card). */
+  overlay?: ReactNode;
 };
 
 const cardOuterClass =
@@ -45,7 +50,12 @@ const cardShadow = {
   elevation: 6,
 } as const;
 
-export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props) {
+export function QueueCard({
+  draft,
+  onPressDraftBubble,
+  elevated = true,
+  overlay,
+}: Props) {
   const a11yLabel = `Pending draft for ${displayName(draft)}.`;
   const thread = draft.recentContext;
 
@@ -54,7 +64,7 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
       className={cardOuterClass}
-      style={[elevated ? cardShadow : null, { flex: 1 }]}
+      style={[elevated ? cardShadow : null, { maxHeight: queueCard.maxHeightPx }]}
     >
       <View className="flex-row items-center gap-[10px] px-[18px] pb-[14px] pt-[18px]">
         <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
@@ -76,10 +86,9 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
 
       <View className="h-[0.5px] bg-hairline" style={{ marginHorizontal: 18 }} />
 
-      <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 18 }}>
-        <ScrollView style={{ flex: 1 }}>
-          {thread.length > 0 ? (
-          <View className="flex-col gap-[6px]" style={{ paddingBottom: 14 }}>
+      <ScrollView style={{ flexShrink: 1 }}>
+        {thread.length > 0 ? (
+          <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
             {thread.map((m) => (
               <View
                 key={m.id}
@@ -111,7 +120,10 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
           </View>
         ) : null}
 
-        <View className="flex-row justify-end">
+        <View
+          className="flex-row justify-end"
+          style={{ paddingHorizontal: 18, paddingBottom: 18, paddingTop: 14 }}
+        >
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Edit draft"
@@ -163,8 +175,15 @@ export function QueueCard({ draft, onPressDraftBubble, elevated = true }: Props)
             </View>
           </Pressable>
         </View>
-        </ScrollView>
-      </View>
+      </ScrollView>
+      {overlay ? (
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          {overlay}
+        </View>
+      ) : null}
     </View>
   );
 }

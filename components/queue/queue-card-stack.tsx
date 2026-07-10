@@ -6,12 +6,13 @@ import Animated, {
   interpolate,
   interpolateColor,
   useAnimatedStyle,
+  useSharedValue,
 } from 'react-native-reanimated';
 
 import { useHaptics } from '@/hooks/use-haptics';
 import { type SwipeDirection, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type PendingDraft } from '@/lib/api/queue';
-import { peekCard, queueCard, swipeHint } from '@/lib/theme';
+import { swipeHint } from '@/lib/theme';
 
 import { QueueCard } from './queue-card';
 import { SwipeOverlay } from './swipe-overlay';
@@ -49,25 +50,38 @@ function FrontCard({ draft, peek, onApprove, onEdit }: FrontCardProps) {
     ],
   }));
 
+  const frontHeight = useSharedValue(0);
+  const peekHeight = useSharedValue(0);
+
   return (
     <>
-      <View
-        className="w-full items-center"
-        style={{ height: queueCard.heightPx, position: 'relative' }}
-      >
-        <SwipeOverlay direction={direction} intensity={intensity} />
-        {peek ? <PeekCard draft={peek} intensity={intensity} /> : null}
+      <View className="w-full" style={{ maxWidth: 354, position: 'relative' }}>
+        {peek ? (
+          <PeekCard draft={peek} intensity={intensity} heightValue={peekHeight} />
+        ) : null}
         <GestureDetector gesture={pan}>
           <Animated.View
             collapsable={false}
             className="w-full"
-            style={[{ maxWidth: 354, height: '100%', zIndex: 3 }, cardStyle]}
+            style={[{ zIndex: 3 }, cardStyle]}
+            onLayout={(e) => {
+              frontHeight.value = e.nativeEvent.layout.height;
+            }}
           >
-            <QueueCard draft={draft} onPressDraftBubble={() => onEdit(draft)} />
+            <QueueCard
+              draft={draft}
+              onPressDraftBubble={() => onEdit(draft)}
+              overlay={<SwipeOverlay direction={direction} intensity={intensity} />}
+            />
           </Animated.View>
         </GestureDetector>
       </View>
-      <SwipeHints direction={direction} intensity={intensity} />
+      <SwipeHints
+        direction={direction}
+        intensity={intensity}
+        frontHeight={frontHeight}
+        peekHeight={peekHeight}
+      />
     </>
   );
 }
@@ -75,41 +89,25 @@ function FrontCard({ draft, peek, onApprove, onEdit }: FrontCardProps) {
 type PeekCardProps = {
   draft: PendingDraft;
   intensity: SharedValue<number>;
+  heightValue: SharedValue<number>;
 };
 
-function PeekCard({ draft, intensity }: PeekCardProps) {
-  const deckStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateY: interpolate(
-          intensity.value,
-          [0, 1],
-          [peekCard.translateYPx, 0],
-          Extrapolation.CLAMP,
-        ),
-      },
-      {
-        scale: interpolate(
-          intensity.value,
-          [0, 1],
-          [peekCard.scale, 1],
-          Extrapolation.CLAMP,
-        ),
-      },
-    ],
+function PeekCard({ draft, intensity, heightValue }: PeekCardProps) {
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(intensity.value, [0, 0.02], [0, 1], Extrapolation.CLAMP),
   }));
   return (
     <Animated.View
       pointerEvents="none"
-      className="w-full items-center"
+      onLayout={(e) => {
+        heightValue.value = e.nativeEvent.layout.height;
+      }}
       style={[
-        { position: 'absolute', top: 0, left: 0, right: 0, height: '100%', zIndex: 2 },
-        deckStyle,
+        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },
+        revealStyle,
       ]}
     >
-      <View className="w-full" style={{ maxWidth: 354, height: '100%' }}>
-        <QueueCard draft={draft} elevated={false} />
-      </View>
+      <QueueCard draft={draft} elevated={false} />
     </Animated.View>
   );
 }
@@ -117,9 +115,16 @@ function PeekCard({ draft, intensity }: PeekCardProps) {
 type SwipeHintsProps = {
   direction: SharedValue<SwipeDirection>;
   intensity: SharedValue<number>;
+  frontHeight: SharedValue<number>;
+  peekHeight: SharedValue<number>;
 };
 
-function SwipeHints({ direction, intensity }: SwipeHintsProps) {
+function SwipeHints({
+  direction,
+  intensity,
+  frontHeight,
+  peekHeight,
+}: SwipeHintsProps) {
   const leftStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
       direction.value === -1 ? intensity.value : 0,
@@ -135,10 +140,32 @@ function SwipeHints({ direction, intensity }: SwipeHintsProps) {
     ),
   }));
 
+  // When the next card is taller than the front, slide the hints down by the
+  // height difference as the swipe progresses, so they land under the taller
+  // next card instead of being stranded in its middle.
+  const containerStyle = useAnimatedStyle(() => {
+    const extra = Math.max(0, peekHeight.value - frontHeight.value);
+    return {
+      transform: [
+        {
+          translateY: interpolate(
+            intensity.value,
+            [0, 1],
+            [0, extra],
+            Extrapolation.CLAMP,
+          ),
+        },
+      ],
+    };
+  });
+
   return (
-    <View
+    <Animated.View
       className="w-full flex-row justify-between"
-      style={{ maxWidth: 354, paddingHorizontal: 8, paddingTop: 20, paddingBottom: 10 }}
+      style={[
+        { maxWidth: 354, paddingHorizontal: 8, paddingTop: 20, paddingBottom: 10, zIndex: 10 },
+        containerStyle,
+      ]}
     >
       <Animated.Text className="font-inter-tight" style={[{ fontSize: 13 }, leftStyle]}>
         ← Swipe left to edit
@@ -146,7 +173,7 @@ function SwipeHints({ direction, intensity }: SwipeHintsProps) {
       <Animated.Text className="font-inter-tight" style={[{ fontSize: 13 }, rightStyle]}>
         Swipe right to send →
       </Animated.Text>
-    </View>
+    </Animated.View>
   );
 }
 
