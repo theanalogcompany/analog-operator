@@ -4,7 +4,7 @@ import Animated, {
   useAnimatedStyle,
 } from 'react-native-reanimated';
 
-const OVERLAY_WIDTH_FRACTION = 0.4;
+const OVERLAY_WIDTH_FRACTION = 0.55;
 
 // CSS `linear-gradient(to left, A, B)` puts A at the gradient origin (right
 // edge) and B at the destination (left edge); RN LinearGradient maps that via
@@ -15,15 +15,15 @@ const OVERLAY_WIDTH_FRACTION = 0.4;
 // bands visibly on-device, especially fading to fully transparent. `dither`
 // further suppresses the banding.
 const RIGHT_GRADIENT_COLORS: readonly [string, string, string, string] = [
+  'rgba(198,106,74,0.9)',
   'rgba(198,106,74,0.55)',
-  'rgba(198,106,74,0.32)',
-  'rgba(198,106,74,0.12)',
+  'rgba(198,106,74,0.22)',
   'rgba(198,106,74,0)',
 ];
 const LEFT_GRADIENT_COLORS: readonly [string, string, string, string] = [
+  'rgba(58,53,48,0.75)',
   'rgba(58,53,48,0.45)',
-  'rgba(58,53,48,0.26)',
-  'rgba(58,53,48,0.10)',
+  'rgba(58,53,48,0.18)',
   'rgba(58,53,48,0)',
 ];
 const GRADIENT_LOCATIONS: readonly [number, number, number, number] = [0, 0.45, 0.75, 1];
