@@ -15,7 +15,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
-import { AgentReasoning } from '@/components/queue/agent-reasoning';
 import { FlaggedBanner } from '@/components/queue/flagged-banner';
 import { queueCardDisplayName } from '@/components/queue/queue-card';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
@@ -103,9 +102,11 @@ export default function EditScreen() {
   // gesture-of-record doesn't trigger re-renders on every onScroll event.
   const isNearBottomRef = useRef<boolean>(true);
   const hasScrolledToBottomOnReadyRef = useRef<boolean>(false);
+  // Prefer the venue's timezone (from the queue payload) so times read as
+  // venue-local; fall back to the device timezone when it's absent.
   const timezone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
-    [],
+    () => draft?.venueTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    [draft?.venueTimezone],
   );
 
   const messageId = draft?.messageId;
@@ -296,12 +297,10 @@ export default function EditScreen() {
           <View style={{ width: 60 }} />
         </View>
 
-        <FlaggedBanner reason={draft.reviewReason} variant="edit" />
-
-        <AgentReasoning
-          reasoning={draft.agentReasoning}
-          paddingTop={12}
-          paddingBottom={8}
+        <FlaggedBanner
+          label={draft.reviewReason}
+          detail={draft.agentReasoning}
+          variant="edit"
         />
 
         <ScrollView

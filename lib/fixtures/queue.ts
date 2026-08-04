@@ -59,6 +59,7 @@ const draft = (args: {
     messageId: args.messageId,
     venueId: args.venueId,
     venueSlug: args.venueSlug,
+    venueTimezone: null,
     guestId: args.guestId,
     guestDisplayName: args.guestDisplayName,
     guestPhoneFallback: args.guestPhoneFallback,

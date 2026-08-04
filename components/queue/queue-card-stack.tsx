@@ -2,25 +2,29 @@ import { View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   type SharedValue,
+  Extrapolation,
+  interpolate,
   interpolateColor,
   useAnimatedStyle,
+  useSharedValue,
 } from 'react-native-reanimated';
 
 import { useHaptics } from '@/hooks/use-haptics';
 import { type SwipeDirection, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type PendingDraft } from '@/lib/api/queue';
-import { peekCard, swipeHint } from '@/lib/theme';
+import { swipeHint } from '@/lib/theme';
 
 import { QueueCard } from './queue-card';
 import { SwipeOverlay } from './swipe-overlay';
 
 type FrontCardProps = {
   draft: PendingDraft;
+  peek?: PendingDraft;
   onApprove: (draft: PendingDraft) => void;
   onEdit: (draft: PendingDraft) => void;
 };
 
-function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
+function FrontCard({ draft, peek, onApprove, onEdit }: FrontCardProps) {
   if (__DEV__) console.log('[render] FrontCard mounted');
   const haptics = useHaptics();
 
@@ -46,58 +50,81 @@ function FrontCard({ draft, onApprove, onEdit }: FrontCardProps) {
     ],
   }));
 
+  const frontHeight = useSharedValue(0);
+  const peekHeight = useSharedValue(0);
+
   return (
     <>
-      <SwipeOverlay direction={direction} intensity={intensity} />
-      <GestureDetector gesture={pan}>
-        <Animated.View
-          collapsable={false}
-          className="w-full"
-          style={[{ maxWidth: 354, zIndex: 3 }, cardStyle]}
-        >
-          <QueueCard draft={draft} onPressDraftBubble={() => onEdit(draft)} />
-        </Animated.View>
-      </GestureDetector>
-      <SwipeHints direction={direction} intensity={intensity} />
+      <View className="w-full" style={{ maxWidth: 354, position: 'relative' }}>
+        {peek ? (
+          <PeekCard draft={peek} intensity={intensity} heightValue={peekHeight} />
+        ) : null}
+        <GestureDetector gesture={pan}>
+          <Animated.View
+            collapsable={false}
+            className="w-full"
+            style={[{ zIndex: 3 }, cardStyle]}
+            onLayout={(e) => {
+              frontHeight.value = e.nativeEvent.layout.height;
+            }}
+          >
+            <QueueCard
+              draft={draft}
+              onPressDraftBubble={() => onEdit(draft)}
+              overlay={<SwipeOverlay direction={direction} intensity={intensity} />}
+            />
+          </Animated.View>
+        </GestureDetector>
+      </View>
+      <SwipeHints
+        direction={direction}
+        intensity={intensity}
+        frontHeight={frontHeight}
+        peekHeight={peekHeight}
+      />
     </>
   );
 }
 
 type PeekCardProps = {
   draft: PendingDraft;
+  intensity: SharedValue<number>;
+  heightValue: SharedValue<number>;
 };
 
-function PeekCard({ draft }: PeekCardProps) {
+function PeekCard({ draft, intensity, heightValue }: PeekCardProps) {
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(intensity.value, [0, 0.02], [0, 1], Extrapolation.CLAMP),
+  }));
   return (
-    <View
+    <Animated.View
       pointerEvents="none"
-      className="absolute left-0 right-0 items-center"
-      style={{
-        top: peekCard.topOffsetPx,
-        opacity: peekCard.opacity,
-        zIndex: 2,
+      onLayout={(e) => {
+        heightValue.value = e.nativeEvent.layout.height;
       }}
+      style={[
+        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },
+        revealStyle,
+      ]}
     >
-      <View
-        style={{
-          maxWidth: 354,
-          width: '100%',
-          transform: [{ scale: peekCard.scale }],
-          transformOrigin: 'top center',
-        }}
-      >
-        <QueueCard draft={draft} />
-      </View>
-    </View>
+      <QueueCard draft={draft} elevated={false} />
+    </Animated.View>
   );
 }
 
 type SwipeHintsProps = {
   direction: SharedValue<SwipeDirection>;
   intensity: SharedValue<number>;
+  frontHeight: SharedValue<number>;
+  peekHeight: SharedValue<number>;
 };
 
-function SwipeHints({ direction, intensity }: SwipeHintsProps) {
+function SwipeHints({
+  direction,
+  intensity,
+  frontHeight,
+  peekHeight,
+}: SwipeHintsProps) {
   const leftStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
       direction.value === -1 ? intensity.value : 0,
@@ -113,10 +140,32 @@ function SwipeHints({ direction, intensity }: SwipeHintsProps) {
     ),
   }));
 
+  // When the next card is taller than the front, slide the hints down by the
+  // height difference as the swipe progresses, so they land under the taller
+  // next card instead of being stranded in its middle.
+  const containerStyle = useAnimatedStyle(() => {
+    const extra = Math.max(0, peekHeight.value - frontHeight.value);
+    return {
+      transform: [
+        {
+          translateY: interpolate(
+            intensity.value,
+            [0, 1],
+            [0, extra],
+            Extrapolation.CLAMP,
+          ),
+        },
+      ],
+    };
+  });
+
   return (
-    <View
+    <Animated.View
       className="w-full flex-row justify-between"
-      style={{ maxWidth: 354, paddingHorizontal: 8, paddingTop: 12 }}
+      style={[
+        { maxWidth: 354, paddingHorizontal: 8, paddingTop: 20, paddingBottom: 10, zIndex: 10 },
+        containerStyle,
+      ]}
     >
       <Animated.Text className="font-inter-tight" style={[{ fontSize: 13 }, leftStyle]}>
         ← Swipe left to edit
@@ -124,7 +173,7 @@ function SwipeHints({ direction, intensity }: SwipeHintsProps) {
       <Animated.Text className="font-inter-tight" style={[{ fontSize: 13 }, rightStyle]}>
         Swipe right to send →
       </Animated.Text>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -146,10 +195,10 @@ export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
       className="relative flex-1 items-center overflow-visible"
       style={{ paddingHorizontal: 18, paddingTop: 16 }}
     >
-      {peek ? <PeekCard draft={peek} /> : null}
       <FrontCard
         key={top.messageId}
         draft={top}
+        peek={peek}
         onApprove={onApprove}
         onEdit={onEdit}
       />

@@ -18,10 +18,27 @@ export type UseQueueResult = {
   restore: (draft: PendingDraft) => void;
 };
 
-// FIFO: `pendingSinceMs` is elapsed milliseconds since the draft was
-// created, so larger values are older and sort first.
-function sortByPendingDesc(list: PendingDraft[]): PendingDraft[] {
-  return [...list].sort((a, b) => b.pendingSinceMs - a.pendingSinceMs);
+// Queue priority: most important guest first, then oldest-waiting within a
+// tier. `recognitionState` ranks raving_fan > regular > returning > new; a
+// null/unknown tier sorts last. `pendingSinceMs` is elapsed ms since the draft
+// was created, so larger = older and breaks ties oldest-first.
+const TIER_RANK: Record<string, number> = {
+  raving_fan: 3,
+  regular: 2,
+  returning: 1,
+  new: 0,
+};
+
+function importanceRank(draft: PendingDraft): number {
+  return draft.recognitionState ? (TIER_RANK[draft.recognitionState] ?? -1) : -1;
+}
+
+function sortByPriority(list: PendingDraft[]): PendingDraft[] {
+  return [...list].sort((a, b) => {
+    const byImportance = importanceRank(b) - importanceRank(a);
+    if (byImportance !== 0) return byImportance;
+    return b.pendingSinceMs - a.pendingSinceMs;
+  });
 }
 
 export function useQueue(): UseQueueResult {
@@ -36,7 +53,7 @@ export function useQueue(): UseQueueResult {
     const result = await listQueue();
     if (!mounted.current) return;
     if (result.ok) {
-      setDrafts(sortByPendingDesc(result.data));
+      setDrafts(sortByPriority(result.data));
       setStatus('ready');
     } else {
       setError(result.error);
@@ -70,7 +87,7 @@ export function useQueue(): UseQueueResult {
   const restore = useCallback((draft: PendingDraft): void => {
     setDrafts((prev) => {
       if (prev.some((d) => d.messageId === draft.messageId)) return prev;
-      return sortByPendingDesc([...prev, draft]);
+      return sortByPriority([...prev, draft]);
     });
   }, []);
 

@@ -66,9 +66,9 @@ beforeEach(() => {
 });
 
 describe('QueueScreen header surface', () => {
-  it('renders the new wordmark and hides the legacy header', () => {
+  it('renders the logo and hides the legacy header', () => {
     render(<QueueScreen />);
-    expect(screen.getByText('the analog company')).toBeTruthy();
+    expect(screen.getByLabelText('Analog')).toBeTruthy();
     expect(screen.queryByText(/PENDING/)).toBeNull();
   });
 
@@ -153,6 +153,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
     messageId,
     venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     venueSlug: 'mock',
+    venueTimezone: null,
     guestId,
     guestDisplayName: guestId.slice(0, 2).toUpperCase(),
     guestPhoneFallback: '+15550001',

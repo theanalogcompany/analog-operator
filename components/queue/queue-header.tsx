@@ -1,5 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { Pressable, Text, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
+
+// Relative require (not the `@/` alias) so Metro's asset resolver picks it up.
+const LOGO = require('../../assets/images/logo.png');
 
 type Props = {
   onMenuPress: () => void;
@@ -17,12 +20,12 @@ export function QueueHeader({ onMenuPress }: Props) {
       >
         <Feather name="menu" size={22} color="#1C1814" />
       </Pressable>
-      <Text
-        className="font-fraunces text-ink"
-        style={{ fontSize: 22, letterSpacing: -0.44 }}
-      >
-        the analog company
-      </Text>
+      <Image
+        source={LOGO}
+        accessibilityLabel="Analog"
+        resizeMode="contain"
+        style={{ width: 34, height: 34 }}
+      />
       <View style={{ width: 22 }} />
     </View>
   );

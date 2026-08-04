@@ -7,6 +7,7 @@
     "scheme": "analog-operator",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "icon": "./assets/images/icon.png",
     "ios": {
       "bundleIdentifier": "company.theanalog.operator",
       "supportsTablet": false,
@@ -17,7 +18,11 @@
     },
     "android": {
       "package": "company.theanalog.operator",
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#F2EBDC"
+      }
     },
     "web": {
       "output": "static"
