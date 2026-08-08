@@ -445,6 +445,13 @@ describe('EditScreen — blank draft body (TAC-310)', () => {
     expect(screen.getByLabelText('Edit the draft before sending').props.value).toBe('');
   });
 
+  it('uses the Contract placeholder — there is no message to "edit" here', async () => {
+    await renderAndDrain();
+    expect(screen.getByLabelText('Edit the draft before sending').props.placeholder).toBe(
+      'Type your answer to send to the guest',
+    );
+  });
+
   it('sends the operator\'s typed text, not the blank draft body', async () => {
     (editAndSend as jest.Mock).mockResolvedValue({ ok: true, data: undefined });
     const typed = "Found it — denim jacket's behind the bar, come grab it anytime.";
@@ -478,5 +485,29 @@ describe('EditScreen — blank draft body (TAC-310)', () => {
     await waitFor(() => expect(getThread).toHaveBeenCalled());
     expect(editAndSend).not.toHaveBeenCalled();
     expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
+  });
+});
+
+// The other half of the placeholder split: a card that DID carry a draft keeps
+// "Edit the message…", because that sentence is accurate there. Keyed on the
+// draft, not on the composer's current emptiness — clearing a real draft is
+// still editing a message that exists. (TAC-310.)
+describe('EditScreen — composer placeholder on a normal draft', () => {
+  it('says "Edit the message…" when the draft carried real text', async () => {
+    render(<EditScreen />);
+    await waitFor(() => expect(getThread).toHaveBeenCalled());
+    expect(screen.getByLabelText('Edit the draft before sending').props.placeholder).toBe(
+      'Edit the message…',
+    );
+  });
+
+  it('keeps "Edit the message…" after the operator clears the field', async () => {
+    render(<EditScreen />);
+    await waitFor(() => expect(getThread).toHaveBeenCalled());
+    const input = screen.getByLabelText('Edit the draft before sending');
+    fireEvent.changeText(input, '');
+    expect(
+      screen.getByLabelText('Edit the draft before sending').props.placeholder,
+    ).toBe('Edit the message…');
   });
 });
