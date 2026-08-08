@@ -14,6 +14,7 @@ type CardStackProps = {
   drafts: PendingDraft[];
   onApprove: (draft: PendingDraft) => void;
   onEdit: (draft: PendingDraft) => void;
+  onRefuseApprove: (draft: PendingDraft) => void;
 };
 let lastCardStackProps: CardStackProps | null = null;
 
@@ -311,5 +312,64 @@ describe('QueueScreen swipe-right send path', () => {
     await swipeRight(draftWithBody(''));
     expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
     expect(mockQueue.restore).not.toHaveBeenCalled();
+  });
+});
+
+// TAC-312. The gesture now refuses a blank card outright, so `onApprove` is
+// never reached on that path — the screen's job shrinks to explaining why. What
+// matters here is what the refusal must NOT do: it must not remove the card,
+// because the operator still has to answer it. The TAC-310 bug left the card in
+// state but stranded off-screen; these pin the state half.
+describe('QueueScreen refusal path', () => {
+  const GUEST_ID = 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
+  const MESSAGE_ID = '5f364358-db56-4f8e-9eba-661544855cd1';
+
+  const blankDraft = (): PendingDraft => ({
+    messageId: MESSAGE_ID,
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueSlug: 'mock',
+    venueTimezone: null,
+    guestId: GUEST_ID,
+    guestDisplayName: 'Priya N.',
+    guestPhoneFallback: '+15551110004',
+    draftBody: '',
+    category: null,
+    voiceFidelity: null,
+    reviewReason: null,
+    recognitionState: null,
+    agentReasoning: null,
+    pendingSinceMs: 120_000,
+    recentContext: [],
+    langfuseTraceId: null,
+  });
+
+  it('hands the card stack a refusal handler', () => {
+    mockQueue.drafts = [blankDraft()];
+    render(<QueueScreen />);
+    expect(typeof lastCardStackProps!.onRefuseApprove).toBe('function');
+  });
+
+  it('leaves the card in local state — no removal, no restore, no request', async () => {
+    const draft = blankDraft();
+    mockQueue.drafts = [draft];
+    render(<QueueScreen />);
+    await act(async () => {
+      lastCardStackProps!.onRefuseApprove(draft);
+    });
+
+    expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
+    expect(mockQueue.restore).not.toHaveBeenCalled();
+    expect(approveDraft).not.toHaveBeenCalled();
+  });
+
+  it('keeps the card visible in the stack after a refusal', async () => {
+    const draft = blankDraft();
+    mockQueue.drafts = [draft];
+    render(<QueueScreen />);
+    await act(async () => {
+      lastCardStackProps!.onRefuseApprove(draft);
+    });
+
+    expect(lastCardStackProps!.drafts.map((d) => d.messageId)).toEqual([MESSAGE_ID]);
   });
 });

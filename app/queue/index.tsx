@@ -86,6 +86,12 @@ function MetaRow({
   );
 }
 
+// One string for both refusal paths — the gesture refusal (TAC-312) and the
+// defense-in-depth guard in `handleApprove` (TAC-310). They fire on the same
+// condition and must say the same thing.
+const NOTHING_TO_SEND_MESSAGE =
+  'Nothing to send yet — swipe left to write your answer';
+
 const HELP_SMS_URL = 'sms:+17869530853';
 
 async function openHelpSms(): Promise<void> {
@@ -181,14 +187,14 @@ export default function QueueScreen() {
   }, []);
 
   const handleApprove = async (draft: PendingDraft): Promise<void> => {
-    // Block genuinely-empty drafts before the network. `/approve` sends no body
-    // and the server ships whatever it has stored, so a blank draftBody is a
-    // guaranteed 422 empty_body — and, worse, the swipe already looked like it
-    // succeeded. Mirrors the same guard on the edit screen's send button so
-    // both entry points refuse to send nothing. Copy stays in the operator's
-    // frame (answering a guest), not the app's (drafts). (TAC-310.)
+    // Defense-in-depth. Unreachable via swipe since TAC-312 — the gesture now
+    // refuses a blank card outright rather than completing and relying on this
+    // to block the request — but `handleApprove` is the screen's public approve
+    // entry and any future caller (a button, a notification action) has to stay
+    // safe. `/approve` sends no body, so the server would ship its stored blank
+    // and 422. (TAC-310.)
     if (!draft.draftBody.trim()) {
-      showToast('Nothing to send yet — swipe left to write your answer');
+      showToast(NOTHING_TO_SEND_MESSAGE);
       return;
     }
     queue.optimisticallyRemove(draft.messageId);
@@ -200,6 +206,14 @@ export default function QueueScreen() {
       void clearUndoState();
       showToast("Couldn't send — tap to retry");
     }
+  };
+
+  // The gesture declined a right-swipe on a blank card. The card is still on
+  // the stack and still in `queue.drafts` — nothing to remove, nothing to
+  // restore, no undo state. All this owes the operator is an explanation.
+  // (TAC-312.)
+  const handleRefuseApprove = (): void => {
+    showToast(NOTHING_TO_SEND_MESSAGE);
   };
 
   const handleEdit = (draft: PendingDraft): void => {
@@ -257,6 +271,7 @@ export default function QueueScreen() {
               drafts={displayDrafts}
               onApprove={handleApprove}
               onEdit={handleEdit}
+              onRefuseApprove={handleRefuseApprove}
             />
           )}
           <Footer />
