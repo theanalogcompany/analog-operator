@@ -22,11 +22,24 @@ type FrontCardProps = {
   peek?: PendingDraft;
   onApprove: (draft: PendingDraft) => void;
   onEdit: (draft: PendingDraft) => void;
+  onRefuseApprove: (draft: PendingDraft) => void;
 };
 
-function FrontCard({ draft, peek, onApprove, onEdit }: FrontCardProps) {
+function FrontCard({
+  draft,
+  peek,
+  onApprove,
+  onEdit,
+  onRefuseApprove,
+}: FrontCardProps) {
   if (__DEV__) console.log('[render] FrontCard mounted');
   const haptics = useHaptics();
+
+  // A draft with nothing in it can't be sent, so the gesture must not complete.
+  // Same predicate the card render uses to decide between the draft body and
+  // the placeholder, so what the operator sees and what the swipe allows can't
+  // disagree. (TAC-312.)
+  const canCommitRight = draft.draftBody.trim().length > 0;
 
   const handleRight = (): void => {
     haptics.swipeRightSuccess();
@@ -36,10 +49,16 @@ function FrontCard({ draft, peek, onApprove, onEdit }: FrontCardProps) {
     haptics.swipeLeftEdit();
     onEdit(draft);
   };
+  const handleRefuseRight = (): void => {
+    haptics.swipeRefused();
+    onRefuseApprove(draft);
+  };
 
   const { pan, translateX, rotation, direction, intensity } = useQueueSwipe({
     onCommitRight: handleRight,
     onCommitLeft: handleLeft,
+    onRefuseRight: handleRefuseRight,
+    canCommitRight,
     enabled: true,
   });
 
@@ -181,9 +200,15 @@ type Props = {
   drafts: PendingDraft[];
   onApprove: (draft: PendingDraft) => void;
   onEdit: (draft: PendingDraft) => void;
+  onRefuseApprove: (draft: PendingDraft) => void;
 };
 
-export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
+export function QueueCardStack({
+  drafts,
+  onApprove,
+  onEdit,
+  onRefuseApprove,
+}: Props) {
   if (__DEV__) console.log('[render] stack mounted, count:', drafts.length);
   const top = drafts[0];
   const peek = drafts[1];
@@ -201,6 +226,7 @@ export function QueueCardStack({ drafts, onApprove, onEdit }: Props) {
         peek={peek}
         onApprove={onApprove}
         onEdit={onEdit}
+        onRefuseApprove={onRefuseApprove}
       />
     </View>
   );
