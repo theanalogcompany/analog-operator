@@ -125,6 +125,15 @@ export async function listQueue(): Promise<Result<PendingDraft[]>> {
   return ok(parsed.data.drafts);
 }
 
+/**
+ * Approve the draft as-written (swipe-right). Deliberately sends NO request
+ * body: `/approve` means "ship what's stored", and the server reads the stored
+ * draft body itself. That fallback is also why a blank stored body returns 422
+ * empty_body rather than sending nothing — so callers must block empty drafts
+ * locally before calling this (see `handleApprove` in `app/queue/index.tsx`).
+ * If you find yourself wanting to pass text here, you want `editAndSend`.
+ * (TAC-309 Contract; TAC-310.)
+ */
 export async function approveDraft(messageId: string): Promise<Result<void>> {
   if (isFixtureMode()) {
     return fixtures.approveDraftFixture(messageId);
@@ -137,6 +146,19 @@ export async function approveDraft(messageId: string): Promise<Result<void>> {
   return emptyOkOrError(result.data);
 }
 
+/**
+ * POST the operator's edited text to `/edit`.
+ *
+ * The request field is `editedBody` — character-exact per the TAC-309 Contract.
+ * This shipped as `{ body }` and the server never read it: `editedBody` came
+ * through as absent, coerced to `''`, and every send failed 400 invalid_input
+ * with the operator's typed text sitting in the payload under a key nobody
+ * looked at. Do not rename this field to match the local `body` parameter.
+ * (TAC-310.)
+ *
+ * Callers must pass an already-trimmed, non-empty string — the empty case is a
+ * local block at the screen layer, not a server round-trip.
+ */
 export async function editAndSend(
   messageId: string,
   body: string,
@@ -149,7 +171,7 @@ export async function editAndSend(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ editedBody: body }),
     },
   );
   if (!result.ok) return result;

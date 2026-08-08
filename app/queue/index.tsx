@@ -181,6 +181,16 @@ export default function QueueScreen() {
   }, []);
 
   const handleApprove = async (draft: PendingDraft): Promise<void> => {
+    // Block genuinely-empty drafts before the network. `/approve` sends no body
+    // and the server ships whatever it has stored, so a blank draftBody is a
+    // guaranteed 422 empty_body — and, worse, the swipe already looked like it
+    // succeeded. Mirrors the same guard on the edit screen's send button so
+    // both entry points refuse to send nothing. Copy stays in the operator's
+    // frame (answering a guest), not the app's (drafts). (TAC-310.)
+    if (!draft.draftBody.trim()) {
+      showToast('Nothing to send yet — swipe left to write your answer');
+      return;
+    }
     queue.optimisticallyRemove(draft.messageId);
     if (draft.guestId === surfacedGuestId) setSurfacedGuestId(null);
     void setUndoState({ action: 'approve', draft });

@@ -174,6 +174,35 @@ function seedDrafts(): PendingDraft[] {
       reviewReason: null,
       pendingMinutes: 22,
     }),
+    // Blank draftBody — the agent declined to draft. Seeded so the empty-state
+    // render (placeholder copy, no send glyph) and the swipe-right local block
+    // are both reachable in fixture mode without a backend. Newest of the four
+    // so it sorts last and doesn't displace `[0]` in order-dependent tests.
+    // (TAC-310.)
+    draft({
+      messageId: '44d7a2f4-5c6b-4d8e-9a0f-1c2d3e4f5a6b',
+      venueId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      venueSlug: 'mock-sextant-coffee-roasters',
+      guestId: 'dd44a2f4-5c6b-4d8e-9a0f-1c2d3e4f5a6b',
+      guestDisplayName: 'Priya N.',
+      guestPhoneFallback: '+15551110004',
+      recognitionState: 'regular',
+      agentReasoning:
+        "Asking about a lost jacket — I don't have anything on lost property, so this needs your words, not mine.",
+      recentContext: [
+        {
+          id: 'ee44a2f4-5c6b-4d8e-9a0f-1c2d3e4f5a6b',
+          body: 'think i left a denim jacket on the back bench sunday — any chance?',
+          direction: 'inbound',
+          minsAgo: 3,
+        },
+      ],
+      draftBody: '',
+      category: null,
+      voiceFidelity: null,
+      reviewReason: 'no draft generated',
+      pendingMinutes: 2,
+    }),
   ];
 }
 

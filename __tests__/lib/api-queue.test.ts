@@ -128,14 +128,40 @@ describe('lib/api/queue HTTP shape', () => {
     expect(init.method).toBe('POST');
   });
 
-  it('editAndSend posts JSON body to /api/operator/messages/:id/edit', async () => {
+  // The request field is `editedBody`, character-exact per the TAC-309
+  // Contract. This assertion previously read `{ body: 'my version' }` — it
+  // matched the client and locked the defect in: the server never read `body`,
+  // so the operator's typed text rode along under a key nobody looked at and
+  // every send failed 400 invalid_input. Green tests proved the client was
+  // self-consistent, not that it matched the server. (TAC-310.)
+  it('editAndSend posts { editedBody } to /api/operator/messages/:id/edit', async () => {
     await editAndSend('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d', 'my version');
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe(
       'https://api.test/api/operator/messages/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/edit',
     );
     expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body)).toEqual({ body: 'my version' });
+    expect(JSON.parse(init.body)).toEqual({ editedBody: 'my version' });
+    expect(JSON.parse(init.body).body).toBeUndefined();
+  });
+
+  it('editAndSend puts the operator\'s exact typed text in editedBody', async () => {
+    // The payload carries what the operator typed — not the draft body, not a
+    // trimmed-to-empty placeholder. This is the assertion that would have
+    // caught TAC-310 at the API boundary.
+    const typed = "Found it — denim jacket's behind the bar, come grab it anytime.";
+    await editAndSend('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d', typed);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ editedBody: typed });
+  });
+
+  it('approveDraft sends no request body (server ships the stored draft)', async () => {
+    // Regression guard for the other half of TAC-310: swipe-right must stay
+    // bodiless. If someone "unifies" the two entry points by bolting a payload
+    // onto /approve, that's a Contract change and belongs in the ticket first.
+    await approveDraft('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.body).toBeUndefined();
   });
 
   it('skipDraft posts to /api/operator/messages/:id/skip', async () => {

@@ -58,6 +58,18 @@ export function QueueCard({
 }: Props) {
   const a11yLabel = `Pending draft for ${displayName(draft)}.`;
   const thread = draft.recentContext;
+  // A blank draftBody is a real server state (the agent declined to draft, or
+  // the row landed before generation finished). Rendering it as an ordinary
+  // empty clay bubble with a send affordance is what invited the swipe-right
+  // that could never succeed — so blank bodies get placeholder copy, a muted
+  // hairline border, and no send glyph.
+  //
+  // Placeholder wording is fixed by the TAC-309 Contract. It deliberately says
+  // nothing about drafts: a draft is our machinery, not the operator's mental
+  // model — they never asked for one and don't know one was meant to exist.
+  // From their side a guest asked something and it's their turn. Don't
+  // "improve" this into app-state language. (TAC-310.)
+  const hasDraft = draft.draftBody.trim().length > 0;
 
   return (
     <View
@@ -126,7 +138,7 @@ export function QueueCard({
         >
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Edit draft"
+            accessibilityLabel={hasDraft ? 'Edit draft' : 'Write your answer'}
             onPress={onPressDraftBubble}
             disabled={!onPressDraftBubble}
             style={({ pressed }) => ({
@@ -140,39 +152,46 @@ export function QueueCard({
               className="bg-white"
               style={{
                 borderWidth: 1,
-                borderColor: '#C66A4A',
+                // clay reads as "ready to send"; blank drafts drop to the
+                // hairline token so the bubble stops advertising an action.
+                borderColor: hasDraft ? '#C66A4A' : 'rgba(28, 24, 20, 0.12)',
                 borderRadius: 20,
                 borderBottomRightRadius: 6,
                 paddingHorizontal: 16,
                 paddingVertical: 12,
-                paddingRight: 48,
+                // Room for the send glyph only when there's a glyph to clear.
+                paddingRight: hasDraft ? 48 : 16,
               }}
             >
               <Text
-                className="font-inter-tight text-ink"
+                className={
+                  hasDraft ? 'font-inter-tight text-ink' : 'font-inter-tight text-ink-faint'
+                }
                 style={{ fontSize: 14.5, lineHeight: 22 }}
               >
-                {draft.draftBody}
+                {hasDraft ? draft.draftBody : 'Type your answer to send to the guest'}
               </Text>
             </View>
-            <View
-              pointerEvents="none"
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-              style={{
-                position: 'absolute',
-                right: 8,
-                bottom: 8,
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                backgroundColor: '#C66A4A',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Feather name="send" size={14} color="#FFFFFF" />
-            </View>
+            {hasDraft ? (
+              <View
+                pointerEvents="none"
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  bottom: 8,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: '#C66A4A',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name="send" size={14} color="#FFFFFF" />
+              </View>
+            ) : null}
           </Pressable>
         </View>
       </ScrollView>

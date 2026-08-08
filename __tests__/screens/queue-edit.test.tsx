@@ -429,3 +429,54 @@ describe('EditScreen', () => {
   });
 });
 
+
+// TAC-310. The reported failure ran through a draft whose body was blank: the
+// agent never generated one, the card rendered an empty bubble, and every send
+// attempt shipped nothing. These cover the recovery path end-to-end at the
+// screen boundary — blank draft in, operator's typed words out.
+describe('EditScreen — blank draft body (TAC-310)', () => {
+  beforeEach(() => {
+    mockQueue.drafts = [makeDraft({ draftBody: '' })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+  });
+
+  it('opens the composer empty rather than seeding it with the blank body', async () => {
+    await renderAndDrain();
+    expect(screen.getByLabelText('Edit the draft before sending').props.value).toBe('');
+  });
+
+  it('sends the operator\'s typed text, not the blank draft body', async () => {
+    (editAndSend as jest.Mock).mockResolvedValue({ ok: true, data: undefined });
+    const typed = "Found it — denim jacket's behind the bar, come grab it anytime.";
+    render(<EditScreen />);
+    fireEvent.changeText(screen.getByLabelText('Edit the draft before sending'), typed);
+    fireEvent.press(screen.getByLabelText('Send my version'));
+
+    await waitFor(() => expect(editAndSend).toHaveBeenCalled());
+    expect(editAndSend).toHaveBeenCalledWith(mockQueue.drafts[0].messageId, typed);
+  });
+
+  it('trims surrounding whitespace off the typed text before sending', async () => {
+    (editAndSend as jest.Mock).mockResolvedValue({ ok: true, data: undefined });
+    render(<EditScreen />);
+    fireEvent.changeText(
+      screen.getByLabelText('Edit the draft before sending'),
+      '  behind the bar  ',
+    );
+    fireEvent.press(screen.getByLabelText('Send my version'));
+
+    await waitFor(() => expect(editAndSend).toHaveBeenCalled());
+    expect(editAndSend).toHaveBeenCalledWith(
+      mockQueue.drafts[0].messageId,
+      'behind the bar',
+    );
+  });
+
+  it('blocks send while the composer is still empty', async () => {
+    await renderAndDrain();
+    fireEvent.press(screen.getByLabelText('Send my version'));
+    await waitFor(() => expect(getThread).toHaveBeenCalled());
+    expect(editAndSend).not.toHaveBeenCalled();
+    expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
+  });
+});

@@ -21,9 +21,9 @@ function topMessageId(): string {
 }
 
 describe('lib/fixtures/queue idempotency', () => {
-  it('seeds 3 drafts ordered FIFO by pendingSinceMs (largest first)', () => {
+  it('seeds 4 drafts ordered FIFO by pendingSinceMs (largest first)', () => {
     const list = listQueueFixture();
-    expect(list).toHaveLength(3);
+    expect(list).toHaveLength(4);
     for (let i = 1; i < list.length; i++) {
       expect(list[i - 1].pendingSinceMs >= list[i].pendingSinceMs).toBe(true);
     }
