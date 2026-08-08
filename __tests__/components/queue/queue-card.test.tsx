@@ -168,3 +168,37 @@ describe('QueueCard', () => {
     expect(pressable.props.accessibilityState).toMatchObject({ disabled: true });
   });
 });
+
+// TAC-310. A blank draftBody is a real server state, and rendering it as an
+// ordinary empty clay bubble with a send glyph is what invited a swipe-right
+// that could never succeed. Blank bodies must read as "nothing here yet".
+describe('QueueCard — blank draft body', () => {
+  it('renders placeholder copy instead of an empty bubble', () => {
+    render(<QueueCard draft={makeDraft({ draftBody: '' })} />);
+    expect(screen.getByText('Type your answer to send to the guest')).toBeTruthy();
+  });
+
+  it('treats a whitespace-only body as blank', () => {
+    render(<QueueCard draft={makeDraft({ draftBody: '   \n ' })} />);
+    expect(screen.getByText('Type your answer to send to the guest')).toBeTruthy();
+  });
+
+  it('relabels the bubble as "Write your answer" so the affordance matches reality', () => {
+    render(<QueueCard draft={makeDraft({ draftBody: '' })} />);
+    expect(screen.getByLabelText('Write your answer')).toBeTruthy();
+    expect(screen.queryByLabelText('Edit draft')).toBeNull();
+  });
+
+  it('keeps the "Edit draft" label and the placeholder off a normal card', () => {
+    render(<QueueCard draft={makeDraft()} />);
+    expect(screen.getByLabelText('Edit draft')).toBeTruthy();
+    expect(screen.queryByText('Type your answer to send to the guest')).toBeNull();
+  });
+
+  it('still routes to the editor when the placeholder bubble is pressed', () => {
+    const onPress = jest.fn();
+    render(<QueueCard draft={makeDraft({ draftBody: '' })} onPressDraftBubble={onPress} />);
+    fireEvent.press(screen.getByLabelText('Write your answer'));
+    expect(onPress).toHaveBeenCalled();
+  });
+});

@@ -429,3 +429,85 @@ describe('EditScreen', () => {
   });
 });
 
+
+// TAC-310. The reported failure ran through a draft whose body was blank: the
+// agent never generated one, the card rendered an empty bubble, and every send
+// attempt shipped nothing. These cover the recovery path end-to-end at the
+// screen boundary — blank draft in, operator's typed words out.
+describe('EditScreen — blank draft body (TAC-310)', () => {
+  beforeEach(() => {
+    mockQueue.drafts = [makeDraft({ draftBody: '' })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+  });
+
+  it('opens the composer empty rather than seeding it with the blank body', async () => {
+    await renderAndDrain();
+    expect(screen.getByLabelText('Edit the draft before sending').props.value).toBe('');
+  });
+
+  it('uses the Contract placeholder — there is no message to "edit" here', async () => {
+    await renderAndDrain();
+    expect(screen.getByLabelText('Edit the draft before sending').props.placeholder).toBe(
+      'Type your answer to send to the guest',
+    );
+  });
+
+  it('sends the operator\'s typed text, not the blank draft body', async () => {
+    (editAndSend as jest.Mock).mockResolvedValue({ ok: true, data: undefined });
+    const typed = "Found it — denim jacket's behind the bar, come grab it anytime.";
+    render(<EditScreen />);
+    fireEvent.changeText(screen.getByLabelText('Edit the draft before sending'), typed);
+    fireEvent.press(screen.getByLabelText('Send my version'));
+
+    await waitFor(() => expect(editAndSend).toHaveBeenCalled());
+    expect(editAndSend).toHaveBeenCalledWith(mockQueue.drafts[0].messageId, typed);
+  });
+
+  it('trims surrounding whitespace off the typed text before sending', async () => {
+    (editAndSend as jest.Mock).mockResolvedValue({ ok: true, data: undefined });
+    render(<EditScreen />);
+    fireEvent.changeText(
+      screen.getByLabelText('Edit the draft before sending'),
+      '  behind the bar  ',
+    );
+    fireEvent.press(screen.getByLabelText('Send my version'));
+
+    await waitFor(() => expect(editAndSend).toHaveBeenCalled());
+    expect(editAndSend).toHaveBeenCalledWith(
+      mockQueue.drafts[0].messageId,
+      'behind the bar',
+    );
+  });
+
+  it('blocks send while the composer is still empty', async () => {
+    await renderAndDrain();
+    fireEvent.press(screen.getByLabelText('Send my version'));
+    await waitFor(() => expect(getThread).toHaveBeenCalled());
+    expect(editAndSend).not.toHaveBeenCalled();
+    expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
+  });
+});
+
+// The other half of the placeholder split: a card that DID carry a draft keeps
+// "Edit the message…", because that sentence is accurate there. Keyed on the
+// draft, not on the composer's current emptiness — clearing a real draft is
+// still editing a message that exists. (TAC-310.)
+describe('EditScreen — composer placeholder on a normal draft', () => {
+  it('says "Edit the message…" when the draft carried real text', async () => {
+    render(<EditScreen />);
+    await waitFor(() => expect(getThread).toHaveBeenCalled());
+    expect(screen.getByLabelText('Edit the draft before sending').props.placeholder).toBe(
+      'Edit the message…',
+    );
+  });
+
+  it('keeps "Edit the message…" after the operator clears the field', async () => {
+    render(<EditScreen />);
+    await waitFor(() => expect(getThread).toHaveBeenCalled());
+    const input = screen.getByLabelText('Edit the draft before sending');
+    fireEvent.changeText(input, '');
+    expect(
+      screen.getByLabelText('Edit the draft before sending').props.placeholder,
+    ).toBe('Edit the message…');
+  });
+});

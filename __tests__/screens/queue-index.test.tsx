@@ -3,15 +3,17 @@ import * as Linking from 'expo-linking';
 
 import QueueScreen from '@/app/queue/index';
 import { type UseQueueResult } from '@/hooks/use-queue';
+import { clearUndoState } from '@/hooks/use-undo-state';
+import { type PendingDraft, approveDraft } from '@/lib/api/queue';
 import {
   __resetTapStateForTests,
   setPendingTap,
 } from '@/lib/notifications/tap-handler';
 
 type CardStackProps = {
-  drafts: { messageId: string; guestId: string }[];
-  onApprove: (draft: { messageId: string; guestId: string }) => void;
-  onEdit: (draft: { messageId: string; guestId: string }) => void;
+  drafts: PendingDraft[];
+  onApprove: (draft: PendingDraft) => void;
+  onEdit: (draft: PendingDraft) => void;
 };
 let lastCardStackProps: CardStackProps | null = null;
 
@@ -49,6 +51,14 @@ jest.mock('@/components/queue/permission-denied-banner', () => ({
   PermissionDeniedBanner: () => null,
 }));
 jest.mock('@/components/queue/undo-toast', () => ({ UndoToast: () => null }));
+jest.mock('@/lib/api/queue', () => {
+  const actual = jest.requireActual('@/lib/api/queue');
+  return {
+    ...actual,
+    approveDraft: jest.fn().mockResolvedValue({ ok: true, data: undefined }),
+    undoAction: jest.fn().mockResolvedValue({ ok: true, data: undefined }),
+  };
+});
 jest.mock('@/components/queue/empty-state', () => {
   const { Text } = jest.requireActual('react-native');
   return { EmptyState: () => <Text>empty-state-mock</Text> };
@@ -61,8 +71,22 @@ beforeEach(() => {
     session: { user: { email: 'jaipal@theanalog.company' } },
   };
   (Linking.openURL as jest.Mock).mockClear();
+  (approveDraft as jest.Mock).mockClear();
+  (approveDraft as jest.Mock).mockResolvedValue({ ok: true, data: undefined });
+  (mockQueue.optimisticallyRemove as jest.Mock).mockClear();
+  (mockQueue.restore as jest.Mock).mockClear();
   lastCardStackProps = null;
   __resetTapStateForTests();
+});
+
+// A successful approve calls setUndoState, which arms a module-level expiry
+// timer. Unlike showToast, its emitter doesn't early-return when no subscriber
+// is mounted — and <UndoToast /> is mocked to null here — so the timer's only
+// disposal path (last-subscriber unmount) never runs and the Jest worker is
+// force-exited at suite end. Same guard queue-edit.test.tsx uses. See the
+// "Module-level timers + subscriber refcount" gotcha in CLAUDE.md.
+afterEach(async () => {
+  await clearUndoState();
 });
 
 describe('QueueScreen header surface', () => {
@@ -225,5 +249,67 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
     expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
       OTHER_GUEST_ID,
     ]);
+  });
+});
+
+// TAC-310. Swipe-right is the second of the two send entry points, and it was
+// the one that produced the 422 empty_body: `/approve` carries no request body,
+// so the server ships whatever draft body it has stored — and for a card whose
+// draft was never generated, that's `""`. The card looked sendable, the swipe
+// looked like it worked, and nothing shipped. These lock the local block.
+describe('QueueScreen swipe-right send path', () => {
+  const GUEST_ID = 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
+  const MESSAGE_ID = '5f364358-db56-4f8e-9eba-661544855cd1';
+
+  const draftWithBody = (draftBody: string): PendingDraft => ({
+    messageId: MESSAGE_ID,
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueSlug: 'mock',
+    venueTimezone: null,
+    guestId: GUEST_ID,
+    guestDisplayName: 'Priya N.',
+    guestPhoneFallback: '+15551110004',
+    draftBody,
+    category: null,
+    voiceFidelity: null,
+    reviewReason: null,
+    recognitionState: null,
+    agentReasoning: null,
+    pendingSinceMs: 120_000,
+    recentContext: [],
+    langfuseTraceId: null,
+  });
+
+  async function swipeRight(draft: PendingDraft): Promise<void> {
+    mockQueue.drafts = [draft];
+    render(<QueueScreen />);
+    await act(async () => {
+      await lastCardStackProps!.onApprove(draft);
+    });
+  }
+
+  it('sends when the draft body is present', async () => {
+    await swipeRight(draftWithBody('Patio is open until 9 — come by.'));
+    expect(approveDraft).toHaveBeenCalledWith(MESSAGE_ID);
+    expect(mockQueue.optimisticallyRemove).toHaveBeenCalledWith(MESSAGE_ID);
+  });
+
+  it('blocks locally on a genuinely-empty draft — no network call', async () => {
+    await swipeRight(draftWithBody(''));
+    expect(approveDraft).not.toHaveBeenCalled();
+  });
+
+  it('blocks locally on a whitespace-only draft — no network call', async () => {
+    await swipeRight(draftWithBody('   \n  '));
+    expect(approveDraft).not.toHaveBeenCalled();
+  });
+
+  it('leaves the blocked card in the queue (no optimistic remove, no undo state)', async () => {
+    // The failure mode this replaces: optimistically remove the card, fire the
+    // doomed request, then restore it on the error — the operator watches a
+    // card vanish and reappear and can't tell whether the guest got the reply.
+    await swipeRight(draftWithBody(''));
+    expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
+    expect(mockQueue.restore).not.toHaveBeenCalled();
   });
 });

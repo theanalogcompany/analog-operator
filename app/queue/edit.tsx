@@ -221,6 +221,14 @@ export default function EditScreen() {
     );
   }
 
+  // Keyed on whether the DRAFT had text, not on whether the composer is
+  // currently empty — the placeholder only renders when the field is empty, so
+  // keying on `text` would make every card read "Type your answer". An operator
+  // who clears a real draft is still editing a message that exists; an operator
+  // who swiped left off a gap card is answering from scratch. Same `hasDraft`
+  // split the queue card uses, so the two surfaces agree. (TAC-310.)
+  const hasDraft = draft.draftBody.trim().length > 0;
+
   const handleSend = async (): Promise<void> => {
     if (submitting) return;
     const body = text.trim();
@@ -386,7 +394,9 @@ export default function EditScreen() {
               multiline
               value={text}
               onChangeText={setText}
-              placeholder="Edit the message…"
+              placeholder={
+                hasDraft ? 'Edit the message…' : 'Type your answer to send to the guest'
+              }
               placeholderTextColor="#857A6A"
               editable={submitting === null}
             />
