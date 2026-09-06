@@ -10,6 +10,14 @@
 // independently. A single combined `label` prop for both accessibilityLabel
 // and display text (as in an earlier draft of this component) fails both
 // assertions at once — see queue-tabs-header.test.tsx.
+//
+// That exact-match accessibilityLabel has a cost: an explicit
+// accessibilityLabel replaces an element's *entire* announced content, so
+// dropping the count from the label also dropped it from VoiceOver/TalkBack
+// entirely. `accessibilityValue` is additive (announced alongside the label,
+// not instead of it), so the Queue tab restores the count there — "Queue,
+// 2 pending" — without touching accessibilityLabel or any test asserting
+// against it.
 
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
@@ -41,6 +49,7 @@ function Tab({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityValue={count !== undefined ? { text: `${count} pending` } : undefined}
       onPress={onPress}
       style={{ paddingBottom: 10 }}
     >
