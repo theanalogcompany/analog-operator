@@ -1,0 +1,131 @@
+import * as fixtures from '@/lib/fixtures/conversations';
+import { getGuestThread, listConversations } from '@/lib/api/conversations';
+
+const ORIGINAL_USE_FIXTURES = process.env.EXPO_PUBLIC_USE_FIXTURES;
+const ORIGINAL_API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
+
+afterAll(() => {
+  process.env.EXPO_PUBLIC_USE_FIXTURES = ORIGINAL_USE_FIXTURES;
+  process.env.EXPO_PUBLIC_API_BASE_URL = ORIGINAL_API_BASE;
+});
+
+beforeEach(() => {
+  process.env.EXPO_PUBLIC_USE_FIXTURES = 'true';
+  fixtures.resetConversationsFixture();
+});
+
+describe('lib/api/conversations in fixture mode', () => {
+  it('listConversations returns the 12-guest fixture seed', async () => {
+    const result = await listConversations();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toHaveLength(12);
+  });
+
+  it('getGuestThread returns that guest\'s messages', async () => {
+    const list = (await listConversations()) as { ok: true; data: { guestId: string }[] };
+    const target = list.data[0].guestId;
+    const result = await getGuestThread(target);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.length).toBeGreaterThan(0);
+  });
+
+  it('getGuestThread returns [] for an unknown guestId', async () => {
+    const result = await getGuestThread('00000000-0000-4000-8000-000000000000');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toEqual([]);
+  });
+});
+
+describe('lib/api/conversations HTTP shape', () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    process.env.EXPO_PUBLIC_USE_FIXTURES = 'false';
+    process.env.EXPO_PUBLIC_API_BASE_URL = 'https://api.test';
+    fetchMock = jest.fn().mockResolvedValue(new Response('', { status: 200 }));
+    global.fetch = fetchMock as any;
+    jest
+      .spyOn(require('@/lib/supabase/client').supabase.auth, 'getSession')
+      .mockResolvedValue({ data: { session: { access_token: 't' } as any } } as any);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  // Transcribed from the Contract in
+  // docs/superpowers/specs/2026-09-05-conversations-tab-design.md — not from
+  // whatever this file happens to send. Per the repo's contract-boundary
+  // testing rule (see CLAUDE.md, TAC-310 postmortem).
+  it('listConversations GETs /api/operator/conversations and unwraps the { conversations } envelope', async () => {
+    const row = {
+      guestId: 'c0111111-1111-4111-8111-111111111111',
+      venueId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      venueSlug: 'mock-sextant-coffee-roasters',
+      venueTimezone: 'America/Los_Angeles',
+      agentName: 'Sana',
+      name: 'Maya R.',
+      phoneFallback: '+15551110001',
+      recognitionState: 'returning',
+      lastMessageAt: '2026-09-05T21:39:00.000Z',
+      lastMessageDirection: 'outbound',
+      lastMessagePreview: 'Done — got you down for two at 7:30.',
+      conversationCount: 4,
+      firstConversationAt: '2026-06-10T18:00:00.000Z',
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ conversations: [row] }), { status: 200 }),
+    );
+    const result = await listConversations();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe('https://api.test/api/operator/conversations');
+    expect(init.method).toBe('GET');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toEqual([row]);
+  });
+
+  it('getGuestThread GETs /api/operator/guests/:guestId/thread and unwraps { messages }', async () => {
+    const guestId = 'c0111111-1111-4111-8111-111111111111';
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          messages: [
+            {
+              id: '11111111-1111-4111-8111-111111111111',
+              direction: 'inbound',
+              body: 'hey!',
+              createdAt: '2026-09-05T18:00:00.000Z',
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await getGuestThread(guestId);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`https://api.test/api/operator/guests/${guestId}/thread`);
+    expect(init.method).toBe('GET');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual([
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          direction: 'inbound',
+          body: 'hey!',
+          createdAt: '2026-09-05T18:00:00.000Z',
+        },
+      ]);
+    }
+  });
+
+  it('listConversations returns a PARSE error on a malformed response', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ conversations: [{ guestId: 'not-a-uuid' }] }), {
+        status: 200,
+      }),
+    );
+    const result = await listConversations();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('PARSE');
+  });
+});
