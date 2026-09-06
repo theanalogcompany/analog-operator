@@ -1,5 +1,5 @@
 // app/conversations/index.tsx
-import { type Href, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -198,20 +198,10 @@ export default function ConversationsScreen() {
                     conversation={row}
                     isFirst={i === 0}
                     onPress={() =>
-                      // `as unknown as Href`: typed-routes only recognizes a
-                      // pathname once its file exists under app/. This task
-                      // (11) intentionally registers the [guestId] stack
-                      // screen and this push target ahead of Task 12
-                      // creating app/conversations/[guestId].tsx — until
-                      // that file lands, regen-typed-routes.cjs can't see
-                      // this route, so the object literal below doesn't
-                      // structurally match the generated Href union. Remove
-                      // this cast once Task 12 lands; tsc will then verify
-                      // the shape for real.
                       router.push({
                         pathname: '/conversations/[guestId]',
                         params: { guestId: row.guestId },
-                      } as unknown as Href)
+                      })
                     }
                   />
                 ))}
