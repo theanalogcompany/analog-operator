@@ -27,6 +27,17 @@ export function isConversationActive(
  * "first conversation" when there's only ever been one, otherwise
  * "N conversations since {Month}" (this year) or "N conversations since
  * {Year}" (a prior year) — matches the imported design's two label modes.
+ *
+ * The same-year/prior-year check (`first.getFullYear() === now.getFullYear()`)
+ * and the month label (`Intl.DateTimeFormat(...).format(first)`) deliberately
+ * read the device's local wall-clock time, not UTC. This mirrors
+ * `lib/thread-cluster.ts`'s documented choice: the queue/conversation payload
+ * doesn't carry a venue timezone yet, so device-local time is the only
+ * timezone available, and for an operator physically at the venue it matches
+ * the venue's own clock. Near a year boundary, local time and UTC can name
+ * different calendar years for the same instant — that's expected here, not
+ * a bug. See the year-boundary test in
+ * `__tests__/lib/conversations-format.test.ts` for the concrete divergence.
  */
 export function formatConversationsSince(
   count: number,

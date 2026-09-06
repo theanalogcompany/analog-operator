@@ -60,4 +60,39 @@ describe('formatConversationsSince', () => {
       '44 conversations since 2024',
     );
   });
+
+  // The same-year/prior-year check is deliberately local-device-time, not
+  // UTC (see the rationale comment on formatConversationsSince). This pins
+  // firstConversationAt to '2025-01-01T05:00:00.000Z' — already Jan 1 in
+  // UTC, but still Dec 31 2024 on a device west of UTC (e.g. anywhere in
+  // the US) — the exact class of instant where a local-time read and a UTC
+  // read of "what year is this" disagree. The expectation below is derived
+  // with the same local Date/Intl primitives the implementation uses (not
+  // hardcoded to one timezone), so it passes under whatever timezone the
+  // test runner happens to be in — jest-expo's custom test environment
+  // fixes ICU/TZ at worker startup, so a per-test `process.env.TZ` override
+  // does not take effect here; ambient TZ is the only lever available. A
+  // future change that swapped in `getUTCFullYear()` / a `timeZone: 'UTC'`
+  // Intl option would diverge from this derived expectation on any machine
+  // whose local timezone isn't itself UTC (verified: forcing the
+  // implementation to UTC math makes this exact test fail), and fail loudly
+  // here instead of only misbehaving on a real device at an inconvenient
+  // hour.
+  it('resolves the year-boundary case using local device time, not UTC', () => {
+    const firstConversationAt = '2025-01-01T05:00:00.000Z';
+    const nowMs = Date.parse('2025-06-01T12:00:00.000Z');
+
+    const firstLocalYear = new Date(firstConversationAt).getFullYear();
+    const nowLocalYear = new Date(nowMs).getFullYear();
+    const expectedLabel =
+      firstLocalYear === nowLocalYear
+        ? new Intl.DateTimeFormat('en-US', { month: 'long' }).format(
+            new Date(firstConversationAt),
+          )
+        : String(firstLocalYear);
+
+    expect(formatConversationsSince(7, firstConversationAt, nowMs)).toBe(
+      `7 conversations since ${expectedLabel}`,
+    );
+  });
 });
