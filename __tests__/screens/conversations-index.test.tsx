@@ -49,8 +49,8 @@ jest.mock('expo-router', () => ({
   useRouter: () => mockRouter,
   usePathname: () => '/conversations',
 }));
-jest.mock('@/hooks/use-conversations', () => ({
-  useConversations: () => mockConversations,
+jest.mock('@/lib/conversations-context', () => ({
+  useConversationsContext: () => mockConversations,
 }));
 jest.mock('@/lib/queue-context', () => ({
   useQueueContext: () => ({ drafts: [], status: 'ready', error: null, reload: jest.fn(), optimisticallyRemove: jest.fn(), restore: jest.fn() }),

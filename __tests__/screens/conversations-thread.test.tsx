@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import ThreadScreen from '@/app/conversations/[guestId]';
+import { useThreadRealtime, type UseThreadRealtimeOptions } from '@/hooks/use-thread-realtime';
 import { type UseConversationsResult } from '@/hooks/use-conversations';
 import { type ConversationSummary } from '@/lib/api/conversations';
 import { getGuestThread } from '@/lib/api/conversations';
+import { type ThreadMessage } from '@/lib/api/queue';
 
 const GUEST: ConversationSummary = {
   guestId: 'g1',
@@ -35,11 +37,11 @@ jest.mock('expo-router', () => ({
   useRouter: () => mockRouter,
   useLocalSearchParams: () => mockParams,
 }));
-jest.mock('@/hooks/use-conversations', () => ({
-  useConversations: () => mockConversations,
+jest.mock('@/lib/conversations-context', () => ({
+  useConversationsContext: () => mockConversations,
 }));
 jest.mock('@/hooks/use-thread-realtime', () => ({
-  useThreadRealtime: () => undefined,
+  useThreadRealtime: jest.fn(),
 }));
 jest.mock('@/lib/api/conversations', () => {
   const actual = jest.requireActual('@/lib/api/conversations');
@@ -47,9 +49,11 @@ jest.mock('@/lib/api/conversations', () => {
 });
 
 const mockGetGuestThread = getGuestThread as jest.Mock;
+const mockUseThreadRealtime = useThreadRealtime as jest.Mock;
 
 beforeEach(() => {
   mockRouter.back.mockClear();
+  mockUseThreadRealtime.mockReset();
   mockGetGuestThread.mockReset();
   mockGetGuestThread.mockResolvedValue({
     ok: true,
@@ -107,5 +111,117 @@ describe('ConversationThreadScreen', () => {
     render(<ThreadScreen />);
     fireEvent.press(screen.getByLabelText('Back to conversations'));
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression coverage for a "Needs fixes" review finding: onInsert/onUpdate
+  // were originally passed to useThreadRealtime as bare inline arrow
+  // functions, recreated on every render. Since useThreadRealtime's effect
+  // depends on [onInsert, onUpdate], a new identity on every message tears
+  // down and reopens the Realtime channel — the opposite of what a live
+  // thread viewer needs, and a real risk of duplicate delivery. This test
+  // asserts the handlers useCallback-memoize to a stable identity across
+  // renders, including across a render triggered by an actual message
+  // arrival.
+  it('passes the same onInsert/onUpdate identity to useThreadRealtime across renders', async () => {
+    const captured: UseThreadRealtimeOptions[] = [];
+    mockUseThreadRealtime.mockImplementation((opts: UseThreadRealtimeOptions) => {
+      captured.push(opts);
+    });
+
+    render(<ThreadScreen />);
+    await waitFor(() => expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy());
+
+    expect(captured.length).toBeGreaterThan(1);
+    const beforeInsert = captured[captured.length - 1];
+
+    act(() => {
+      beforeInsert.onInsert({
+        id: '3',
+        direction: 'inbound',
+        body: 'One more thing — can we push to 8?',
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    const afterInsert = captured[captured.length - 1];
+    expect(afterInsert.onInsert).toBe(beforeInsert.onInsert);
+    expect(afterInsert.onUpdate).toBe(beforeInsert.onUpdate);
+  });
+
+  it('merges a duplicate realtime insert into a single bubble instead of duplicating it', async () => {
+    let captured: UseThreadRealtimeOptions | null = null;
+    mockUseThreadRealtime.mockImplementation((opts: UseThreadRealtimeOptions) => {
+      captured = opts;
+    });
+
+    render(<ThreadScreen />);
+    await waitFor(() => expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy());
+
+    const live: ThreadMessage = {
+      id: '3',
+      direction: 'inbound',
+      body: 'Table for two works great, see you then!',
+      createdAt: new Date(Date.now() - 60_000).toISOString(),
+    };
+    act(() => {
+      captured!.onInsert(live);
+    });
+    expect(screen.getByText('Table for two works great, see you then!')).toBeTruthy();
+
+    // Re-fire the identical message (simulating a duplicate Realtime
+    // delivery) — mergeMessage replaces-by-id, so this must NOT render a
+    // second bubble.
+    act(() => {
+      captured!.onInsert(live);
+    });
+    expect(screen.getAllByText('Table for two works great, see you then!')).toHaveLength(1);
+  });
+
+  it('reconciles a realtime message that arrives while the fetch is still in flight', async () => {
+    let captured: UseThreadRealtimeOptions | null = null;
+    mockUseThreadRealtime.mockImplementation((opts: UseThreadRealtimeOptions) => {
+      captured = opts;
+    });
+    // Delay the fetch resolution so we can fire a realtime insert first.
+    let resolveFetch: (value: { ok: true; data: ThreadMessage[] }) => void = () => {};
+    mockGetGuestThread.mockReset();
+    mockGetGuestThread.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    render(<ThreadScreen />);
+
+    const live: ThreadMessage = {
+      id: 'live-1',
+      direction: 'inbound',
+      body: 'Arrived before the fetch resolved',
+      createdAt: new Date(Date.now() - 30_000).toISOString(),
+    };
+    act(() => {
+      captured!.onInsert(live);
+    });
+    expect(screen.getByText('Arrived before the fetch resolved')).toBeTruthy();
+
+    await act(async () => {
+      resolveFetch({
+        ok: true,
+        data: [
+          {
+            id: '1',
+            direction: 'inbound',
+            body: 'Hi! Is the patio open tonight?',
+            createdAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+          },
+        ],
+      });
+      await Promise.resolve();
+    });
+
+    // The live arrival must survive the fetch resolving — it should not be
+    // silently dropped by a wholesale overwrite of threadState.
+    expect(screen.getByText('Arrived before the fetch resolved')).toBeTruthy();
+    expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy();
   });
 });

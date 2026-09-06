@@ -9,14 +9,14 @@ import { ConversationRow } from '@/components/conversations/conversation-row';
 import { TypeFilterMenu, type TypeFilterOption } from '@/components/conversations/type-filter-menu';
 import { EmptyState } from '@/components/queue/empty-state';
 import { QueueTabsHeader } from '@/components/shell/queue-tabs-header';
-import { useConversations } from '@/hooks/use-conversations';
+import { useConversationsContext } from '@/lib/conversations-context';
 import { isConversationActive } from '@/lib/conversations-format';
 import { type RecognitionState } from '@/lib/api/queue';
 import { conversations as conversationsTheme, recognition } from '@/lib/theme';
 import { supabase } from '@/lib/supabase/client';
 
 export default function ConversationsScreen() {
-  const conversationsResult = useConversations();
+  const conversationsResult = useConversationsContext();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeOnly, setActiveOnly] = useState(false);

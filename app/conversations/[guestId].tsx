@@ -5,16 +5,16 @@
 // something is flagged.
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThreadBubbleList } from '@/components/thread/thread-bubble-list';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
-import { useConversations } from '@/hooks/use-conversations';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { getGuestThread } from '@/lib/api/conversations';
 import { type ThreadMessage } from '@/lib/api/queue';
+import { useConversationsContext } from '@/lib/conversations-context';
 import { formatConversationsSince, isConversationActive } from '@/lib/conversations-format';
 import { conversations as conversationsTheme } from '@/lib/theme';
 import { computeItems } from '@/lib/thread-cluster';
@@ -24,10 +24,47 @@ type ThreadState =
   | { kind: 'ready'; messages: ThreadMessage[] }
   | { kind: 'error'; messages: ThreadMessage[] };
 
+// Replace-by-id for any message already in the list, otherwise insert at the
+// correct chronological position. Used both for Realtime INSERTs (where the
+// echo of an optimistic send, or a duplicate delivery, dedupes against
+// itself) and UPDATEs (where a row mutates after being seen). Copied from
+// app/queue/edit.tsx's function of the same name/behavior — kept local
+// here rather than extracted to a shared module (fix-round scope).
+function mergeMessage(current: ThreadMessage[], next: ThreadMessage): ThreadMessage[] {
+  const existingIdx = current.findIndex((m) => m.id === next.id);
+  if (existingIdx >= 0) {
+    const out = current.slice();
+    out[existingIdx] = next;
+    return out;
+  }
+  const nextMs = Date.parse(next.createdAt);
+  for (let i = current.length - 1; i >= 0; i--) {
+    if (Date.parse(current[i].createdAt) <= nextMs) {
+      return [...current.slice(0, i + 1), next, ...current.slice(i + 1)];
+    }
+  }
+  return [next, ...current];
+}
+
+// When the fetched thread arrives, merge any Realtime messages that landed
+// during the fetch window so we don't drop a live arrival. Server response
+// is authoritative; we add only ids not already present. Copied from
+// app/queue/edit.tsx's function of the same name/behavior.
+function reconcileFetchedThread(
+  fetched: ThreadMessage[],
+  liveDuringLoad: ThreadMessage[],
+): ThreadMessage[] {
+  if (liveDuringLoad.length === 0) return fetched;
+  const fetchedIds = new Set(fetched.map((m) => m.id));
+  const survivors = liveDuringLoad.filter((m) => !fetchedIds.has(m.id));
+  if (survivors.length === 0) return fetched;
+  return survivors.reduce<ThreadMessage[]>((acc, m) => mergeMessage(acc, m), fetched);
+}
+
 export default function ConversationThreadScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ guestId: string }>();
-  const conversationsResult = useConversations();
+  const conversationsResult = useConversationsContext();
   const guest = useMemo(
     () => conversationsResult.conversations.find((c) => c.guestId === params.guestId) ?? null,
     [conversationsResult.conversations, params.guestId],
@@ -42,7 +79,14 @@ export default function ConversationThreadScreen() {
       const result = await getGuestThread(params.guestId);
       if (cancelled) return;
       if (result.ok) {
-        setThreadState({ kind: 'ready', messages: result.data });
+        // Reconcile against any Realtime messages that landed during the
+        // fetch window — the server response is authoritative for messages
+        // it includes, but we don't want to drop a live arrival that beat
+        // the response back.
+        setThreadState((prev) => ({
+          kind: 'ready',
+          messages: reconcileFetchedThread(result.data, prev.messages),
+        }));
       } else {
         setThreadState((prev) => ({ kind: 'error', messages: prev.messages }));
       }
@@ -52,15 +96,31 @@ export default function ConversationThreadScreen() {
     };
   }, [params.guestId]);
 
+  // `useCallback` with an empty dep array (functional setState form, no
+  // closed-over values) so these handlers keep the same identity across
+  // every render. useThreadRealtime's effect depends on [onInsert, onUpdate]
+  // — a new identity on every message would tear down and reopen the
+  // Realtime channel on every arrival instead of holding one open
+  // subscription for the screen's lifetime.
+  const handleInsert = useCallback((message: ThreadMessage) => {
+    setThreadState((prev) => ({
+      kind: prev.kind,
+      messages: mergeMessage(prev.messages, message),
+    }));
+  }, []);
+
+  const handleUpdate = useCallback((message: ThreadMessage) => {
+    setThreadState((prev) => ({
+      kind: prev.kind,
+      messages: mergeMessage(prev.messages, message),
+    }));
+  }, []);
+
   useThreadRealtime({
     venueId: guest?.venueId ?? '',
     guestId: params.guestId ?? '',
-    onInsert: (message) => setThreadState((prev) => ({ kind: prev.kind, messages: [...prev.messages, message] })),
-    onUpdate: (message) =>
-      setThreadState((prev) => ({
-        kind: prev.kind,
-        messages: prev.messages.map((m) => (m.id === message.id ? message : m)),
-      })),
+    onInsert: handleInsert,
+    onUpdate: handleUpdate,
   });
 
   // Falls back to the device timezone when the venue hasn't got one on file
