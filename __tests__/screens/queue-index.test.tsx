@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
 
 import QueueScreen from '@/app/queue/index';
@@ -38,7 +38,10 @@ jest.mock('expo-linking', () => ({
   openURL: jest.fn().mockResolvedValue(undefined),
   openSettings: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  usePathname: () => '/queue',
+}));
 jest.mock('@/lib/queue-context', () => ({ useQueueContext: () => mockQueue }));
 jest.mock('@/lib/auth/use-session', () => ({ useSession: () => mockSession }));
 jest.mock('@/lib/supabase/client', () => ({ supabase: { auth: { signOut: jest.fn() } } }));
@@ -149,10 +152,14 @@ describe('QueueScreen header surface', () => {
       },
     ];
     render(<QueueScreen />);
-    expect(screen.getByText('2')).toBeTruthy();
-    expect(screen.getByText('drafts')).toBeTruthy();
-    expect(screen.getByText('1')).toBeTruthy();
-    expect(screen.getByText('need your input')).toBeTruthy();
+    // Scoped to the meta row: QueueTabsHeader (rendered above it) also shows
+    // a live queue count, and with 2 drafts here that count coincides with
+    // this row's draftCount — an unscoped getByText('2') would be ambiguous.
+    const metaRow = within(screen.getByTestId('queue-meta-row'));
+    expect(metaRow.getByText('2')).toBeTruthy();
+    expect(metaRow.getByText('drafts')).toBeTruthy();
+    expect(metaRow.getByText('1')).toBeTruthy();
+    expect(metaRow.getByText('need your input')).toBeTruthy();
     expect(screen.queryByText(/sent today/)).toBeNull();
   });
 

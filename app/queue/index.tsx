@@ -9,8 +9,8 @@ import { HamburgerMenu } from '@/components/menu/hamburger-menu';
 import { EmptyState } from '@/components/queue/empty-state';
 import { PermissionDeniedBanner } from '@/components/queue/permission-denied-banner';
 import { QueueCardStack } from '@/components/queue/queue-card-stack';
-import { QueueHeader } from '@/components/queue/queue-header';
 import { UndoToast } from '@/components/queue/undo-toast';
+import { QueueTabsHeader } from '@/components/shell/queue-tabs-header';
 import {
   type UndoRecord,
   clearUndoState,
@@ -65,7 +65,10 @@ function MetaRow({
   needsInputCount: number;
 }) {
   return (
-    <View className="flex-row items-baseline" style={{ marginTop: 8, gap: 8 }}>
+    // testID scopes queries in tests — QueueTabsHeader also renders a live
+    // queue count above this row, and the two numbers coincide whenever the
+    // queue and the meta row's draftCount happen to match (e.g. both are 2).
+    <View testID="queue-meta-row" className="flex-row items-baseline" style={{ marginTop: 8, gap: 8 }}>
       <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 13 }}>
         {draftCount}
       </Text>
@@ -232,7 +235,7 @@ export default function QueueScreen() {
   return (
     <SafeAreaView className="flex-1 bg-sand">
       <PermissionDeniedBanner />
-      <QueueHeader onMenuPress={() => setMenuOpen(true)} />
+      <QueueTabsHeader onMenuPress={() => setMenuOpen(true)} />
 
       {queue.status === 'loading' ? (
         <View className="flex-1 items-center justify-center">
