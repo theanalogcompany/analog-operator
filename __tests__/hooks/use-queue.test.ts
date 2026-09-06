@@ -5,8 +5,101 @@
 // reload-on-event behavior is exercised end-to-end through the queue screen
 // tests; nothing meaningful left to unit-test here.
 
+import { renderHook, waitFor } from '@testing-library/react-native';
+
+import { useQueue } from '@/hooks/use-queue';
+import { type PendingDraft, listQueue } from '@/lib/api/queue';
+
+// The realtime subscription (session/token wiring, channel creation) is
+// exercised by __tests__/lib/realtime-queue-channel.test.ts and the queue
+// screen tests. Stub it here so this file can isolate the `enabled` gating
+// behavior below without dragging in Supabase session state.
+jest.mock('@/hooks/use-queue-realtime', () => ({
+  useQueueRealtime: jest.fn(),
+}));
+
+jest.mock('@/lib/api/queue', () => ({
+  listQueue: jest.fn(),
+}));
+
+const listQueueMock = listQueue as jest.MockedFunction<typeof listQueue>;
+
+function makeDraft(): PendingDraft {
+  return {
+    messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueSlug: 'mock',
+    guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    guestDisplayName: 'A',
+    guestPhoneFallback: '+15550001',
+    draftBody: 'x',
+    category: null,
+    voiceFidelity: null,
+    reviewReason: null,
+    recognitionState: null,
+    agentReasoning: null,
+    pendingSinceMs: 1,
+    recentContext: [],
+    langfuseTraceId: null,
+  };
+}
+
 describe('use-queue', () => {
   it('has no hook-level merge tests after the queue_changed collapse', () => {
     expect(true).toBe(true);
+  });
+});
+
+// Coverage for the `enabled` option added when useQueue's provider moved
+// from app/queue/_layout.tsx (unmounted on sign-out, which threw away state
+// for free) to lib/queue-context.tsx's QueueProvider (mounted permanently at
+// the root). `enabled` gates fetch/reload, and — because the same instance
+// now survives sign-out — must also reset state on the true -> false edge so
+// one operator's drafts can't leak into the next session on a shared venue
+// device. See hooks/use-queue.ts.
+describe('use-queue — enabled gating (queue-context lift)', () => {
+  beforeEach(() => {
+    listQueueMock.mockReset();
+    listQueueMock.mockResolvedValue({ ok: true, data: [makeDraft()] });
+  });
+
+  it('never calls listQueue while enabled is false', async () => {
+    renderHook(() => useQueue({ enabled: false }));
+
+    // Give any stray microtask a chance to run before asserting the negative.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(listQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('resets drafts to [] and status to loading when enabled flips true -> false', async () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useQueue({ enabled }),
+      { initialProps: { enabled: true } },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.drafts).toEqual([makeDraft()]);
+
+    rerender({ enabled: false });
+
+    expect(result.current.drafts).toEqual([]);
+    expect(result.current.status).toBe('loading');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('fires a fetch when enabled flips false -> true', async () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useQueue({ enabled }),
+      { initialProps: { enabled: false } },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(listQueueMock).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(listQueueMock).toHaveBeenCalledTimes(1);
+    expect(result.current.drafts).toEqual([makeDraft()]);
   });
 });

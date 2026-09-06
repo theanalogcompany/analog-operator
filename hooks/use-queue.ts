@@ -71,6 +71,23 @@ export function useQueue(options?: { enabled?: boolean }): UseQueueResult {
     };
   }, [reload, enabled]);
 
+  // QueueProvider now mounts at the root and stays mounted across sign-out/
+  // sign-in (this is a shared venue device — one operator's drafts must not
+  // survive into the next operator's session, same rationale as
+  // wireOperatorCacheClear() in lib/auth/operator.ts). `enabled: false` only
+  // suppresses *future* fetches; without this, whatever was already fetched
+  // stays in state indefinitely. Reset to `status: 'loading'` rather than
+  // `'ready'` with an empty array — an empty `drafts` under `'ready'` renders
+  // the "you're all caught up" empty state, which is the wrong signal for
+  // "we don't know yet, waiting on the next sign-in."
+  useEffect(() => {
+    if (!enabled) {
+      setDrafts([]);
+      setStatus('loading');
+      setError(null);
+    }
+  }, [enabled]);
+
   // All realtime events trigger a reload — we don't patch state locally
   // because the raw `messages` payload doesn't carry the JOINed
   // PendingDraft fields the queue needs.
