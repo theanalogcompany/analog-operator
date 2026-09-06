@@ -43,56 +43,51 @@ describe('isConversationActive', () => {
 });
 
 describe('formatConversationsSince', () => {
+  // Explicit IANA timezone, consistently applied across this describe block
+  // (mirrors thread-cluster.test.ts's `UTC` constant for
+  // formatClusterTimestamp). The specific zone matters for the
+  // year-boundary test below — see its comment.
+  const TIMEZONE = 'America/Los_Angeles';
+
   it('returns "first conversation" when count is 1', () => {
-    expect(formatConversationsSince(1, '2026-09-05T18:00:00.000Z', NOW)).toBe(
+    expect(formatConversationsSince(1, '2026-09-05T18:00:00.000Z', TIMEZONE, NOW)).toBe(
       'first conversation',
     );
   });
 
   it('returns a month label when the first conversation was this year', () => {
-    expect(formatConversationsSince(4, '2026-06-10T18:00:00.000Z', NOW)).toBe(
+    expect(formatConversationsSince(4, '2026-06-10T18:00:00.000Z', TIMEZONE, NOW)).toBe(
       '4 conversations since June',
     );
   });
 
   it('returns a bare year label when the first conversation was a prior year', () => {
-    expect(formatConversationsSince(44, '2024-11-08T18:00:00.000Z', NOW)).toBe(
+    expect(formatConversationsSince(44, '2024-11-08T18:00:00.000Z', TIMEZONE, NOW)).toBe(
       '44 conversations since 2024',
     );
   });
 
-  // The same-year/prior-year check is deliberately local-device-time, not
-  // UTC (see the rationale comment on formatConversationsSince). This pins
-  // firstConversationAt to '2025-01-01T05:00:00.000Z' — already Jan 1 in
-  // UTC, but still Dec 31 2024 on a device west of UTC (e.g. anywhere in
-  // the US) — the exact class of instant where a local-time read and a UTC
-  // read of "what year is this" disagree. The expectation below is derived
-  // with the same local Date/Intl primitives the implementation uses (not
-  // hardcoded to one timezone), so it passes under whatever timezone the
-  // test runner happens to be in — jest-expo's custom test environment
-  // fixes ICU/TZ at worker startup, so a per-test `process.env.TZ` override
-  // does not take effect here; ambient TZ is the only lever available. A
-  // future change that swapped in `getUTCFullYear()` / a `timeZone: 'UTC'`
-  // Intl option would diverge from this derived expectation on any machine
-  // whose local timezone isn't itself UTC (verified: forcing the
-  // implementation to UTC math makes this exact test fail), and fail loudly
-  // here instead of only misbehaving on a real device at an inconvenient
-  // hour.
-  it('resolves the year-boundary case using local device time, not UTC', () => {
+  // formatConversationsSince takes an explicit IANA timezone (mirrors
+  // lib/thread-cluster.ts's formatClusterTimestamp) instead of reading the
+  // JS runtime's ambient local time, specifically so its output is
+  // deterministic and testable regardless of what machine or CI runner
+  // executes it. This pins firstConversationAt to
+  // '2025-01-01T05:00:00.000Z' — already Jan 1 in UTC, but still Dec 31
+  // 2024 in America/Los_Angeles — so the expected "...since 2024" answer
+  // only holds if the function actually reads the `timezone` parameter
+  // rather than falling back to `Date.prototype.getFullYear()`'s ambient
+  // local time (which, on the ubuntu-latest GitHub Actions runners this
+  // repo's CI uses, is UTC — see .github/workflows/ci.yml). Verified this
+  // assertion fails when the implementation is reverted to
+  // `getFullYear()`/`getUTCFullYear()`, including under
+  // `TZ=UTC npx jest __tests__/lib/conversations-format.test.ts` — the
+  // exact ambient timezone CI runs under.
+  it('resolves the year-boundary case against the explicit timezone parameter, not ambient local time', () => {
     const firstConversationAt = '2025-01-01T05:00:00.000Z';
     const nowMs = Date.parse('2025-06-01T12:00:00.000Z');
 
-    const firstLocalYear = new Date(firstConversationAt).getFullYear();
-    const nowLocalYear = new Date(nowMs).getFullYear();
-    const expectedLabel =
-      firstLocalYear === nowLocalYear
-        ? new Intl.DateTimeFormat('en-US', { month: 'long' }).format(
-            new Date(firstConversationAt),
-          )
-        : String(firstLocalYear);
-
-    expect(formatConversationsSince(7, firstConversationAt, nowMs)).toBe(
-      `7 conversations since ${expectedLabel}`,
+    expect(formatConversationsSince(7, firstConversationAt, TIMEZONE, nowMs)).toBe(
+      '7 conversations since 2024',
     );
   });
 });

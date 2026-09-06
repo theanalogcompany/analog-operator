@@ -28,28 +28,32 @@ export function isConversationActive(
  * "N conversations since {Month}" (this year) or "N conversations since
  * {Year}" (a prior year) — matches the imported design's two label modes.
  *
- * The same-year/prior-year check (`first.getFullYear() === now.getFullYear()`)
- * and the month label (`Intl.DateTimeFormat(...).format(first)`) deliberately
- * read the device's local wall-clock time, not UTC. This mirrors
- * `lib/thread-cluster.ts`'s documented choice: the queue/conversation payload
- * doesn't carry a venue timezone yet, so device-local time is the only
- * timezone available, and for an operator physically at the venue it matches
- * the venue's own clock. Near a year boundary, local time and UTC can name
- * different calendar years for the same instant — that's expected here, not
- * a bug. See the year-boundary test in
- * `__tests__/lib/conversations-format.test.ts` for the concrete divergence.
+ * Takes an explicit IANA `timezone` (same pattern as
+ * `lib/thread-cluster.ts`'s `formatClusterTimestamp`) rather than reading
+ * the JS runtime's ambient local time, so the same-year/prior-year check is
+ * deterministic regardless of what machine or CI runner executes it. Near a
+ * year boundary, different timezones can legitimately name different
+ * calendar years for the same instant — callers decide which timezone that
+ * should be. Callers without a venue timezone yet should pass
+ * `Intl.DateTimeFormat().resolvedOptions().timeZone` (the device's own
+ * zone), the same fallback used in `app/queue/edit.tsx` for
+ * `venueTimezone`.
  */
 export function formatConversationsSince(
   count: number,
   firstConversationAt: string,
+  timezone: string,
   nowMs: number = Date.now(),
 ): string {
   if (count <= 1) return 'first conversation';
   const first = new Date(firstConversationAt);
   const now = new Date(nowMs);
+  const yearIn = (date: Date): string =>
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric' }).format(date);
+  const firstYear = yearIn(first);
   const label =
-    first.getFullYear() === now.getFullYear()
-      ? new Intl.DateTimeFormat('en-US', { month: 'long' }).format(first)
-      : String(first.getFullYear());
+    firstYear === yearIn(now)
+      ? new Intl.DateTimeFormat('en-US', { timeZone: timezone, month: 'long' }).format(first)
+      : firstYear;
   return `${count} conversations since ${label}`;
 }
