@@ -27,6 +27,7 @@ import { useSession } from '@/lib/auth/use-session';
 import { requestPermissionIfUndetermined } from '@/lib/notifications/permissions';
 import { subscribeToTaps } from '@/lib/notifications/tap-handler';
 import { wireNotifications } from '@/lib/notifications/wire';
+import { QueueProvider } from '@/lib/queue-context';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -96,17 +97,19 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Protected guard={isSignedIn}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="queue" />
-          </Stack.Protected>
-          <Stack.Protected guard={!isSignedIn}>
-            <Stack.Screen name="sign-in" />
-          </Stack.Protected>
-          <Stack.Screen name="auth/callback" />
-        </Stack>
-        <Toast />
+        <QueueProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Protected guard={isSignedIn}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="queue" />
+            </Stack.Protected>
+            <Stack.Protected guard={!isSignedIn}>
+              <Stack.Screen name="sign-in" />
+            </Stack.Protected>
+            <Stack.Screen name="auth/callback" />
+          </Stack>
+          <Toast />
+        </QueueProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -21,10 +21,9 @@ import { RecognitionBadge } from '@/components/queue/recognition-badge';
 import { clearUndoState, setUndoState } from '@/hooks/use-undo-state';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { type ThreadMessage, editAndSend, getThread, skipDraft } from '@/lib/api/queue';
+import { useQueueContext } from '@/lib/queue-context';
 import { thread as threadTheme } from '@/lib/theme';
 import { computeItems } from '@/lib/thread-cluster';
-
-import { useQueueContext } from './_layout';
 
 type ThreadState =
   | { kind: 'loading'; messages: ThreadMessage[] }

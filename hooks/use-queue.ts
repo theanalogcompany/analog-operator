@@ -41,13 +41,15 @@ function sortByPriority(list: PendingDraft[]): PendingDraft[] {
   });
 }
 
-export function useQueue(): UseQueueResult {
+export function useQueue(options?: { enabled?: boolean }): UseQueueResult {
+  const enabled = options?.enabled ?? true;
   const [drafts, setDrafts] = useState<PendingDraft[]>([]);
   const [status, setStatus] = useState<QueueStatus>('loading');
   const [error, setError] = useState<ApiError | null>(null);
   const mounted = useRef(true);
 
   const reload = useCallback(async (): Promise<void> => {
+    if (!enabled) return;
     setStatus('loading');
     setError(null);
     const result = await listQueue();
@@ -59,24 +61,24 @@ export function useQueue(): UseQueueResult {
       setError(result.error);
       setStatus('error');
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     mounted.current = true;
-    void reload();
+    if (enabled) void reload();
     return () => {
       mounted.current = false;
     };
-  }, [reload]);
+  }, [reload, enabled]);
 
   // All realtime events trigger a reload — we don't patch state locally
   // because the raw `messages` payload doesn't carry the JOINed
   // PendingDraft fields the queue needs.
   const onRealtimeEvent = useCallback(
     (_event: QueueChannelEvent): void => {
-      void reload();
+      if (enabled) void reload();
     },
-    [reload],
+    [reload, enabled],
   );
   useQueueRealtime(onRealtimeEvent);
 

@@ -39,7 +39,7 @@ jest.mock('expo-linking', () => ({
   openSettings: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
-jest.mock('@/app/queue/_layout', () => ({ useQueueContext: () => mockQueue }));
+jest.mock('@/lib/queue-context', () => ({ useQueueContext: () => mockQueue }));
 jest.mock('@/lib/auth/use-session', () => ({ useSession: () => mockSession }));
 jest.mock('@/lib/supabase/client', () => ({ supabase: { auth: { signOut: jest.fn() } } }));
 jest.mock('@/components/queue/queue-card-stack', () => ({

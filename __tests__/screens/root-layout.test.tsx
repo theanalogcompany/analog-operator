@@ -37,6 +37,12 @@ jest.mock('@/lib/notifications/tap-handler', () => ({
   subscribeToTaps: () => () => {},
 }));
 jest.mock('@/components/auth/toast', () => ({ Toast: () => null }));
+jest.mock('@/lib/queue-context', () => {
+  const { View } = jest.requireActual('react-native');
+  return {
+    QueueProvider: ({ children }: { children?: React.ReactNode }) => <View>{children}</View>,
+  };
+});
 
 // expo-router's Stack is a screen registry that bails outside a navigation
 // context. Replace with a passthrough so layout effects run cleanly.

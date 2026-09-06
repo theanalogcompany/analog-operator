@@ -43,7 +43,7 @@ jest.mock('react-native-safe-area-context', () => {
   };
 });
 
-jest.mock('@/app/queue/_layout', () => ({
+jest.mock('@/lib/queue-context', () => ({
   useQueueContext: () => mockQueue,
 }));
 

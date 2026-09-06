@@ -23,9 +23,8 @@ import {
   consumePendingTap,
   subscribeToTaps,
 } from '@/lib/notifications/tap-handler';
+import { useQueueContext } from '@/lib/queue-context';
 import { supabase } from '@/lib/supabase/client';
-
-import { useQueueContext } from './_layout';
 
 // Title-case the email local-part for the greeting. Real first-name field on
 // the operator row is a follow-up; deriving from email is a pilot stop-gap.
