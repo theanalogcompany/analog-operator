@@ -5,7 +5,7 @@
 // reload-on-event behavior is exercised end-to-end through the queue screen
 // tests; nothing meaningful left to unit-test here.
 
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { useQueue } from '@/hooks/use-queue';
 import { type PendingDraft, listQueue } from '@/lib/api/queue';
@@ -101,5 +101,48 @@ describe('use-queue — enabled gating (queue-context lift)', () => {
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(listQueueMock).toHaveBeenCalledTimes(1);
     expect(result.current.drafts).toEqual([makeDraft()]);
+  });
+
+  // Regression test for the race the reviewer's second pass caught: `reload`
+  // closes over the `enabled` that was current when the fetch *started*. The
+  // mount effect's deps include `reload` (new identity on every `enabled`
+  // toggle), so a `true -> false` transition re-runs that effect within the
+  // same commit and sets `mounted.current` back to `true` before an
+  // already-in-flight `listQueue()` call resolves — defeating the `mounted`
+  // guard alone. Without `enabledRef`, the stale fetch's `.then` would
+  // clobber the sign-out reset with the outgoing operator's drafts.
+  it('drops a stale in-flight fetch that resolves after enabled flips to false', async () => {
+    let resolveFetch!: (value: Awaited<ReturnType<typeof listQueue>>) => void;
+    const pending = new Promise<Awaited<ReturnType<typeof listQueue>>>((resolve) => {
+      resolveFetch = resolve;
+    });
+    listQueueMock.mockReturnValueOnce(pending);
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useQueue({ enabled }),
+      { initialProps: { enabled: true } },
+    );
+
+    // The fetch has started — listQueue() was called — but the mocked
+    // promise is still unresolved, simulating a slow network response.
+    await waitFor(() => expect(listQueueMock).toHaveBeenCalledTimes(1));
+
+    // Sign-out happens while that fetch is still in flight.
+    rerender({ enabled: false });
+    expect(result.current.drafts).toEqual([]);
+    expect(result.current.status).toBe('loading');
+
+    // The stale fetch now resolves with the OUTGOING operator's data.
+    await act(async () => {
+      resolveFetch({ ok: true, data: [makeDraft()] });
+      await pending;
+      // Flush the microtask reload()'s continuation runs on after the await.
+      await Promise.resolve();
+    });
+
+    // Must still reflect the post-sign-out reset, never the stale payload.
+    expect(result.current.drafts).toEqual([]);
+    expect(result.current.status).toBe('loading');
+    expect(result.current.error).toBeNull();
   });
 });

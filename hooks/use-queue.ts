@@ -47,13 +47,28 @@ export function useQueue(options?: { enabled?: boolean }): UseQueueResult {
   const [status, setStatus] = useState<QueueStatus>('loading');
   const [error, setError] = useState<ApiError | null>(null);
   const mounted = useRef(true);
+  // Tracks the LATEST `enabled` value, read after `await listQueue()` below.
+  // `reload` closes over the `enabled` that was current when the fetch
+  // *started*; if `enabled` flips to false while the fetch is in flight, the
+  // mount effect below re-runs (its deps include `reload`, which gets a new
+  // identity on every `enabled` toggle) and resets `mounted.current` back to
+  // true before the in-flight promise resolves, defeating the `mounted`
+  // guard. `enabledRef` is updated synchronously on every render, including
+  // the `enabled: false` render that fires the sign-out reset, so checking
+  // it after the await reflects reality at resolution time, not at call
+  // time — closing the race where a stale fetch clobbers the reset with the
+  // outgoing operator's data.
+  const enabledRef = useRef(enabled);
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   const reload = useCallback(async (): Promise<void> => {
     if (!enabled) return;
     setStatus('loading');
     setError(null);
     const result = await listQueue();
-    if (!mounted.current) return;
+    if (!mounted.current || !enabledRef.current) return;
     if (result.ok) {
       setDrafts(sortByPriority(result.data));
       setStatus('ready');
