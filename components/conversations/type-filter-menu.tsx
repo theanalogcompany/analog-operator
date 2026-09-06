@@ -4,6 +4,18 @@
 // outer flex:1 container — see app/conversations/index.tsx), which is how
 // RN's default `position: relative` on every View makes an
 // `inset:0`-style absolute child cover the whole screen without a Modal.
+//
+// The backdrop's `zIndex: 4` is required, not decorative: this component
+// renders above the row list in app/conversations/index.tsx's JSX, but RN's
+// hit-testing tie-break for overlapping siblings with equal/unset zIndex
+// goes to whichever comes LATER in source order — the row list, which
+// renders after this component. Without an explicit zIndex here, a tap
+// meant to dismiss the dropdown over the list area instead hits a row's own
+// Pressable and navigates away. zIndex 4 sits below the menu panel's zIndex
+// 5 (so tapping an option still wins over the backdrop) but above the row
+// list's implicit default (so tap-outside-to-dismiss works everywhere,
+// including over the list). Caught in Task 11 review; the omission
+// originated in this file at Task 10.
 
 import { Pressable, Text, View } from 'react-native';
 
@@ -37,7 +49,7 @@ export function TypeFilterMenu({ visible, selected, counts, onSelect, onDismiss 
         accessibilityRole="button"
         accessibilityLabel="Dismiss filter menu"
         onPress={onDismiss}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 4 }}
       />
       <View
         className="rounded-[12px] border-[0.5px] border-hairline bg-white"
