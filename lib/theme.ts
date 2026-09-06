@@ -68,3 +68,10 @@ export const thread = {
   timestampGapMs: 5 * 60_000,
   nearBottomPx: 120,
 } as const;
+
+// Conversations tab: the window (in minutes since last message) inside
+// which a conversation counts as "active" — drives the pulsing-dot render
+// and the Active filter pill. Mirrors the imported design's default.
+export const conversations = {
+  activeWindowMins: 60,
+} as const;
