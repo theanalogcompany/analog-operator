@@ -177,6 +177,27 @@ describe('ConversationThreadScreen', () => {
     expect(screen.getAllByText('Table for two works great, see you then!')).toHaveLength(1);
   });
 
+  // Regression coverage for a final-review finding: on fetch failure with no
+  // other messages cached for this guest, the screen used to render
+  // `threadState.messages` (`[]`) directly with no branch on `kind`,
+  // producing a blank thread area with zero indication anything went wrong.
+  // Per the design spec's Error Handling section, a guest-thread fetch
+  // failure must fall back to a single synthetic bubble built from the
+  // guest summary's last-message preview rather than showing a blank screen.
+  it('falls back to the guest summary preview as a single bubble when the thread fetch fails', async () => {
+    mockGetGuestThread.mockReset();
+    mockGetGuestThread.mockResolvedValue({
+      ok: false,
+      error: { kind: 'NETWORK', message: 'offline' },
+    });
+
+    render(<ThreadScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Done — got you down for two at 7:30.')).toBeTruthy(),
+    );
+  });
+
   it('reconciles a realtime message that arrives while the fetch is still in flight', async () => {
     let captured: UseThreadRealtimeOptions | null = null;
     mockUseThreadRealtime.mockImplementation((opts: UseThreadRealtimeOptions) => {

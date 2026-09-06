@@ -127,7 +127,30 @@ export default function ConversationThreadScreen() {
   // yet — same fallback pattern as `app/queue/edit.tsx`'s `timezone` memo
   // (`draft?.venueTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone`).
   const timezone = guest?.venueTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const items = useMemo(() => computeItems(threadState.messages, timezone), [threadState.messages, timezone]);
+
+  // Fetch failure with nothing else cached for this guest (no per-thread
+  // cache exists here, unlike the queue edit screen's recentContext) would
+  // otherwise render a blank thread area. Fall back to a single synthetic
+  // bubble built from the conversations-list summary already in hand — per
+  // the design spec's Error Handling section: "falls back to whatever the
+  // list already had cached for that guest's last message... must not show
+  // a blank screen on fetch failure." This synthetic message never goes
+  // through ThreadMessageSchema, so its id doesn't need to be a real UUID.
+  const effectiveMessages = useMemo(() => {
+    if (threadState.kind === 'error' && threadState.messages.length === 0 && guest) {
+      return [
+        {
+          id: `fallback-${guest.guestId}`,
+          direction: guest.lastMessageDirection,
+          body: guest.lastMessagePreview,
+          createdAt: guest.lastMessageAt,
+        },
+      ];
+    }
+    return threadState.messages;
+  }, [threadState, guest]);
+
+  const items = useMemo(() => computeItems(effectiveMessages, timezone), [effectiveMessages, timezone]);
 
   if (!guest) {
     return (
