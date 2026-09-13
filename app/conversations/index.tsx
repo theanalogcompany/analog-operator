@@ -1,7 +1,7 @@
 // app/conversations/index.tsx
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HamburgerMenu } from '@/components/menu/hamburger-menu';
@@ -187,7 +187,10 @@ export default function ConversationsScreen() {
           {rows.length === 0 ? (
             <EmptyState variant="conversations" />
           ) : (
-            <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 20 }}>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+            >
               <View
                 className="rounded-[16px] border-[0.5px] border-hairline bg-white"
                 style={{ overflow: 'hidden' }}
@@ -206,7 +209,7 @@ export default function ConversationsScreen() {
                   />
                 ))}
               </View>
-            </View>
+            </ScrollView>
           )}
         </>
       )}
