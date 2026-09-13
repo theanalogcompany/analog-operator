@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { type ReactNode } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
@@ -17,6 +17,17 @@ import { supabase } from '@/lib/supabase/client';
 import { display, layout, typePresets } from '@/lib/theme';
 import { venueNameFromSlug } from '@/lib/venue-name';
 import { useVenueSlug } from '@/lib/venue';
+
+/**
+ * The full wordmark, 480x92 (aspect 5.217), drawn in the brand cream
+ * (rgb(249,244,230)) on alpha. Rendered UNTINTED — unlike the "a" mark on the
+ * sign-in screen, which ships dark and is tinted white, this one already
+ * carries its own colour and tinting it would flatten the cream to plain white.
+ * Source is ~3x the rendered size, so it stays crisp at @3x.
+ */
+const WORDMARK = require('../../assets/images/analog_full_cream_480.png');
+const WORDMARK_WIDTH = 156;
+const WORDMARK_HEIGHT = Math.round(WORDMARK_WIDTH * (92 / 480));
 
 // `0 8px 22px rgba(20,17,14,0.14)` — the design's panel shadow. Cross-platform
 // `boxShadow` for the same reason the queue card uses it: Android's elevation
@@ -136,11 +147,9 @@ export default function YouScreen() {
           — the "a" mark at the top was competing with the venue name for the
           same job.
 
-          PLACEHOLDER TYPE. This should be the wordmark ASSET, not Fraunces: a
-          script lockup set in a different face will hint and letter-space
-          differently from the drawn mark, which is exactly the kind of drift a
-          wordmark exists to prevent. Drop the file at
-          assets/images/wordmark.png and this becomes an <Image>. */}
+          The drawn mark, not type set in Fraunces: a script lockup rendered in
+          a different face hints and letter-spaces differently from the real
+          thing, which is the drift a wordmark exists to prevent. */}
       <View
         style={{
           alignItems: 'center',
@@ -148,14 +157,12 @@ export default function YouScreen() {
           paddingBottom: insets.bottom + layout.footerGapPx,
         }}
       >
-        <Text
-          allowFontScaling={false}
+        <Image
+          source={WORDMARK}
           accessibilityLabel="The Analog Company"
-          className="font-fraunces"
-          style={{ fontSize: 15, letterSpacing: 0.2, color: 'rgba(255,255,255,0.8)' }}
-        >
-          the analog company
-        </Text>
+          resizeMode="contain"
+          style={{ width: WORDMARK_WIDTH, height: WORDMARK_HEIGHT, opacity: 0.85 }}
+        />
       </View>
     </GroundScreen>
   );
