@@ -27,8 +27,8 @@ export function ConversationRow({ conversation, onPress, isFirst }: Props) {
       onPress={onPress}
       style={({ pressed }) => ({
         paddingHorizontal: 16,
-        paddingVertical: 14,
-        gap: 6,
+        paddingVertical: 18,
+        gap: 8,
         borderTopWidth: isFirst ? 0 : 0.5,
         borderTopColor: 'rgba(28, 24, 20, 0.06)',
         opacity: pressed ? 0.7 : active ? 1 : 0.62,
@@ -45,7 +45,10 @@ export function ConversationRow({ conversation, onPress, isFirst }: Props) {
             borderColor: 'rgba(28, 24, 20, 0.2)',
           }}
         />
-        <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
+        <Text
+          className="font-inter-tight-medium text-ink"
+          style={{ fontSize: 15, lineHeight: 20 }}
+        >
           {displayName}
         </Text>
         <RecognitionBadge state={conversation.recognitionState} />
@@ -59,7 +62,7 @@ export function ConversationRow({ conversation, onPress, isFirst }: Props) {
       <Text
         className="font-inter-tight text-ink-soft"
         numberOfLines={1}
-        style={{ fontSize: 13, lineHeight: 19 }}
+        style={{ fontSize: 13, lineHeight: 21 }}
       >
         <Text className="text-ink-faint">{speaker} · </Text>
         {conversation.lastMessagePreview}
