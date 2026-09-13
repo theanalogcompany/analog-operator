@@ -1,4 +1,6 @@
-import { render, screen, fireEvent, act } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import type React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { UndoToast } from '@/components/queue/undo-toast';
 import {
@@ -27,6 +29,15 @@ function makeDraft(): PendingDraft {
   };
 }
 
+// The toast pins itself above the home indicator, so it reads safe-area insets.
+const metrics = {
+  frame: { x: 0, y: 0, width: 402, height: 874 },
+  insets: { top: 62, left: 0, right: 0, bottom: 34 },
+};
+function withSafeArea(ui: React.ReactElement) {
+  return <SafeAreaProvider initialMetrics={metrics}>{ui}</SafeAreaProvider>;
+}
+
 describe('UndoToast', () => {
   beforeEach(async () => {
     await clearUndoState();
@@ -43,38 +54,40 @@ describe('UndoToast', () => {
   });
 
   it('renders nothing when there is no undo state', () => {
-    render(<UndoToast onUndo={() => {}} />);
+    render(withSafeArea(<UndoToast onUndo={() => {}} />));
     expect(screen.queryByText(/Sent/)).toBeNull();
   });
 
   it('renders "Sent" + UNDO when an approve is pending', async () => {
-    render(<UndoToast onUndo={() => {}} />);
+    render(withSafeArea(<UndoToast onUndo={() => {}} />));
     await act(async () => {
       await setUndoState({ action: 'approve', draft: makeDraft() });
     });
-    expect(screen.getByText('Sent')).toBeTruthy();
+    // The redesign names the guest, so the operator can tell which send they
+    // are about to undo when two land close together.
+    expect(screen.getByText(/Sent to Maya R\./)).toBeTruthy();
     expect(screen.getByLabelText('Undo')).toBeTruthy();
   });
 
   it('renders "Sent your version" for edit, "Dismissed" for skip', async () => {
-    const { rerender } = render(<UndoToast onUndo={() => {}} />);
+    const { rerender } = render(withSafeArea(<UndoToast onUndo={() => {}} />));
     await act(async () => {
       await setUndoState({ action: 'edit', draft: makeDraft(), body: 'rewritten' });
     });
-    expect(screen.getByText('Sent your version')).toBeTruthy();
+    expect(screen.getByText(/Sent your version to Maya R\./)).toBeTruthy();
 
     await act(async () => {
       await clearUndoState();
       await setUndoState({ action: 'skip', draft: makeDraft() });
     });
-    rerender(<UndoToast onUndo={() => {}} />);
-    expect(screen.getByText('Dismissed')).toBeTruthy();
+    rerender(withSafeArea(<UndoToast onUndo={() => {}} />));
+    expect(screen.getByText(/Dismissed to Maya R\./)).toBeTruthy();
   });
 
   it('fires onUndo with the active record when UNDO is tapped', async () => {
     const draft = makeDraft();
     const onUndo = jest.fn();
-    render(<UndoToast onUndo={onUndo} />);
+    render(withSafeArea(<UndoToast onUndo={onUndo} />));
     await act(async () => {
       await setUndoState({ action: 'approve', draft });
     });
