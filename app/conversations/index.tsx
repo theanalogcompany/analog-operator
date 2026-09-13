@@ -187,29 +187,28 @@ export default function ConversationsScreen() {
           {rows.length === 0 ? (
             <EmptyState variant="conversations" />
           ) : (
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
-            >
+            <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 20 }}>
               <View
                 className="rounded-[16px] border-[0.5px] border-hairline bg-white"
-                style={{ overflow: 'hidden' }}
+                style={{ flex: 1, overflow: 'hidden' }}
               >
-                {rows.map((row, i) => (
-                  <ConversationRow
-                    key={row.guestId}
-                    conversation={row}
-                    isFirst={i === 0}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/conversations/[guestId]',
-                        params: { guestId: row.guestId },
-                      })
-                    }
-                  />
-                ))}
+                <ScrollView style={{ flex: 1 }}>
+                  {rows.map((row, i) => (
+                    <ConversationRow
+                      key={row.guestId}
+                      conversation={row}
+                      isFirst={i === 0}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/conversations/[guestId]',
+                          params: { guestId: row.guestId },
+                        })
+                      }
+                    />
+                  ))}
+                </ScrollView>
               </View>
-            </ScrollView>
+            </View>
           )}
         </>
       )}
