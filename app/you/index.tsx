@@ -71,11 +71,7 @@ export default function YouScreen() {
   return (
     <GroundScreen name="neutral">
       <TopNav />
-      <ScrollView
-        contentContainerStyle={{
-          paddingBottom: insets.bottom + layout.footerGapPx + 24,
-        }}
-      >
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ paddingHorizontal: 22, paddingTop: 22, paddingBottom: 18 }}>
           <Text
         allowFontScaling={false}
@@ -132,21 +128,35 @@ export default function YouScreen() {
           </SettingsCard>
         </View>
 
-        {/* The wordmark closes the screen rather than opening it: the "a" mark
-            at the top competed with the venue name for the same job. Set in
-            Fraunces, the brand's display face — if a real wordmark asset
-            exists, it belongs here instead. */}
-        <View style={{ alignItems: 'center', paddingTop: 36 }}>
-          <Text
-            allowFontScaling={false}
-            accessibilityLabel="The Analog Company"
-            className="font-fraunces"
-            style={{ fontSize: 15, letterSpacing: 0.2, color: 'rgba(255,255,255,0.8)' }}
-          >
-            the analog company
-          </Text>
-        </View>
       </ScrollView>
+
+      {/* A real footer: outside the ScrollView, so it sits against the bottom
+          of the screen whatever the content length does, rather than trailing
+          the last card. The wordmark closes the screen rather than opening it
+          — the "a" mark at the top was competing with the venue name for the
+          same job.
+
+          PLACEHOLDER TYPE. This should be the wordmark ASSET, not Fraunces: a
+          script lockup set in a different face will hint and letter-space
+          differently from the drawn mark, which is exactly the kind of drift a
+          wordmark exists to prevent. Drop the file at
+          assets/images/wordmark.png and this becomes an <Image>. */}
+      <View
+        style={{
+          alignItems: 'center',
+          paddingTop: 16,
+          paddingBottom: insets.bottom + layout.footerGapPx,
+        }}
+      >
+        <Text
+          allowFontScaling={false}
+          accessibilityLabel="The Analog Company"
+          className="font-fraunces"
+          style={{ fontSize: 15, letterSpacing: 0.2, color: 'rgba(255,255,255,0.8)' }}
+        >
+          the analog company
+        </Text>
+      </View>
     </GroundScreen>
   );
 }
