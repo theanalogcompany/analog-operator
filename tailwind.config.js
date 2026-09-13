@@ -20,8 +20,18 @@ module.exports = {
         'ink-soft': '#4A4339',
         'ink-faint': '#857A6A',
         inbound: '#3A3530',
+        // Values the operator redesign uses that were not yet tokens.
+        // (design_handoff_operator_redesign/README.md, "Design tokens".)
+        'bubble-in': '#E3DCCE',
+        meta: '#6F6658',
+        'toast-surface': '#FBF8F2',
+        preview: '#5C5447',
         hairline: 'rgba(28, 24, 20, 0.12)',
         'hairline-soft': 'rgba(28, 24, 20, 0.06)',
+        'hairline-composer': 'rgba(28, 24, 20, 0.10)',
+        'hairline-field': 'rgba(28, 24, 20, 0.18)',
+        'hairline-badge': 'rgba(28, 24, 20, 0.25)',
+        'hairline-bubble': 'rgba(28, 24, 20, 0.14)',
         'bg-warm': '#ECE7DC',
       },
       fontFamily: {

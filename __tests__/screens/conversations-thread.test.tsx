@@ -78,7 +78,7 @@ describe('ConversationThreadScreen', () => {
   it('renders the guest name, badge, and meta line', async () => {
     render(<ThreadScreen />);
     expect(screen.getByText('Maya R.')).toBeTruthy();
-    expect(screen.getByText('Returning')).toBeTruthy();
+    expect(screen.getByLabelText('Recognition: Returning')).toBeTruthy();
     await waitFor(() => expect(screen.getByText(/4 conversations since/)).toBeTruthy());
   });
 

@@ -23,7 +23,7 @@ describe('ConversationRow', () => {
   it('renders the guest name, badge label, and preview', () => {
     render(<ConversationRow conversation={BASE} onPress={() => {}} isFirst />);
     expect(screen.getByText('Maya R.')).toBeTruthy();
-    expect(screen.getByText('Returning')).toBeTruthy();
+    expect(screen.getByLabelText('Recognition: Returning')).toBeTruthy();
     expect(screen.getByText(/Done — got you down for two at 7:30\./)).toBeTruthy();
   });
 

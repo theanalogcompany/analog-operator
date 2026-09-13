@@ -103,6 +103,7 @@ export default function RootLayout() {
               <Stack.Screen name="index" />
               <Stack.Screen name="queue" />
               <Stack.Screen name="conversations" />
+              <Stack.Screen name="you" />
             </Stack.Protected>
             <Stack.Protected guard={!isSignedIn}>
               <Stack.Screen name="sign-in" />

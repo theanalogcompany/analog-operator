@@ -52,10 +52,22 @@ export function resolveSwipeOutcome(args: {
 }
 
 export type UseQueueSwipeArgs = {
+  /**
+   * Fires when the fly-off animation lands, not when the finger lifts — the
+   * design's "the card flies to ±440px and the action fires 250ms later".
+   * Dispatching it at `onEnd` instead would pop the next card in while the
+   * outgoing one is still in the air.
+   */
   onCommitRight: () => void;
   onCommitLeft: () => void;
   /** Fires when a right-commit was declined because `canCommitRight` is false. */
   onRefuseRight: () => void;
+  /**
+   * Fires once each time the drag crosses the commit threshold, in either
+   * direction. Feeling the commit point before releasing is what makes an
+   * invisible 80px threshold discoverable.
+   */
+  onCrossThreshold: () => void;
   /**
    * Whether a right-swipe may complete. False for a blank draft: the card
    * snaps back instead of flying off.
@@ -83,6 +95,7 @@ export function useQueueSwipe({
   onCommitRight,
   onCommitLeft,
   onRefuseRight,
+  onCrossThreshold,
   canCommitRight,
   enabled,
 }: UseQueueSwipeArgs): UseQueueSwipeResult {
@@ -90,6 +103,9 @@ export function useQueueSwipe({
   const rotation = useSharedValue<number>(swipe.residualRotationDeg);
   const direction = useSharedValue<SwipeDirection>(0);
   const intensity = useSharedValue<number>(0);
+  // Edge-detects the threshold so the haptic fires on crossing, not on every
+  // frame spent past the line.
+  const pastThreshold = useSharedValue<boolean>(false);
 
   const pan = Gesture.Pan()
     .enabled(enabled)
@@ -97,16 +113,23 @@ export function useQueueSwipe({
     .failOffsetY([-15, 15])
     .onBegin(() => {
       'worklet';
-      if (__DEV__) console.log('[pan] begin');
+      pastThreshold.value = false;
     })
     .onUpdate((e) => {
       'worklet';
-      if (__DEV__) console.log('[pan] update', e.translationX);
       translateX.value = e.translationX;
       rotation.value = e.translationX * swipe.rotationFactor;
       const abs = Math.abs(e.translationX);
       intensity.value = Math.min(1, abs / swipe.intensityDivisorPx);
       direction.value = e.translationX > 0 ? 1 : e.translationX < 0 ? -1 : 0;
+
+      const crossed = abs > swipe.commitThresholdPx;
+      if (crossed !== pastThreshold.value) {
+        pastThreshold.value = crossed;
+        // Only on the way in. Buzzing again on the way back out would make a
+        // corrected, abandoned swipe feel like it did something.
+        if (crossed) runOnJS(onCrossThreshold)();
+      }
     })
     .onEnd((e) => {
       'worklet';
@@ -118,14 +141,23 @@ export function useQueueSwipe({
 
       // The only outcome that takes the card off the stack.
       if (outcome === 'right') {
-        translateX.value = withTiming(swipe.flyOffTranslateXPx, {
-          duration: swipe.flyOffDurationMs,
-        });
+        // The commit rides the fly-off's completion callback rather than a
+        // parallel setTimeout: one clock, nothing to clear on unmount, and the
+        // card is genuinely gone before the deck advances. This does not
+        // reopen TAC-312 — the refusal decision above already happened on the
+        // UI thread, so a card that may not send never starts flying.
+        translateX.value = withTiming(
+          swipe.flyOffTranslateXPx,
+          { duration: swipe.flyOffDurationMs },
+          (finished) => {
+            'worklet';
+            if (finished) runOnJS(onCommitRight)();
+          },
+        );
         rotation.value = withTiming(swipe.flyOffRotationDeg, {
           duration: swipe.flyOffDurationMs,
         });
         intensity.value = withTiming(0, { duration: swipe.flyOffDurationMs });
-        runOnJS(onCommitRight)();
         return;
       }
 
@@ -139,6 +171,7 @@ export function useQueueSwipe({
       });
       intensity.value = withTiming(0, { duration: swipe.springBackDurationMs });
       direction.value = 0;
+      pastThreshold.value = false;
 
       if (outcome === 'left') {
         runOnJS(onCommitLeft)();
