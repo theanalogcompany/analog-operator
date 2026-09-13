@@ -100,68 +100,86 @@ function verticalHighlight(args: {
   };
 }
 
-/** clay — reservation + low-fidelity flags, and (via `auth`) the sign-in flow. */
-const CLAY: Ground = {
-  layers: [
-    {
-      role: 'ramp',
-      colors: ['#A85B3C', '#97472B', '#5E2D17'],
-      locations: [0, 0.46, 1],
-      ...ANGLE_168,
-    },
-    verticalHighlight({
-      color: 'rgba(229,177,156,0.3)',
-      transparent: 'rgba(229,177,156,0)',
-      centerY: 0.48,
-      radiusY: 0.7,
-      stop: 0.62,
-    }),
-    {
-      // Top scrim: buys the nav row its contrast against the ramp.
-      role: 'scrim',
-      colors: [
-        'rgba(26,16,10,0.38)',
-        'rgba(26,16,10,0.26)',
-        'rgba(26,16,10,0)',
-        'rgba(26,16,10,0)',
-      ],
-      locations: [0, 0.26, 0.46, 1],
-      ...TOP_TO_BOTTOM,
-    },
-  ],
-};
+/**
+ * The highlight exists to make the white queue card pop off the ground — that
+ * is a queue job. On the screens with no card (Texts, the thread, You, the
+ * empty queue, the whole sign-in flow) white type sits directly on the ground
+ * and the highlight only washes it out: at 0.26 it lifts the mid-screen
+ * composite far enough that NO white text reaches 4.5:1 against it, not even
+ * pure white. So the card grounds keep the full highlight and the type grounds
+ * take a much quieter one. That divergence is the entire reason `neutral` and
+ * `auth` are separate names rather than aliases.
+ */
+const CARD_HIGHLIGHT = 0.26;
+const CLAY_CARD_HIGHLIGHT = 0.3;
+/** Quiet enough that body text clears 4.5:1 at mid-screen. */
+const TYPE_HIGHLIGHT = 0.1;
 
-/** stone — new-guest flag, and (via `neutral`) every non-queue screen. */
-const STONE: Ground = {
-  layers: [
-    {
-      role: 'ramp',
-      colors: ['#94897A', '#6B6252', '#332E27'],
-      locations: [0, 0.46, 1],
-      ...ANGLE_168,
-    },
-    verticalHighlight({
-      color: 'rgba(247,241,227,0.26)',
-      transparent: 'rgba(247,241,227,0)',
-      centerY: 0.48,
-      radiusY: 0.7,
-      stop: 0.62,
-    }),
-    {
-      role: 'scrim',
-      colors: [
-        'rgba(22,17,12,0.42)',
-        'rgba(22,17,12,0.30)',
-        'rgba(22,17,12,0)',
-        'rgba(22,17,12,0)',
-      ],
-      locations: [0, 0.26, 0.46, 1],
-      ...TOP_TO_BOTTOM,
-    },
-  ],
-};
+function clayGround(highlightAlpha: number): Ground {
+  return {
+    layers: [
+      {
+        role: 'ramp',
+        colors: ['#A85B3C', '#97472B', '#5E2D17'],
+        locations: [0, 0.46, 1],
+        ...ANGLE_168,
+      },
+      verticalHighlight({
+        color: `rgba(229,177,156,${highlightAlpha})`,
+        transparent: 'rgba(229,177,156,0)',
+        centerY: 0.48,
+        radiusY: 0.7,
+        stop: 0.62,
+      }),
+      {
+        // Top scrim: buys the nav row its contrast against the ramp.
+        role: 'scrim',
+        colors: [
+          'rgba(26,16,10,0.38)',
+          'rgba(26,16,10,0.26)',
+          'rgba(26,16,10,0)',
+          'rgba(26,16,10,0)',
+        ],
+        locations: [0, 0.26, 0.46, 1],
+        ...TOP_TO_BOTTOM,
+      },
+    ],
+  };
+}
 
-/** ink — no draft generated. Dark enough that it needs no top scrim. */
+function stoneGround(highlightAlpha: number): Ground {
+  return {
+    layers: [
+      {
+        role: 'ramp',
+        colors: ['#94897A', '#6B6252', '#332E27'],
+        locations: [0, 0.46, 1],
+        ...ANGLE_168,
+      },
+      verticalHighlight({
+        color: `rgba(247,241,227,${highlightAlpha})`,
+        transparent: 'rgba(247,241,227,0)',
+        centerY: 0.48,
+        radiusY: 0.7,
+        stop: 0.62,
+      }),
+      {
+        role: 'scrim',
+        colors: [
+          'rgba(22,17,12,0.42)',
+          'rgba(22,17,12,0.30)',
+          'rgba(22,17,12,0)',
+          'rgba(22,17,12,0)',
+        ],
+        locations: [0, 0.26, 0.46, 1],
+        ...TOP_TO_BOTTOM,
+      },
+    ],
+  };
+}
+
+/** ink — no draft generated. Dark enough that it needs no top scrim, and dark
+ *  enough that its highlight never threatens contrast. */
 const INK: Ground = {
   layers: [
     {
@@ -181,11 +199,13 @@ const INK: Ground = {
 };
 
 export const GROUNDS: Record<GroundName, Ground> = {
-  queueClay: CLAY,
-  queueStone: STONE,
+  // Card grounds: a white card sits over these, so the highlight stays strong.
+  queueClay: clayGround(CLAY_CARD_HIGHLIGHT),
+  queueStone: stoneGround(CARD_HIGHLIGHT),
   queueInk: INK,
-  // Aliases today, distinct roles tomorrow. Do not collapse these call sites
-  // back onto `queueStone` / `queueClay` — the indirection is the feature.
-  neutral: STONE,
-  auth: CLAY,
+  // Type grounds: white text sits directly on these, so the highlight drops.
+  // These were aliases of the two above until the contrast numbers came in;
+  // they are now deliberately different and must not be collapsed back.
+  neutral: stoneGround(TYPE_HIGHLIGHT),
+  auth: clayGround(TYPE_HIGHLIGHT),
 };

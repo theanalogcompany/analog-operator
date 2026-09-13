@@ -88,12 +88,12 @@ type CtaProps = {
  * The primary action: ink fill, tracked caps, full width.
  *
  * LAYOUT LIVES IN A PLAIN OBJECT STYLE, NOT THE `({ pressed }) => ...` FORM.
- * On device the function form was silently dropped and this rendered as bare
- * left-aligned text with no pill at all — while object-form styles on the same
- * component (see TopNav) rendered correctly. It did not reproduce in Jest, so
- * rather than keep chasing it, anything structural goes in the object and the
- * function form is reserved for press feedback, where failing means a missing
- * dim rather than a missing button.
+ * On device the function form is silently dropped and this rendered as bare
+ * left-aligned text with no pill at all, while object-form styles on the same
+ * component (see TopNav) rendered correctly. THE CAUSE IS UNKNOWN and it does
+ * not reproduce in Jest — this is a workaround, not a root-cause fix. See the
+ * "Structural styles go in Pressable's OBJECT style" gotcha in CLAUDE.md
+ * before changing this back.
  */
 export function AuthCta({ label, onPress, disabled = false }: CtaProps) {
   return (

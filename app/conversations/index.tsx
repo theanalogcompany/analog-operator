@@ -103,6 +103,7 @@ export default function ConversationsScreen() {
             onPress={() => void conversationsResult.reload()}
             // Object form: structural styles are dropped in the
             // `({ pressed }) => ...` form on device.
+            // Cause unknown; see the CLAUDE.md gotcha before changing it back.
             style={{
               marginTop: 24,
               borderWidth: 1,

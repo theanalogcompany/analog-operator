@@ -420,8 +420,9 @@ export default function EditScreen() {
             accessibilityLabel="Don't send anything"
             onPress={() => void handleSkip()}
             disabled={submitting !== null}
-            // Object form — the function form was dropped on device and this
-            // rendered left-aligned and crammed under the textarea.
+            // Object form — the function form is dropped on device and this
+            // rendered left-aligned and crammed under the textarea. Cause
+            // unknown; see the CLAUDE.md gotcha before changing it back.
             style={{ marginTop: 16, paddingBottom: 28, alignSelf: 'center' }}
           >
             <TrackedCaps

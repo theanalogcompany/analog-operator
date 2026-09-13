@@ -67,10 +67,36 @@ describe('grounds', () => {
     }
   });
 
-  it('still aliases neutral to stone and auth to clay', () => {
-    // When the color exercise gives these their own identity this test is the
-    // thing that should fail, prompting a decision rather than a silent drift.
-    expect(GROUNDS.neutral).toBe(GROUNDS.queueStone);
-    expect(GROUNDS.auth).toBe(GROUNDS.queueClay);
+  // These two were aliases until the contrast numbers came in. The highlight
+  // exists to make the white queue card pop off the ground — a queue job. On
+  // the screens with no card, white type sits directly on the ground and the
+  // highlight only washes it out: at 0.26 nothing, not even pure white, reaches
+  // 4.5:1 at mid-screen. So the card grounds keep the full highlight and the
+  // type grounds take a much quieter one. This divergence IS the reason there
+  // are five names rather than three; collapsing them back would silently
+  // reintroduce the contrast failure.
+  it('separates the type grounds from the card grounds', () => {
+    expect(GROUNDS.neutral).not.toBe(GROUNDS.queueStone);
+    expect(GROUNDS.auth).not.toBe(GROUNDS.queueClay);
+  });
+
+  it('differs from its card ground only in the highlight', () => {
+    const layerOf = (g: (typeof GROUNDS)[GroundName], role: string) =>
+      g.layers.find((l) => l.role === role);
+    for (const [type, cardGround] of [
+      ['neutral', 'queueStone'],
+      ['auth', 'queueClay'],
+    ] as const) {
+      // Same ramp, same scrim — only the highlight is quieter.
+      expect(layerOf(GROUNDS[type], 'ramp')).toEqual(
+        layerOf(GROUNDS[cardGround], 'ramp'),
+      );
+      expect(layerOf(GROUNDS[type], 'scrim')).toEqual(
+        layerOf(GROUNDS[cardGround], 'scrim'),
+      );
+      expect(layerOf(GROUNDS[type], 'highlight')).not.toEqual(
+        layerOf(GROUNDS[cardGround], 'highlight'),
+      );
+    }
   });
 });

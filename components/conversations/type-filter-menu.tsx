@@ -75,6 +75,7 @@ export function TypeFilterMenu({
                 onPress={() => onSelect(option.value)}
                 // Object form: structural styles are dropped in the
                 // `({ pressed }) => ...` form on device.
+                // Cause unknown; see the CLAUDE.md gotcha.
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',

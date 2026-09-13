@@ -10,6 +10,7 @@ import {
 import {
   body as bodyType,
   conversations as conversationsTheme,
+  groundText,
   typePresets,
 } from '@/lib/theme';
 
@@ -38,10 +39,11 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
       accessibilityRole="button"
       accessibilityLabel={`Open conversation with ${displayName}`}
       onPress={onPress}
-      // Object form, not `({ pressed }) => ...`. The function form was dropped
+      // Object form, NOT `({ pressed }) => ...`. The function form is dropped
       // on device, which took the band, the 13px padding and the row's whole
       // rhythm with it — rows merged into one column and the activity dot sat
-      // flush against the screen edge. Structure goes in the object.
+      // flush against the screen edge. Cause unknown, does not reproduce in
+      // Jest. See the CLAUDE.md gotcha before changing this back.
       style={{
         borderRadius: 12,
         paddingHorizontal: 16,
@@ -84,7 +86,7 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
           paddingLeft: 14,
           fontSize: bodyType.preview.size,
           lineHeight: bodyType.preview.lineHeight,
-          color: 'rgba(255,255,255,0.8)',
+          color: groundText.body,
         }}
       >
         {`${speaker} — ${conversation.lastMessagePreview}`}

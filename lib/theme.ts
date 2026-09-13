@@ -96,6 +96,21 @@ export const hint = {
   disabledColor: 'rgba(255,255,255,0.35)',
 } as const;
 
+/**
+ * White text sitting directly on a ground.
+ *
+ * One alpha for body copy, deliberately. The design specifies 0.8 for the
+ * Texts preview line, but 0.8 misses 4.5:1 against every type ground — 3.98:1
+ * on neutral even after the highlight was dropped to 0.10. 0.92 clears it at
+ * 4.67:1, and using the same value everywhere means there is one number to
+ * check rather than two. Chrome (the help footer, the escape hatch) stays at
+ * the design's 0.85: it is tracked caps at 9.5px, not reading material.
+ */
+export const groundText = {
+  body: 'rgba(255,255,255,0.92)',
+  chrome: 'rgba(255,255,255,0.85)',
+} as const;
+
 export const nav = {
   hairlineColor: 'rgba(255,255,255,0.16)',
   activeColor: '#FFFFFF',

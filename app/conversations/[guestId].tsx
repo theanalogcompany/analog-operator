@@ -176,6 +176,7 @@ export default function ConversationThreadScreen() {
             accessibilityLabel="Back to conversations"
             // Object form: structural styles are dropped in the
             // `({ pressed }) => ...` form on device.
+            // Cause unknown; see the CLAUDE.md gotcha before changing it back.
             style={{
               marginTop: 24,
               borderWidth: 1,
