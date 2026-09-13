@@ -27,6 +27,7 @@ import { useSession } from '@/lib/auth/use-session';
 import { requestPermissionIfUndetermined } from '@/lib/notifications/permissions';
 import { subscribeToTaps } from '@/lib/notifications/tap-handler';
 import { wireNotifications } from '@/lib/notifications/wire';
+import { RootErrorBoundary } from '@/components/shell/root-error-boundary';
 import { QueueProvider } from '@/lib/queue-context';
 
 SplashScreen.preventAutoHideAsync();
@@ -97,7 +98,8 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueueProvider>
+        <RootErrorBoundary>
+          <QueueProvider>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Protected guard={isSignedIn}>
               <Stack.Screen name="index" />
@@ -110,8 +112,9 @@ export default function RootLayout() {
             </Stack.Protected>
             <Stack.Screen name="auth/callback" />
           </Stack>
-          <Toast />
-        </QueueProvider>
+            <Toast />
+          </QueueProvider>
+        </RootErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

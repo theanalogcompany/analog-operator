@@ -53,12 +53,19 @@ export const WASH_LOCATIONS: readonly [number, number, number, number] = [
  *
  * A wash is visible only while the drag is heading its way, so each one reads
  * the direction as well as the intensity.
+ *
+ * The `'worklet'` directive is NOT optional and NOT decoration. This function is
+ * called from inside `useAnimatedStyle`, whose body runs on the UI thread;
+ * without the directive it stays an ordinary JS function and the call throws
+ * there. Jest runs it as plain JS, so its unit tests pass either way — they
+ * exercise the function but not the thread it has to run on.
  */
 export function washOpacity(
   side: 'left' | 'right',
   direction: SwipeDirection,
   intensity: number,
 ): number {
+  'worklet';
   const wants: SwipeDirection = side === 'right' ? 1 : -1;
   return direction === wants ? intensity : 0;
 }
