@@ -257,7 +257,11 @@ describe('QueueCardStack — wiring', () => {
     expect(screen.getByText('01 / 04')).toBeTruthy();
   });
 
-  it('renders only the front draft, not the whole deck', () => {
+  it('shows the next conversation in the near peek, not a blank slab', () => {
+    // Deviation from the handoff, agreed on device: the spec draws both peeks
+    // as empty divs, which reads as a failed card once the top one is dragged
+    // clear on a real screen. The near peek keeps the spec's geometry and alpha
+    // curve but carries the next conversation.
     render(
       <Wrapper>
         <QueueCardStack
@@ -278,8 +282,94 @@ describe('QueueCardStack — wiring', () => {
       </Wrapper>,
     );
     expect(screen.getByText('MAYA R.')).toBeTruthy();
-    // The peek cards behind the front one are blank slabs, not rendered cards.
+    expect(
+      screen.getByText('DEVON L.', { includeHiddenElements: true }),
+    ).toBeTruthy();
+  });
+
+  it('hides the peek from screen readers', () => {
+    // It is scenery. Without this VoiceOver reads the next guest's whole
+    // conversation aloud as part of the current card — which is also why the
+    // query above needs includeHiddenElements.
+    render(
+      <Wrapper>
+        <QueueCardStack
+          drafts={[
+            makeDraft(),
+            makeDraft({
+              messageId: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+              guestDisplayName: 'Devon L.',
+            }),
+          ]}
+          position={1}
+          total={4}
+          onApprove={noop}
+          onEdit={noop}
+          onRefuseApprove={noop}
+          onPressHelp={noop}
+        />
+      </Wrapper>,
+    );
     expect(screen.queryByText('DEVON L.')).toBeNull();
+  });
+
+  it('renders at most two cards — the far peek stays blank', () => {
+    // At 0.26 alpha any text is unreadable noise rather than depth, so the far
+    // slab carries none. It also caps the render cost at two cards per frame.
+    render(
+      <Wrapper>
+        <QueueCardStack
+          drafts={[
+            makeDraft(),
+            makeDraft({
+              messageId: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+              guestDisplayName: 'Devon L.',
+            }),
+            makeDraft({
+              messageId: '33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a',
+              guestDisplayName: 'Priya N.',
+            }),
+          ]}
+          position={1}
+          total={4}
+          onApprove={noop}
+          onEdit={noop}
+          onRefuseApprove={noop}
+          onPressHelp={noop}
+        />
+      </Wrapper>,
+    );
+    expect(
+      screen.getByText('DEVON L.', { includeHiddenElements: true }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('PRIYA N.', { includeHiddenElements: true }),
+    ).toBeNull();
+  });
+
+  it('shows no counter on the peek — progress belongs to the front card', () => {
+    render(
+      <Wrapper>
+        <QueueCardStack
+          drafts={[
+            makeDraft(),
+            makeDraft({
+              messageId: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+              guestDisplayName: 'Devon L.',
+            }),
+          ]}
+          position={1}
+          total={4}
+          onApprove={noop}
+          onEdit={noop}
+          onRefuseApprove={noop}
+          onPressHelp={noop}
+        />
+      </Wrapper>,
+    );
+    expect(
+      screen.getAllByText('01 / 04', { includeHiddenElements: true }),
+    ).toHaveLength(1);
   });
 
   it('offers the edit hint and the send hint on a sendable card', () => {

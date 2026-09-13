@@ -92,6 +92,8 @@ export function isComposerTap(tapY: number, composerTop: number): boolean {
 
 type FrontCardProps = {
   draft: PendingDraft;
+  /** The card behind this one, shown in the near peek. */
+  next?: PendingDraft;
   cardHeight: number;
   hintReserve: number;
   hintBottom: number;
@@ -116,6 +118,7 @@ type FrontCardProps = {
  */
 function FrontCard({
   draft,
+  next,
   cardHeight,
   hintReserve,
   hintBottom,
@@ -193,7 +196,12 @@ function FrontCard({
       >
         <View style={{ width: '100%', height: cardHeight }}>
           <PeekSlab depth="far" height={cardHeight} intensity={intensity} />
-          <PeekSlab depth="near" height={cardHeight} intensity={intensity} />
+          <PeekSlab
+            depth="near"
+            height={cardHeight}
+            intensity={intensity}
+            draft={next}
+          />
           <GestureDetector gesture={gesture}>
             {/* collapsable={false} is mandatory: RN flattens views with no
                 native interactable descendant, gesture-handler's ref then
@@ -242,9 +250,26 @@ type PeekSlabProps = {
   depth: 'near' | 'far';
   height: number;
   intensity: SharedValue<number>;
+  /**
+   * The next conversation, rendered inside the near slab.
+   *
+   * The handoff specs both peeks as empty divs carrying only a background
+   * alpha, and that is genuinely how the prototype draws them — but it doesn't
+   * survive the jump to a real screen. In an iframe you drag a small card and
+   * the slab reads as the edge of a paper stack; at full drag on a phone you
+   * expose most of a blank white rectangle, which reads as a card that failed
+   * to load.
+   *
+   * So the near slab carries real content while keeping the design's geometry
+   * and, importantly, its exact alpha curve: 0.55 at rest rising to 0.9 at full
+   * drag. The next card starts as a pale suggestion and resolves as you commit,
+   * which is what the brightening was always expressing. The far slab stays
+   * blank — at 0.26 any text would be unreadable noise rather than depth.
+   */
+  draft?: PendingDraft;
 };
 
-function PeekSlab({ depth, height, intensity }: PeekSlabProps) {
+function PeekSlab({ depth, height, intensity, draft }: PeekSlabProps) {
   const config = peek[depth];
   const base = config.baseOpacity;
   const gain = config.dragGain;
@@ -256,6 +281,8 @@ function PeekSlab({ depth, height, intensity }: PeekSlabProps) {
   return (
     <Animated.View
       pointerEvents="none"
+      // The peek is scenery. Without this, VoiceOver would read the next
+      // guest's conversation aloud as part of the current card.
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={[
@@ -266,7 +293,9 @@ function PeekSlab({ depth, height, intensity }: PeekSlabProps) {
           right: 0,
           height,
           borderRadius: card.radiusPx,
-          backgroundColor: '#FFFFFF',
+          // The card paints its own white; a second layer underneath it only
+          // shows at the scaled edges.
+          backgroundColor: draft ? 'transparent' : '#FFFFFF',
           zIndex: depth === 'near' ? 2 : 1,
           transform: [
             { translateY: config.translateYPx },
@@ -275,7 +304,9 @@ function PeekSlab({ depth, height, intensity }: PeekSlabProps) {
         },
         style,
       ]}
-    />
+    >
+      {draft ? <QueueCard draft={draft} height={height} /> : null}
+    </Animated.View>
   );
 }
 
@@ -302,6 +333,7 @@ export function QueueCardStack({
   const [availableHeight, setAvailableHeight] = useState(0);
   const { cardHeight, hintReserve } = resolveCardLayout(availableHeight);
   const top = drafts[0];
+  const next = drafts[1];
 
   return (
     <View
@@ -312,6 +344,7 @@ export function QueueCardStack({
         <FrontCard
           key={top.messageId}
           draft={top}
+          next={next}
           cardHeight={cardHeight}
           hintReserve={hintReserve}
           hintBottom={insets.bottom + layout.hintRowGapPx}
