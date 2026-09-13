@@ -94,20 +94,27 @@ export function QueueCard({
   const reasoning = draft.agentReasoning?.trim();
 
   return (
+    // Two views, deliberately. iOS cannot both cast a shadow and clip its
+    // children on the same layer — with `overflow: hidden` and a shadow on one
+    // view, the clip stops applying at the corners and the white card showed
+    // through as wedges either side of the flag strip. So the outer view owns
+    // the shadow and the inner one owns the clip.
     <View
       accessibilityLabel={`Pending draft for ${name}.`}
       style={[
-        {
-          width: '100%',
-          height,
+        { width: '100%', height, borderRadius: card.radiusPx },
+        cardShadow,
+      ]}
+    >
+      <View
+        style={{
+          flex: 1,
           borderRadius: card.radiusPx,
           backgroundColor: '#FFFFFF',
           overflow: 'hidden',
           flexDirection: 'column',
-        },
-        cardShadow,
-      ]}
-    >
+        }}
+      >
       {/* a. Flag strip — why this card is in front of you. */}
       <View
         style={{
@@ -117,6 +124,10 @@ export function QueueCard({
           paddingVertical: 11,
           paddingHorizontal: card.regionInsetPx,
           backgroundColor: stripColorFor(tone),
+          // Matches the card's own corners rather than relying solely on the
+          // parent's clip.
+          borderTopLeftRadius: card.radiusPx,
+          borderTopRightRadius: card.radiusPx,
         }}
       >
         <TrackedCaps
@@ -159,6 +170,7 @@ export function QueueCard({
         </View>
         {reasoning ? (
           <Text
+        allowFontScaling={false}
             accessibilityLabel="Agent reasoning"
             className="font-inter-tight"
             style={{
@@ -235,6 +247,7 @@ export function QueueCard({
             }}
           >
             <Text
+        allowFontScaling={false}
               className="font-inter-tight"
               style={{
                 fontSize: bodyType.bubble.size,
@@ -262,14 +275,15 @@ export function QueueCard({
         </View>
       </View>
 
-      {overlay ? (
-        <View
-          pointerEvents="none"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-        >
-          {overlay}
-        </View>
-      ) : null}
+        {overlay ? (
+          <View
+            pointerEvents="none"
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          >
+            {overlay}
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }

@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { type ReactNode } from 'react';
-import { Image, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
@@ -16,8 +16,7 @@ import { useQueueContext } from '@/lib/queue-context';
 import { supabase } from '@/lib/supabase/client';
 import { display, layout, typePresets } from '@/lib/theme';
 import { venueNameFromSlug } from '@/lib/venue-name';
-
-const LOGO = require('../../assets/images/logo.png');
+import { useVenueSlug } from '@/lib/venue';
 
 // `0 8px 22px rgba(20,17,14,0.14)` — the design's panel shadow. Cross-platform
 // `boxShadow` for the same reason the queue card uses it: Android's elevation
@@ -40,13 +39,19 @@ export default function YouScreen() {
   const permission = useNotificationPermission();
   const insets = useSafeAreaInsets();
 
-  const email =
-    session.status === 'signed-in' ? (session.session.user.email ?? null) : null;
+  // Operators sign in by PHONE, so `user.email` is null for almost all of
+  // them — the earlier version made the whole meta line conditional on email
+  // and it simply never rendered. Phone is the fallback, and there is always
+  // one of the two.
+  const user = session.status === 'signed-in' ? session.session.user : null;
+  const signedInAs = user?.email ?? user?.phone ?? null;
 
-  // The queue payload is the only place a venue slug appears today. With an
-  // empty queue there is nothing to derive from, so the title falls back
-  // rather than inventing one. See lib/venue-name.ts.
-  const venueName = venueNameFromSlug(queue.drafts[0]?.venueSlug) ?? 'Your venue';
+  // Prefer whatever the queue is showing right now, then the remembered slug
+  // for when the queue is empty — which in live mode is the normal case.
+  const rememberedSlug = useVenueSlug();
+  const venueName =
+    venueNameFromSlug(queue.drafts[0]?.venueSlug ?? rememberedSlug) ??
+    'Your venue';
 
   const pushValue =
     permission === 'granted' ? 'On' : permission === 'loading' ? '—' : 'Off';
@@ -72,17 +77,8 @@ export default function YouScreen() {
         }}
       >
         <View style={{ paddingHorizontal: 22, paddingTop: 22, paddingBottom: 18 }}>
-          <Image
-            source={LOGO}
-            accessibilityLabel="Analog"
-            resizeMode="contain"
-            // The mark is a dark monochrome PNG with alpha; tintColor is
-            // exactly the CSS `brightness(0) invert(1)` the design calls for,
-            // without shipping and maintaining a second asset.
-            tintColor="#FFFFFF"
-            style={{ width: 34, height: 34, marginBottom: 16 }}
-          />
           <Text
+        allowFontScaling={false}
             className="font-fraunces"
             style={{
               fontSize: display.screenTitle.size,
@@ -93,13 +89,13 @@ export default function YouScreen() {
           >
             {venueName}
           </Text>
-          {email ? (
+          {signedInAs ? (
             <TrackedCaps
               {...typePresets.screenMeta}
               color="rgba(255,255,255,0.92)"
               style={{ marginTop: 10 }}
             >
-              {`Signed in as ${email}`}
+              {`Signed in as ${signedInAs}`}
             </TrackedCaps>
           ) : null}
         </View>
@@ -134,6 +130,21 @@ export default function YouScreen() {
               }}
             />
           </SettingsCard>
+        </View>
+
+        {/* The wordmark closes the screen rather than opening it: the "a" mark
+            at the top competed with the venue name for the same job. Set in
+            Fraunces, the brand's display face — if a real wordmark asset
+            exists, it belongs here instead. */}
+        <View style={{ alignItems: 'center', paddingTop: 36 }}>
+          <Text
+            allowFontScaling={false}
+            accessibilityLabel="The Analog Company"
+            className="font-fraunces"
+            style={{ fontSize: 15, letterSpacing: 0.2, color: 'rgba(255,255,255,0.8)' }}
+          >
+            the analog company
+          </Text>
         </View>
       </ScrollView>
     </GroundScreen>

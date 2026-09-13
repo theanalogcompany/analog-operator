@@ -35,6 +35,7 @@ export function EmptyState({ variant = 'queue' }: Props) {
         }}
       />
       <Text
+        allowFontScaling={false}
         className="font-fraunces"
         style={{
           fontSize: display.emptyTitle.size,
@@ -46,6 +47,7 @@ export function EmptyState({ variant = 'queue' }: Props) {
         {copy.headline}
       </Text>
       <Text
+        allowFontScaling={false}
         className="font-inter-tight"
         style={{
           fontSize: 13,

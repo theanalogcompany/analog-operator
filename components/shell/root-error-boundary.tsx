@@ -43,6 +43,7 @@ export class RootErrorBoundary extends Component<Props, State> {
       <View style={{ flex: 1, backgroundColor: '#1C1814' }}>
         <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 80 }}>
           <Text
+        allowFontScaling={false}
             style={{
               color: '#E5B19C',
               fontSize: 11,
@@ -53,12 +54,14 @@ export class RootErrorBoundary extends Component<Props, State> {
             SOMETHING BROKE ON RENDER
           </Text>
           <Text
+        allowFontScaling={false}
             selectable
             style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}
           >
             {String(error?.message ?? error)}
           </Text>
           <Text
+        allowFontScaling={false}
             selectable
             style={{
               color: 'rgba(255,255,255,0.6)',

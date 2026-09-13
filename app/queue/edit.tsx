@@ -213,6 +213,7 @@ export default function EditScreen() {
       <GroundScreen name="neutral">
         <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 32 }}>
           <Text
+        allowFontScaling={false}
             className="font-fraunces"
             style={{ fontSize: 26, lineHeight: 32, color: '#FFFFFF', textAlign: 'center' }}
           >
@@ -222,15 +223,16 @@ export default function EditScreen() {
             onPress={() => router.back()}
             accessibilityRole="button"
             accessibilityLabel="Back to queue"
-            style={({ pressed }) => ({
+            // Object form: structural styles are dropped in the
+            // `({ pressed }) => ...` form on device.
+            style={{
               marginTop: 24,
               borderWidth: 1,
               borderColor: 'rgba(255,255,255,0.4)',
               borderRadius: 999,
               paddingHorizontal: 20,
               paddingVertical: 12,
-              opacity: pressed ? 0.88 : 1,
-            })}
+            }}
           >
             <TrackedCaps {...typePresets.link} color="#FFFFFF" decorative>
               Back
@@ -338,6 +340,7 @@ export default function EditScreen() {
           </TrackedCaps>
           {reasoning ? (
             <Text
+        allowFontScaling={false}
               accessibilityLabel="Agent reasoning"
               className="font-inter-tight"
               style={{
@@ -417,12 +420,9 @@ export default function EditScreen() {
             accessibilityLabel="Don't send anything"
             onPress={() => void handleSkip()}
             disabled={submitting !== null}
-            style={({ pressed }) => ({
-              marginTop: 16,
-              paddingBottom: 28,
-              alignSelf: 'center',
-              opacity: pressed ? 0.7 : 1,
-            })}
+            // Object form — the function form was dropped on device and this
+            // rendered left-aligned and crammed under the textarea.
+            style={{ marginTop: 16, paddingBottom: 28, alignSelf: 'center' }}
           >
             <TrackedCaps
               size={9.5}

@@ -82,6 +82,7 @@ export default function VerifyScreen() {
                 }}
               >
                 <Text
+        allowFontScaling={false}
                   className="font-inter-tight-medium"
                   style={{ fontSize: 22, color: '#1C1814' }}
                 >
@@ -119,6 +120,7 @@ export default function VerifyScreen() {
 
       {errorText ? (
         <Text
+        allowFontScaling={false}
           className="font-inter-tight"
           style={{
             marginTop: 12,

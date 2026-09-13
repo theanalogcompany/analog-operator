@@ -84,6 +84,7 @@ export function SwipeHints({
     >
       <View pointerEvents="none" style={{ flex: 1, alignItems: 'flex-start' }}>
         <Animated.Text
+        allowFontScaling={false}
           className="font-inter-tight-medium"
           accessibilityLabel={
             canSend ? 'Swipe left to edit' : 'Swipe left to write'
@@ -96,6 +97,7 @@ export function SwipeHints({
 
       <View style={{ flex: 0, paddingHorizontal: 10 }}>
         <Text
+        allowFontScaling={false}
           accessibilityRole="link"
           accessibilityLabel="Chat with Jaipal via SMS"
           onPress={onPressHelp}
@@ -108,13 +110,14 @@ export function SwipeHints({
           }}
         >
           {'NEED HELP? '}
-          <Text style={{ color: '#FFFFFF' }}>CHAT WITH JAIPAL</Text>
+          <Text allowFontScaling={false} style={{ color: '#FFFFFF' }}>CHAT WITH JAIPAL</Text>
         </Text>
       </View>
 
       <View pointerEvents="none" style={{ flex: 1, alignItems: 'flex-end' }}>
         {canSend ? (
           <Animated.Text
+        allowFontScaling={false}
             className="font-inter-tight-medium"
             accessibilityLabel="Swipe right to send"
             style={[{ letterSpacing: typePresets.hint.tracking }, rightStyle]}
@@ -123,6 +126,7 @@ export function SwipeHints({
           </Animated.Text>
         ) : (
           <Text
+        allowFontScaling={false}
             className="font-inter-tight-medium"
             accessibilityLabel="Swipe right to send, unavailable — nothing drafted"
             style={{

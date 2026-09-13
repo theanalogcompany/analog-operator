@@ -50,6 +50,13 @@ export function TrackedCaps({
 }: Props) {
   return (
     <Text
+      // The design's type scale is tight — 8px to 12.5px with 1.4–2.6px of
+      // tracking — and Dynamic Type was inflating it by roughly 20% on device,
+      // which breaks the rhythm on every screen. These sizes are deliberate,
+      // so they don't scale. Accessibility text sizing is a real need and the
+      // honest answer is a dedicated large-type pass, not silently stretching
+      // a layout that was measured at a fixed scale.
+      allowFontScaling={false}
       accessible={decorative ? false : undefined}
       accessibilityLabel={decorative ? undefined : accessibilityLabel ?? children}
       numberOfLines={numberOfLines}

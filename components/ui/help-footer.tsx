@@ -20,6 +20,7 @@ export function HelpFooter({ style }: Props) {
   return (
     <View style={{ alignItems: 'center' }}>
       <Text
+        allowFontScaling={false}
         accessibilityRole="link"
         accessibilityLabel="Chat with Jaipal via SMS"
         onPress={() => {
@@ -38,7 +39,7 @@ export function HelpFooter({ style }: Props) {
         ]}
       >
         {'NEED HELP? '}
-        <Text style={{ color: '#FFFFFF' }}>CHAT WITH JAIPAL</Text>
+        <Text allowFontScaling={false} style={{ color: '#FFFFFF' }}>CHAT WITH JAIPAL</Text>
       </Text>
     </View>
   );

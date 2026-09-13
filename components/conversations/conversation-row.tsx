@@ -38,16 +38,16 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
       accessibilityRole="button"
       accessibilityLabel={`Open conversation with ${displayName}`}
       onPress={onPress}
-      style={({ pressed }) => ({
+      // Object form, not `({ pressed }) => ...`. The function form was dropped
+      // on device, which took the band, the 13px padding and the row's whole
+      // rhythm with it — rows merged into one column and the activity dot sat
+      // flush against the screen edge. Structure goes in the object.
+      style={{
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 13,
-        backgroundColor: pressed
-          ? 'rgba(255,255,255,0.2)'
-          : banded
-            ? 'rgba(255,255,255,0.12)'
-            : 'transparent',
-      })}
+        backgroundColor: banded ? 'rgba(255,255,255,0.12)' : 'transparent',
+      }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
         <View
@@ -75,6 +75,7 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
         </TrackedCaps>
       </View>
       <Text
+        allowFontScaling={false}
         numberOfLines={1}
         className="font-inter-tight"
         style={{

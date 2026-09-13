@@ -71,11 +71,12 @@ export function UndoToast({ onUndo }: Props) {
           }}
         >
           <Text
+        allowFontScaling={false}
             className="font-inter-tight"
             style={{ flex: 1, fontSize: 13, color: '#1C1814' }}
           >
             {VERBS[record.action]}
-            <Text style={{ color: '#6F6658' }}>
+            <Text allowFontScaling={false} style={{ color: '#6F6658' }}>
               {` to ${queueCardDisplayName(record.draft)}`}
             </Text>
           </Text>

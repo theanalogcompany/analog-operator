@@ -73,7 +73,9 @@ export function TypeFilterMenu({
                 accessibilityState={{ selected: isSelected }}
                 accessibilityLabel={option.label}
                 onPress={() => onSelect(option.value)}
-                style={({ pressed }) => ({
+                // Object form: structural styles are dropped in the
+                // `({ pressed }) => ...` form on device.
+                style={{
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 12,
@@ -83,10 +85,10 @@ export function TypeFilterMenu({
                   backgroundColor: isSelected
                     ? 'rgba(28,24,20,0.06)'
                     : 'transparent',
-                  opacity: pressed ? 0.7 : 1,
-                })}
+                }}
               >
                 <Text
+        allowFontScaling={false}
                   className={
                     isSelected ? 'font-inter-tight-medium' : 'font-inter-tight'
                   }
@@ -95,6 +97,7 @@ export function TypeFilterMenu({
                   {option.label}
                 </Text>
                 <Text
+        allowFontScaling={false}
                   className="font-inter-tight-medium"
                   style={{ fontSize: 10, letterSpacing: 1.4, color: '#6F6658' }}
                 >

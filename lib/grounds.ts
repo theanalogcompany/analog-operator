@@ -105,7 +105,7 @@ const CLAY: Ground = {
   layers: [
     {
       role: 'ramp',
-      colors: ['#9E4E30', '#8A3E24', '#48210F'],
+      colors: ['#A85B3C', '#97472B', '#5E2D17'],
       locations: [0, 0.46, 1],
       ...ANGLE_168,
     },
@@ -120,12 +120,12 @@ const CLAY: Ground = {
       // Top scrim: buys the nav row its contrast against the ramp.
       role: 'scrim',
       colors: [
-        'rgba(26,16,10,0.58)',
-        'rgba(26,16,10,0.42)',
+        'rgba(26,16,10,0.38)',
+        'rgba(26,16,10,0.26)',
         'rgba(26,16,10,0)',
         'rgba(26,16,10,0)',
       ],
-      locations: [0, 0.26, 0.54, 1],
+      locations: [0, 0.26, 0.46, 1],
       ...TOP_TO_BOTTOM,
     },
   ],
@@ -136,7 +136,7 @@ const STONE: Ground = {
   layers: [
     {
       role: 'ramp',
-      colors: ['#8A8072', '#5F5749', '#24211C'],
+      colors: ['#94897A', '#6B6252', '#332E27'],
       locations: [0, 0.46, 1],
       ...ANGLE_168,
     },
@@ -150,12 +150,12 @@ const STONE: Ground = {
     {
       role: 'scrim',
       colors: [
-        'rgba(22,17,12,0.64)',
-        'rgba(22,17,12,0.46)',
+        'rgba(22,17,12,0.42)',
+        'rgba(22,17,12,0.30)',
         'rgba(22,17,12,0)',
         'rgba(22,17,12,0)',
       ],
-      locations: [0, 0.26, 0.54, 1],
+      locations: [0, 0.26, 0.46, 1],
       ...TOP_TO_BOTTOM,
     },
   ],
@@ -166,7 +166,7 @@ const INK: Ground = {
   layers: [
     {
       role: 'ramp',
-      colors: ['#4A4339', '#2A251F', '#131110'],
+      colors: ['#554D42', '#332D26', '#1A1715'],
       locations: [0, 0.5, 1],
       ...ANGLE_168,
     },

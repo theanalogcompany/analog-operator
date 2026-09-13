@@ -25,6 +25,7 @@ import {
 } from '@/lib/notifications/tap-handler';
 import { groundForTone, toneFor } from '@/lib/queue-tone';
 import { useQueueContext } from '@/lib/queue-context';
+import { rememberVenueSlug } from '@/lib/venue';
 import { display, layout, typePresets } from '@/lib/theme';
 
 // One string for both refusal paths — the gesture refusal (TAC-312) and the
@@ -84,6 +85,13 @@ export default function QueueScreen() {
   // kind of decision is in front of them before reading a word. With an empty
   // deck there is no decision, so it settles to neutral.
   const groundName = top ? groundForTone(toneFor(top)) : 'neutral';
+
+  // The queue is the only payload carrying a venue slug, so record it while
+  // we have one — the You screen still needs a venue name when the queue is
+  // empty, which in live mode is most of the time.
+  useEffect(() => {
+    rememberVenueSlug(queue.drafts[0]?.venueSlug);
+  }, [queue.drafts]);
 
   // Badge mirrors the visible queue. Sync on every drafts change (covers swipe
   // approve + restore + realtime updates + reload) and on foreground transitions
@@ -170,6 +178,7 @@ export default function QueueScreen() {
       ) : queue.status === 'error' ? (
         <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 32 }}>
           <Text
+        allowFontScaling={false}
             className="font-fraunces"
             style={{
               fontSize: display.emptyTitle.size,
@@ -184,15 +193,16 @@ export default function QueueScreen() {
             accessibilityRole="button"
             accessibilityLabel="Retry loading the queue"
             onPress={() => void queue.reload()}
-            style={({ pressed }) => ({
+            // Object form: structural styles are dropped in the
+            // `({ pressed }) => ...` form on device.
+            style={{
               marginTop: 24,
               borderWidth: 1,
               borderColor: 'rgba(255,255,255,0.4)',
               borderRadius: 999,
               paddingHorizontal: 20,
               paddingVertical: 12,
-              opacity: pressed ? 0.88 : 1,
-            })}
+            }}
           >
             <TrackedCaps {...typePresets.link} color="#FFFFFF" decorative>
               Try again
@@ -210,6 +220,7 @@ export default function QueueScreen() {
             }}
           >
             <Text
+        allowFontScaling={false}
               accessibilityRole="link"
               accessibilityLabel="Chat with Jaipal via SMS"
               onPress={handleHelp}
@@ -221,7 +232,7 @@ export default function QueueScreen() {
               }}
             >
               {'NEED HELP? '}
-              <Text style={{ color: '#FFFFFF' }}>CHAT WITH JAIPAL</Text>
+              <Text allowFontScaling={false} style={{ color: '#FFFFFF' }}>CHAT WITH JAIPAL</Text>
             </Text>
           </View>
         </>

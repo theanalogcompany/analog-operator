@@ -46,6 +46,7 @@ export function MessageBubble({
       }}
     >
       <Text
+        allowFontScaling={false}
         className="font-inter-tight"
         style={{
           color: inbound ? '#1C1814' : '#4A4339',

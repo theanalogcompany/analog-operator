@@ -86,6 +86,7 @@ export default function ConversationsScreen() {
       ) : conversationsResult.status === 'error' ? (
         <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 32 }}>
           <Text
+        allowFontScaling={false}
             className="font-fraunces"
             style={{
               fontSize: display.emptyTitle.size,
@@ -100,15 +101,16 @@ export default function ConversationsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Retry loading conversations"
             onPress={() => void conversationsResult.reload()}
-            style={({ pressed }) => ({
+            // Object form: structural styles are dropped in the
+            // `({ pressed }) => ...` form on device.
+            style={{
               marginTop: 24,
               borderWidth: 1,
               borderColor: 'rgba(255,255,255,0.4)',
               borderRadius: 999,
               paddingHorizontal: 20,
               paddingVertical: 12,
-              opacity: pressed ? 0.88 : 1,
-            })}
+            }}
           >
             <TrackedCaps {...typePresets.link} color="#FFFFFF" decorative>
               Try again
@@ -119,6 +121,7 @@ export default function ConversationsScreen() {
         <>
           <View style={{ paddingHorizontal: 22, paddingTop: 22, paddingBottom: 14 }}>
             <Text
+        allowFontScaling={false}
               className="font-fraunces"
               style={{
                 fontSize: display.screenTitle.size,
@@ -199,7 +202,7 @@ export default function ConversationsScreen() {
               <TrackedCaps {...typePresets.filterPill} color="#FFFFFF" decorative>
                 {typeLabel}
               </TrackedCaps>
-              <Text style={{ fontSize: 8, color: 'rgba(255,255,255,0.75)' }}>▼</Text>
+              <Text allowFontScaling={false} style={{ fontSize: 8, color: 'rgba(255,255,255,0.75)' }}>▼</Text>
             </Pressable>
           </View>
 

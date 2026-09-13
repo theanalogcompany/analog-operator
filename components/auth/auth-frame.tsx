@@ -43,6 +43,7 @@ export function AuthFrame({ title, subtitle, children }: Props) {
         </View>
 
         <Text
+        allowFontScaling={false}
           className="font-fraunces"
           style={{
             fontSize: display.authTitle.size,
@@ -55,6 +56,7 @@ export function AuthFrame({ title, subtitle, children }: Props) {
           {title}
         </Text>
         <Text
+        allowFontScaling={false}
           className="font-inter-tight"
           style={{
             marginTop: 14,
@@ -82,7 +84,17 @@ type CtaProps = {
   disabled?: boolean;
 };
 
-/** The primary action: ink fill, tracked caps, full width. */
+/**
+ * The primary action: ink fill, tracked caps, full width.
+ *
+ * LAYOUT LIVES IN A PLAIN OBJECT STYLE, NOT THE `({ pressed }) => ...` FORM.
+ * On device the function form was silently dropped and this rendered as bare
+ * left-aligned text with no pill at all — while object-form styles on the same
+ * component (see TopNav) rendered correctly. It did not reproduce in Jest, so
+ * rather than keep chasing it, anything structural goes in the object and the
+ * function form is reserved for press feedback, where failing means a missing
+ * dim rather than a missing button.
+ */
 export function AuthCta({ label, onPress, disabled = false }: CtaProps) {
   return (
     <Pressable
@@ -91,15 +103,15 @@ export function AuthCta({ label, onPress, disabled = false }: CtaProps) {
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => ({
+      style={{
         marginTop: 14,
         height: 52,
         borderRadius: 16,
         backgroundColor: '#1C1814',
         alignItems: 'center',
         justifyContent: 'center',
-        opacity: disabled ? 0.5 : pressed ? 0.88 : 1,
-      })}
+        opacity: disabled ? 0.5 : 1,
+      }}
     >
       <TrackedCaps {...typePresets.cta} color="#FFFFFF" decorative>
         {label}
@@ -113,21 +125,23 @@ type LinkProps = {
   onPress: () => void;
 };
 
-/** The secondary route out of a screen — underlined, quieter than the CTA. */
+/**
+ * The secondary route out of a screen — centred, underlined, quieter than the
+ * CTA. Object-form style for the same reason as AuthCta above.
+ */
 export function AuthLink({ label, onPress }: LinkProps) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={({ pressed }) => ({
+      style={{
         marginTop: 26,
         alignSelf: 'center',
         paddingBottom: 4,
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(255,255,255,0.6)',
-        opacity: pressed ? 0.7 : 1,
-      })}
+      }}
     >
       <TrackedCaps {...typePresets.link} color="#FFFFFF" decorative>
         {label}

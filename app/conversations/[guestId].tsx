@@ -164,6 +164,7 @@ export default function ConversationThreadScreen() {
       <GroundScreen name="neutral">
         <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 32 }}>
           <Text
+        allowFontScaling={false}
             className="font-fraunces"
             style={{ fontSize: 26, lineHeight: 32, color: '#FFFFFF', textAlign: 'center' }}
           >
@@ -173,15 +174,16 @@ export default function ConversationThreadScreen() {
             onPress={() => router.back()}
             accessibilityRole="button"
             accessibilityLabel="Back to conversations"
-            style={({ pressed }) => ({
+            // Object form: structural styles are dropped in the
+            // `({ pressed }) => ...` form on device.
+            style={{
               marginTop: 24,
               borderWidth: 1,
               borderColor: 'rgba(255,255,255,0.4)',
               borderRadius: 999,
               paddingHorizontal: 20,
               paddingVertical: 12,
-              opacity: pressed ? 0.88 : 1,
-            })}
+            }}
           >
             <TrackedCaps {...typePresets.link} color="#FFFFFF" decorative>
               Back
@@ -216,7 +218,7 @@ export default function ConversationThreadScreen() {
           hitSlop={12}
           style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
         >
-          <Text style={{ fontSize: 20, lineHeight: 22, color: '#FFFFFF' }}>‹</Text>
+          <Text allowFontScaling={false} style={{ fontSize: 20, lineHeight: 22, color: '#FFFFFF' }}>‹</Text>
         </Pressable>
 
         <View style={{ flex: 1, gap: 4 }}>
@@ -227,6 +229,7 @@ export default function ConversationThreadScreen() {
             <RecognitionBadge state={guest.recognitionState} variant="ground" />
           </View>
           <Text
+        allowFontScaling={false}
             className="font-inter-tight"
             numberOfLines={1}
             style={{
@@ -306,6 +309,7 @@ export default function ConversationThreadScreen() {
           }}
         />
         <Text
+        allowFontScaling={false}
           className="font-inter-tight"
           style={{
             flex: 1,
