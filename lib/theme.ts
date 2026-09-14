@@ -48,8 +48,14 @@ export const undoToast = {
   drainHeightPx: 2,
 } as const;
 
+/**
+ * The app's one ground-transition duration: the deck crossfading to the next
+ * card's ground, and the card's ground arriving over clay during the cold-launch
+ * entrance (`entrance.bucketDelayMs`). TAC-384 specified 420ms as that number
+ * and kept a second token until the deck moved to it. (TAC-364.)
+ */
 export const ground = {
-  crossfadeDurationMs: 320,
+  crossfadeDurationMs: 420,
 } as const;
 
 /**
@@ -100,14 +106,12 @@ export const entrance = {
    * 940ms has missed the slot and takes the ordinary deck crossfade instead (see
    * `ridesEntranceClock`).
    *
-   * TAC-384 specifies 420ms on the grounds that it is TAC-364's deck-crossfade
-   * duration and the app should have ONE ground-transition number. The shipped
-   * `ground.crossfadeDurationMs` is still 320 — it predates that decision — so
-   * the two are deliberately separate today. When TAC-364 moves the deck to
-   * 420, collapse these into a single token rather than keeping both.
+   * Its duration is `ground.crossfadeDurationMs` (420ms), the app's one
+   * ground-transition number, so the entrance's bucket fade and the deck's
+   * crossfade cannot drift apart. TAC-384 specified 420 as that number, and
+   * TAC-364 collapsed the two tokens into it.
    */
   bucketDelayMs: 940,
-  bucketDurationMs: 420,
 
   navDelayMs: 960,
   navDurationMs: 400,
@@ -176,15 +180,35 @@ export const hint = {
  * White text sitting directly on a ground.
  *
  * One alpha for body copy, deliberately. The design specifies 0.8 for the
- * Texts preview line, but 0.8 misses 4.5:1 against every type ground — 3.98:1
- * on neutral even after the highlight was dropped to 0.10. 0.92 clears it at
- * 4.67:1, and using the same value everywhere means there is one number to
- * check rather than two. Chrome (the help footer, the escape hatch) stays at
- * the design's 0.85: it is tracked caps at 9.5px, not reading material.
+ * Texts preview line, but 0.8 missed 4.5:1 on the grounds it was drawn for, and
+ * using one value everywhere means there is one number to check rather than
+ * two. Chrome (the help footer, the escape hatch) stays at the design's 0.85: it
+ * is tracked caps at 9.5px, not reading material. What both give on each ground
+ * is computed by `__tests__/lib/ground-contrast.test.ts`, which checks them on
+ * clay everywhere a line of text can sit. (TAC-364.)
  */
 export const groundText = {
   body: 'rgba(255,255,255,0.92)',
   chrome: 'rgba(255,255,255,0.85)',
+} as const;
+
+/**
+ * The pill behind a thread date divider on the edit takeover.
+ *
+ * The takeover's thread sits on the card's ground, and its dividers are white
+ * at 0.92 in 8.5px tracked caps, which is not large text. Unbacked they miss
+ * 4.5:1 on four of the five card grounds (Honey falls to 2.45:1), and they
+ * already missed it on the stone and clay grounds before TAC-364. The colour is
+ * the scrim's, at the lowest alpha that holds 4.5:1 anywhere on every card
+ * ground; Honey sets it. `__tests__/lib/ground-contrast.test.ts` recomputes that
+ * on every change. The Texts thread sits on clay, which clears 4.5:1 without
+ * one, so it has no pill. (TAC-364.)
+ */
+export const dividerBacking = {
+  color: 'rgba(26,16,10,0.35)',
+  paddingHorizontalPx: 8,
+  paddingVerticalPx: 3,
+  radiusPx: 999,
 } as const;
 
 export const nav = {
@@ -294,4 +318,37 @@ export const thread = {
 // and the Active filter pill. Mirrors the imported design's default.
 export const conversations = {
   activeWindowMins: 60,
+} as const;
+
+/**
+ * The review detail: the reason sentence, the other triggers that fired, and
+ * any claim the grounding check couldn't verify. Shown under the name on a draft
+ * card and in the edit takeover's header. (TAC-364.)
+ *
+ * Every line is capped. The takeover's caps are not free to grow: its header
+ * sits directly on the card's ground, and on Honey white text holds 4.5:1 only
+ * in about the top third of the screen. `__tests__/lib/ground-contrast.test.ts`
+ * adds these up with `takeoverHeader` against that limit, recomputed from
+ * `lib/grounds.ts`, and fails if the header would run past it.
+ */
+export const reviewDetail = {
+  lineHeightPx: body.reasoning.lineHeight,
+  /** Between the parts, and above the first one. */
+  gapPx: 8,
+  card: { reasonLines: 2, alsoLines: 2, claimLines: 3 },
+  takeover: { reasonLines: 2, alsoLines: 1, claimLines: 2, reasoningLines: 1 },
+} as const;
+
+/**
+ * The edit takeover's header above the review detail. Named rather than
+ * inlined because the contrast budget in `reviewDetail`'s test reads the same
+ * numbers the screen lays out with.
+ */
+export const takeoverHeader = {
+  rowPaddingTopPx: 14,
+  /** Sets the height of the top row: the badge and the back link are shorter. */
+  nameLineHeightPx: 18,
+  blockPaddingTopPx: 18,
+  blockPaddingBottomPx: 18,
+  blockPaddingHorizontalPx: 22,
 } as const;

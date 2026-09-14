@@ -84,17 +84,17 @@ beforeEach(() => {
 
 describe('GroundScreen — outside an entrance', () => {
   it('paints the named ground over the near-black underlay', () => {
-    render(queueScreen('queueInk'));
-    expect(layer('ground-current')).toBe('queueInk');
+    render(queueScreen('draftWrong'));
+    expect(layer('ground-current')).toBe('draftWrong');
     expect(underlay()).not.toBeNull();
     expect(screen.queryByTestId('entrance-base')).toBeNull();
   });
 
   it('crossfades a ground change over the outgoing ground', () => {
     const { rerender } = render(queueScreen('resting'));
-    rerender(queueScreen('queueInk'));
+    rerender(queueScreen('draftWrong'));
     expect(layer('ground-previous')).toBe('resting');
-    expect(layer('ground-current')).toBe('queueInk');
+    expect(layer('ground-current')).toBe('draftWrong');
   });
 });
 
@@ -108,9 +108,9 @@ describe('GroundScreen — mounted after the entrance', () => {
   it('crossfades from its first frame, though the process had an entrance', () => {
     fullEntranceAt(entrance.totalMs + 5_000, false);
     const { rerender } = render(queueScreen('resting'));
-    rerender(queueScreen('queueInk'));
+    rerender(queueScreen('draftWrong'));
     expect(layer('ground-previous')).toBe('resting');
-    expect(layer('ground-current')).toBe('queueInk');
+    expect(layer('ground-current')).toBe('draftWrong');
   });
 });
 
@@ -147,8 +147,8 @@ describe('GroundScreen — during a full entrance', () => {
     fullEntranceAt(0);
     const { rerender } = render(queueScreen('resting'));
     fullEntranceAt(300);
-    rerender(queueScreen('queueInk'));
-    expect(layer('entrance-bucket')).toBe('queueInk');
+    rerender(queueScreen('draftWrong'));
+    expect(layer('entrance-bucket')).toBe('draftWrong');
     expect(layer('entrance-base')).toBe('resting');
     expect(screen.queryByTestId('ground-previous')).toBeNull();
     expect(screen.queryByTestId('ground-current')).toBeNull();
@@ -156,8 +156,8 @@ describe('GroundScreen — during a full entrance', () => {
 
   it('treats a bucket already known at mount the same way', () => {
     fullEntranceAt(0);
-    render(queueScreen('queueInk'));
-    expect(layer('entrance-bucket')).toBe('queueInk');
+    render(queueScreen('draftWrong'));
+    expect(layer('entrance-bucket')).toBe('draftWrong');
     expect(screen.queryByTestId('ground-previous')).toBeNull();
   });
 
@@ -171,25 +171,25 @@ describe('GroundScreen — during a full entrance', () => {
     fullEntranceAt(0);
     const { rerender } = render(queueScreen('resting'));
     fullEntranceAt(1_200);
-    rerender(queueScreen('queueInk'));
+    rerender(queueScreen('draftWrong'));
     expect(screen.queryByTestId('entrance-bucket')).toBeNull();
     expect(layer('ground-previous')).toBe('resting');
-    expect(layer('ground-current')).toBe('queueInk');
+    expect(layer('ground-current')).toBe('draftWrong');
   });
 
   it('hands off to the deck when the entrance ends, on the same ground', () => {
     fullEntranceAt(0);
     const { rerender } = render(queueScreen('resting'));
     fullEntranceAt(300);
-    rerender(queueScreen('queueInk'));
-    expect(layer('entrance-bucket')).toBe('queueInk');
+    rerender(queueScreen('draftWrong'));
+    expect(layer('entrance-bucket')).toBe('draftWrong');
 
     fullEntranceAt(entrance.totalMs, false);
-    rerender(queueScreen('queueInk'));
+    rerender(queueScreen('draftWrong'));
     expect(screen.queryByTestId('entrance-bucket')).toBeNull();
     expect(screen.queryByTestId('entrance-base')).toBeNull();
     expect(screen.queryByTestId('ground-previous')).toBeNull();
-    expect(layer('ground-current')).toBe('queueInk');
+    expect(layer('ground-current')).toBe('draftWrong');
   });
 });
 
@@ -207,15 +207,15 @@ describe('GroundScreen — reduced motion', () => {
       reduced: { value: 0 },
       elapsedMs: () => entrance.totalMs,
     };
-    const { rerender } = render(queueScreen('queueInk'));
+    const { rerender } = render(queueScreen('draftWrong'));
     expect(underlay()).not.toBeNull();
     expect(screen.queryByTestId('entrance-base')).toBeNull();
-    expect(layer('ground-current')).toBe('queueInk');
+    expect(layer('ground-current')).toBe('draftWrong');
 
     // Still there once `running` ends: that flag is a JS timer, and the UI fade
     // can still be finishing when it flips.
     mockEntrance = { ...mockEntrance, running: false, reduced: { value: 1 } };
-    rerender(queueScreen('queueInk'));
+    rerender(queueScreen('draftWrong'));
     expect(underlay()).not.toBeNull();
   });
 });

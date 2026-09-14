@@ -59,6 +59,10 @@ const draft = (args: {
   category: string | null;
   voiceFidelity: number | null;
   reviewReason: string | null;
+  reviewReasonCode?: string;
+  reviewTriggers?: string[];
+  reviewTriggerLabels?: string[];
+  ungroundedClaims?: string[];
   pendingMinutes: number;
 }): PendingDraft => {
   const now = Date.now();
@@ -74,6 +78,10 @@ const draft = (args: {
     category: args.category,
     voiceFidelity: args.voiceFidelity,
     reviewReason: args.reviewReason,
+    reviewReasonCode: args.reviewReasonCode ?? '',
+    reviewTriggers: args.reviewTriggers ?? [],
+    reviewTriggerLabels: args.reviewTriggerLabels ?? [],
+    ungroundedClaims: args.ungroundedClaims ?? [],
     recognitionState: args.recognitionState,
     agentReasoning: args.agentReasoning,
     pendingSinceMs: args.pendingMinutes * 60_000,
@@ -87,6 +95,11 @@ const draft = (args: {
   };
 };
 
+// The reason codes and labels are the server's own (analog-guest
+// `REVIEW_REASON_LABELS`). Between them the four drafts reach all four draft
+// grounds offline, and the heads-up seeds below reach the fifth. One card
+// carries a secondary trigger and one a flagged claim, so the review detail
+// renders without a backend. (TAC-364.)
 function seedDrafts(): PendingDraft[] {
   return [
     draft({
@@ -123,7 +136,13 @@ function seedDrafts(): PendingDraft[] {
         "Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.",
       category: 'reservation',
       voiceFidelity: 0.72,
-      reviewReason: 'low fidelity score',
+      reviewReason: 'Held behind an earlier message to this guest.',
+      reviewReasonCode: 'previous_pending_held',
+      reviewTriggers: ['previous_pending_held', 'fidelity_below_auto_send_floor'],
+      reviewTriggerLabels: [
+        'Held behind an earlier message to this guest.',
+        "This doesn't sound enough like you.",
+      ],
       pendingMinutes: 4,
     }),
     draft({
@@ -147,7 +166,13 @@ function seedDrafts(): PendingDraft[] {
         "We do — we keep a gluten-free penne behind the bar and run it through clean water. Just let your server know.",
       category: 'menu',
       voiceFidelity: 0.81,
-      reviewReason: 'first message from new guest',
+      reviewReason: "I wasn't sure this was true, so I didn't send it.",
+      reviewReasonCode: 'knowledge_gap_backstop',
+      reviewTriggers: ['knowledge_gap_backstop'],
+      reviewTriggerLabels: ["I wasn't sure this was true, so I didn't send it."],
+      ungroundedClaims: [
+        'we keep a gluten-free penne behind the bar and run it through clean water',
+      ],
       pendingMinutes: 11,
     }),
     draft({
@@ -178,7 +203,13 @@ function seedDrafts(): PendingDraft[] {
         "We'll time a loaf for 7 — and there'll be a slice of the buckwheat cake for the table on us, since tomorrow's the day. Looking forward to meeting them.",
       category: 'reservation',
       voiceFidelity: 0.93,
-      reviewReason: null,
+      reviewReason: 'This offers something free. Your call.',
+      reviewReasonCode: 'commitment_type_gated',
+      reviewTriggers: ['commitment_type_gated', 'comp_regex_backstop'],
+      reviewTriggerLabels: [
+        'This offers something free. Your call.',
+        "This sounds like it's offering something on the house.",
+      ],
       pendingMinutes: 22,
     }),
     // Blank draftBody — the agent declined to draft. Seeded so the empty-state
@@ -207,7 +238,10 @@ function seedDrafts(): PendingDraft[] {
       draftBody: '',
       category: null,
       voiceFidelity: null,
-      reviewReason: 'no draft generated',
+      reviewReason: 'Something went wrong writing this one.',
+      reviewReasonCode: 'generation_failed',
+      reviewTriggers: [],
+      reviewTriggerLabels: [],
       pendingMinutes: 2,
     }),
   ];
@@ -327,6 +361,9 @@ export function declineCommitmentFixture(
       category: null,
       voiceFidelity: null,
       reviewReason: "You passed on the last one, so here's another go.",
+      reviewReasonCode: 'operator_decline_initiated',
+      reviewTriggers: ['operator_decline_initiated'],
+      reviewTriggerLabels: ["You passed on the last one, so here's another go."],
       pendingMinutes: 0,
     }),
   );

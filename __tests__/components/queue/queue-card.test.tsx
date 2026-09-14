@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import { QueueCard } from '@/components/queue/queue-card';
 import { type PendingDraft } from '@/lib/api/queue';
@@ -16,7 +17,11 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
     draftBody: "Yes — patio's open until 9.",
     category: 'reservation',
     voiceFidelity: 0.81,
-    reviewReason: 'low fidelity score',
+    reviewReason: "This doesn't sound enough like you.",
+    reviewReasonCode: 'fidelity_below_auto_send_floor',
+    reviewTriggers: ['fidelity_below_auto_send_floor'],
+    reviewTriggerLabels: ["This doesn't sound enough like you."],
+    ungroundedClaims: [],
     recognitionState: 'returning',
     agentReasoning: null,
     pendingSinceMs: 240_000,
@@ -27,6 +32,19 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
 }
 
 const HEIGHT = card.heightPx;
+
+type Node = { props: { style?: unknown }; parent: Node | null };
+
+/** The nearest background colour at or above a rendered node. */
+function backgroundOf(start: Node): string | undefined {
+  for (let cursor: Node | null = start; cursor; cursor = cursor.parent) {
+    const style = StyleSheet.flatten(cursor.props.style as never) as
+      | { backgroundColor?: string }
+      | undefined;
+    if (style?.backgroundColor) return style.backgroundColor;
+  }
+  return undefined;
+}
 
 /** Every string the tree renders, in paint order. */
 function renderedTextInOrder(node: unknown): string[] {
@@ -79,26 +97,39 @@ describe('QueueCard — head', () => {
 });
 
 describe('QueueCard — flag strip', () => {
-  it('states why the card is in front of you', () => {
+  // The strip names the KIND of decision, keyed on the reason code. The
+  // sentence saying why sits in the head, in sentence case. (TAC-364.)
+  it('names the kind of decision in caps, keyed on the code', () => {
     render(
       <QueueCard
-        draft={makeDraft({ reviewReason: 'first message from new guest' })}
+        draft={makeDraft({ reviewReasonCode: 'knowledge_gap_backstop' })}
         height={HEIGHT}
         position={1}
         total={4}
       />,
     );
-    expect(screen.getByText('FLAGGED — FIRST MESSAGE FROM NEW GUEST')).toBeTruthy();
+    expect(screen.getByText('OUTSIDE THE DRAFT')).toBeTruthy();
   });
 
-  it('names the category when the card carries no flag', () => {
-    render(
-      <QueueCard
-        draft={makeDraft({ reviewReason: null, category: 'reservation' })}
-        height={HEIGHT}
-      />,
+  it('paints the strip in its bucket colour', () => {
+    render(<QueueCard draft={makeDraft()} height={HEIGHT} />);
+    // Pewter's strip, from TAC-364's design spec.
+    expect(backgroundOf(screen.getByText('DRAFT CAME OUT WRONG') as unknown as Node)).toBe(
+      '#4F4B45',
     );
-    expect(screen.getByText('RESERVATION')).toBeTruthy();
+  });
+
+  it('never says "Flagged" anywhere on the card', () => {
+    const { toJSON } = render(<QueueCard draft={makeDraft()} height={HEIGHT} />);
+    expect(renderedTextInOrder(toJSON()).join(' ')).not.toMatch(/flagged/i);
+  });
+
+  it('reads "Needs review", not a bucket name, for a code it does not know', () => {
+    render(
+      <QueueCard draft={makeDraft({ reviewReasonCode: 'something_new' })} height={HEIGHT} />,
+    );
+    expect(screen.getByText('NEEDS REVIEW')).toBeTruthy();
+    expect(screen.queryByText('MID-THREAD')).toBeNull();
   });
 
   it('shows session progress, zero-padded', () => {
@@ -112,6 +143,75 @@ describe('QueueCard — flag strip', () => {
   it('renders no counter when progress is not supplied', () => {
     render(<QueueCard draft={makeDraft()} height={HEIGHT} />);
     expect(screen.queryByText(/ \/ /)).toBeNull();
+  });
+});
+
+describe('QueueCard — review detail', () => {
+  it('states the reason in sentence case, not through caps', () => {
+    render(<QueueCard draft={makeDraft()} height={HEIGHT} />);
+    expect(screen.getByText("This doesn't sound enough like you.")).toBeTruthy();
+    expect(screen.queryByText("THIS DOESN'T SOUND ENOUGH LIKE YOU.")).toBeNull();
+  });
+
+  it('lists the other triggers that fired, without repeating the primary', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          reviewTriggers: ['fidelity_below_auto_send_floor', 'model_flagged'],
+          reviewTriggerLabels: [
+            "This doesn't sound enough like you.",
+            'Something felt off about this one.',
+          ],
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getByLabelText('Also: Something felt off about this one.')).toBeTruthy();
+  });
+
+  it('shows no "Also" line when only the primary fired', () => {
+    render(<QueueCard draft={makeDraft()} height={HEIGHT} />);
+    expect(screen.queryByTestId('review-detail-also')).toBeNull();
+  });
+
+  // TAC-364 acceptance criterion: a grounding-backstop hold shows the flagged
+  // claim verbatim.
+  it('quotes a flagged claim verbatim', () => {
+    const claim = 'we keep a gluten-free penne behind the bar';
+    render(
+      <QueueCard
+        draft={makeDraft({
+          reviewReason: "I wasn't sure this was true, so I didn't send it.",
+          reviewReasonCode: 'knowledge_gap_backstop',
+          reviewTriggers: ['knowledge_gap_backstop'],
+          reviewTriggerLabels: ["I wasn't sure this was true, so I didn't send it."],
+          ungroundedClaims: [claim],
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getByLabelText(`Couldn't verify: “${claim}”`)).toBeTruthy();
+  });
+
+  it('shows no claim line when the grounding check flagged nothing', () => {
+    render(<QueueCard draft={makeDraft()} height={HEIGHT} />);
+    expect(screen.queryByTestId('review-detail-claims')).toBeNull();
+  });
+
+  it('renders no reason for a row with none recorded', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          reviewReason: null,
+          reviewReasonCode: '',
+          reviewTriggers: [],
+          reviewTriggerLabels: [],
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.queryByTestId('review-detail-reason')).toBeNull();
+    expect(screen.getByText('NEEDS REVIEW')).toBeTruthy();
   });
 });
 
@@ -167,7 +267,9 @@ describe('QueueCard — conversation', () => {
 
   it('renders no divider when there is no context at all', () => {
     render(<QueueCard draft={makeDraft({ recentContext: [] })} height={HEIGHT} />);
-    expect(screen.queryByText(/·/)).toBeNull();
+    // The divider is "<day> · <time>". The composer caption has a middle dot
+    // too, so match the time, not the dot.
+    expect(screen.queryByText(/ · \d{1,2}:\d{2}/)).toBeNull();
   });
 });
 
@@ -175,7 +277,7 @@ describe('QueueCard — composer', () => {
   it('shows the draft and the send-ready caption', () => {
     render(<QueueCard draft={makeDraft()} height={HEIGHT} />);
     expect(screen.getByText("Yes — patio's open until 9.")).toBeTruthy();
-    expect(screen.getByText('DRAFT — SWIPE RIGHT TO SEND')).toBeTruthy();
+    expect(screen.getByText('DRAFT · SWIPE RIGHT TO SEND')).toBeTruthy();
   });
 
   // The blank-draft card is the important variant: the agent declined to draft,
@@ -195,8 +297,8 @@ describe('QueueCard — composer', () => {
 
     it('changes the caption to point left, not right', () => {
       render(<QueueCard draft={blank} height={HEIGHT} />);
-      expect(screen.getByText('NOTHING DRAFTED — SWIPE LEFT TO WRITE')).toBeTruthy();
-      expect(screen.queryByText('DRAFT — SWIPE RIGHT TO SEND')).toBeNull();
+      expect(screen.getByText('NOTHING DRAFTED · SWIPE LEFT TO WRITE')).toBeTruthy();
+      expect(screen.queryByText('DRAFT · SWIPE RIGHT TO SEND')).toBeNull();
     });
 
     it('treats a whitespace-only body as blank', () => {

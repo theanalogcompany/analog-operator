@@ -12,7 +12,7 @@ import {
   headsUpStripLabel,
   showsCodeChip,
 } from '@/lib/heads-up';
-import { HEADS_UP_TONE, formatProgress, stripColorFor } from '@/lib/queue-tone';
+import { formatProgress, stripColorFor } from '@/lib/review-bucket';
 import { body as bodyType, card, typePresets } from '@/lib/theme';
 import { deviceTimezone, formatDayDivider } from '@/lib/thread-cluster';
 
@@ -94,7 +94,7 @@ export function HeadsUpCard({
             gap: 12,
             paddingVertical: 11,
             paddingHorizontal: card.regionInsetPx,
-            backgroundColor: stripColorFor(HEADS_UP_TONE),
+            backgroundColor: stripColorFor('headsUp'),
             borderTopLeftRadius: card.radiusPx,
             borderTopRightRadius: card.radiusPx,
           }}

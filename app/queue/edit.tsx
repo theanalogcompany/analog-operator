@@ -17,17 +17,26 @@ import { showToast } from '@/components/auth/toast';
 import { GroundScreen } from '@/components/ground/ground-screen';
 import { queueCardDisplayName } from '@/components/queue/queue-card';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
+import { ReviewDetail } from '@/components/queue/review-detail';
 import { ThreadBubbleList } from '@/components/thread/thread-bubble-list';
 import { SendGlyph } from '@/components/ui/send-glyph';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { clearUndoState, setUndoState } from '@/hooks/use-undo-state';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { type ThreadMessage, editAndSend, getThread, skipDraft } from '@/lib/api/queue';
+import { CARD_COPY } from '@/lib/card-copy';
 import { clearDeclineHandoff, peekDeclineHandoff } from '@/lib/decline-handoff';
-import { type QueueTone, groundForTone, reasonLabelFor, toneFor } from '@/lib/queue-tone';
 import { useQueueContext } from '@/lib/queue-context';
 import {
+  type ReviewBucket,
+  bucketForDraft,
+  isReviewBucket,
+  stripLabelForDraft,
+} from '@/lib/review-bucket';
+import {
   body as bodyType,
+  reviewDetail,
+  takeoverHeader,
   thread as threadTheme,
   typePresets,
 } from '@/lib/theme';
@@ -80,9 +89,11 @@ export default function EditScreen() {
   const params = useLocalSearchParams<{
     messageId?: string;
     prefill?: string;
-    /** The card's tone, so the takeover's ground carries through from the card
-     *  you swiped rather than being re-derived after the draft is gone. */
-    tone?: QueueTone;
+    /** The card's bucket, so the takeover's ground carries through from the
+     *  card you swiped. A decline arrives as `headsUp`, although its draft's
+     *  own code is mid-thread. A route param is an untrusted string, so it is
+     *  checked before use. (TAC-364.) */
+    bucket?: string;
   }>();
   const queue = useQueueContext();
   const insets = useSafeAreaInsets();
@@ -229,7 +240,7 @@ export default function EditScreen() {
 
   if (!draft) {
     return (
-      <GroundScreen name="neutral">
+      <GroundScreen name="resting">
         <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 32 }}>
           <Text
         allowFontScaling={false}
@@ -269,6 +280,9 @@ export default function EditScreen() {
   // who swiped left off a gap card is answering from scratch. Same `hasDraft`
   // split the queue card uses, so the two surfaces agree. (TAC-310.)
   const hasDraft = draft.draftBody.trim().length > 0;
+  const bucket: ReviewBucket = isReviewBucket(params.bucket)
+    ? params.bucket
+    : bucketForDraft(draft);
 
   const handleSend = async (): Promise<void> => {
     if (submitting) return;
@@ -285,11 +299,11 @@ export default function EditScreen() {
     if (!result.ok) {
       void clearUndoState();
       queue.restore(draft);
-      showToast("Couldn't send — tap to retry");
+      showToast(CARD_COPY.toast.sendFailed);
       // Re-open the takeover with the operator's typed text preserved (settled decision: their text is sacred).
       router.push({
         pathname: '/queue/edit',
-        params: { messageId: draft.messageId, prefill: body },
+        params: { messageId: draft.messageId, prefill: body, bucket },
       });
     }
     setSubmitting(null);
@@ -305,12 +319,11 @@ export default function EditScreen() {
     if (!result.ok) {
       void clearUndoState();
       queue.restore(draft);
-      showToast("Couldn't skip — tap to retry");
+      showToast(CARD_COPY.toast.skipFailed);
     }
     setSubmitting(null);
   };
 
-  const tone: QueueTone = params.tone ?? toneFor(draft);
   const reasoning = draft.agentReasoning?.trim();
   const canSend = text.trim().length > 0;
 
@@ -327,8 +340,8 @@ export default function EditScreen() {
     >
       {/* The takeover's ground is the ground of the card you swiped, so the
           colour carries through instead of cutting to a new screen. */}
-      <GroundScreen name={groundForTone(tone)}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 14 }}>
+      <GroundScreen name={bucket}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: takeoverHeader.rowPaddingTopPx }}>
           <View style={{ flex: 1, alignItems: 'flex-start' }}>
             <Pressable
               accessibilityRole="button"
@@ -343,7 +356,13 @@ export default function EditScreen() {
             </Pressable>
           </View>
           <View style={{ flex: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TrackedCaps {...typePresets.cardName} color="#FFFFFF">
+            <TrackedCaps
+              {...typePresets.cardName}
+              color="#FFFFFF"
+              lineHeight={takeoverHeader.nameLineHeightPx}
+              // One line: the header's contrast budget counts exactly one.
+              numberOfLines={1}
+            >
               {queueCardDisplayName(draft)}
             </TrackedCaps>
             <RecognitionBadge state={draft.recognitionState} variant="ground" />
@@ -353,19 +372,39 @@ export default function EditScreen() {
           <View style={{ flex: 1 }} />
         </View>
 
-        <View style={{ paddingHorizontal: 22, paddingVertical: 18 }}>
-          <TrackedCaps {...typePresets.flagReason} color="#FFFFFF">
-            {reasonLabelFor(draft)}
+        {/* This header sits directly on the card's ground, and that bounds how
+            long it can get: on Honey, white text holds 4.5:1 only in about the
+            top third of the screen. Every line below is capped by
+            `reviewDetail.takeover`, and __tests__/lib/ground-contrast.test.ts
+            adds the caps up against that limit. Recompute before adding a line.
+            (TAC-364.) */}
+        <View
+          style={{
+            paddingHorizontal: takeoverHeader.blockPaddingHorizontalPx,
+            paddingTop: takeoverHeader.blockPaddingTopPx,
+            paddingBottom: takeoverHeader.blockPaddingBottomPx,
+          }}
+        >
+          <TrackedCaps {...typePresets.flagReason} color="#FFFFFF" numberOfLines={1}>
+            {bucket === 'headsUp'
+              ? CARD_COPY.strip.commitment
+              : stripLabelForDraft(draft)}
           </TrackedCaps>
+          <ReviewDetail
+            draft={draft}
+            surface="takeover"
+            style={{ marginTop: reviewDetail.gapPx }}
+          />
           {reasoning ? (
             <Text
-        allowFontScaling={false}
+              allowFontScaling={false}
               accessibilityLabel="Agent reasoning"
               className="font-inter-tight"
+              numberOfLines={reviewDetail.takeover.reasoningLines}
               style={{
-                marginTop: 10,
+                marginTop: reviewDetail.gapPx,
                 fontSize: bodyType.reasoning.size,
-                lineHeight: bodyType.reasoning.lineHeight,
+                lineHeight: reviewDetail.lineHeightPx,
                 color: '#FFFFFF',
               }}
             >

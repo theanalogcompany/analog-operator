@@ -152,7 +152,7 @@ export function GroundScreen({
     opacity: fadeInAt({
       elapsedMs: clock.value,
       delayMs: entrance.bucketDelayMs,
-      durationMs: entrance.bucketDurationMs,
+      durationMs: groundTheme.crossfadeDurationMs,
     }),
   }));
 

@@ -9,7 +9,7 @@ import {
   resolveEntranceMode,
   ridesEntranceClock,
 } from '@/lib/entrance';
-import { entrance } from '@/lib/theme';
+import { entrance, ground as groundTheme } from '@/lib/theme';
 
 /**
  * The entrance's ramps, tested as the pure functions they are.
@@ -47,7 +47,7 @@ const bucket = (elapsedMs: number): number =>
   fadeInAt({
     elapsedMs,
     delayMs: entrance.bucketDelayMs,
-    durationMs: entrance.bucketDurationMs,
+    durationMs: groundTheme.crossfadeDurationMs,
   });
 
 const rise = (elapsedMs: number): { opacity: number; translateY: number } =>
@@ -217,7 +217,7 @@ describe('the bucket ground crossfade', () => {
   });
 
   it('completes within the entrance', () => {
-    const end = entrance.bucketDelayMs + entrance.bucketDurationMs;
+    const end = entrance.bucketDelayMs + groundTheme.crossfadeDurationMs;
     expect(bucket(end)).toBe(1);
     expect(end).toBeLessThanOrEqual(entrance.totalMs);
   });
@@ -271,7 +271,7 @@ describe('the timing table', () => {
     expect(entrance.cardRiseFromPx).toBe(26);
 
     expect(entrance.bucketDelayMs).toBe(940);
-    expect(entrance.bucketDurationMs).toBe(420);
+    expect(groundTheme.crossfadeDurationMs).toBe(420);
 
     expect(entrance.navDelayMs).toBe(960);
     expect(entrance.navDurationMs).toBe(400);

@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { MessageBubble, type BubbleSurface } from '@/components/ui/message-bubble';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type ThreadItem } from '@/lib/thread-cluster';
-import { typePresets } from '@/lib/theme';
+import { dividerBacking, groundText, typePresets } from '@/lib/theme';
 
 type Props = {
   items: ThreadItem[];
@@ -21,20 +21,39 @@ type Props = {
 export function ThreadBubbleList({
   items,
   surface = 'thread',
-  dividerColor = 'rgba(255,255,255,0.92)',
+  dividerColor = groundText.body,
 }: Props) {
   return (
     <>
       {items.map((item) => {
         if (item.kind === 'timestamp') {
+          const label = (
+            <TrackedCaps {...typePresets.dateDivider} color={dividerColor}>
+              {item.label}
+            </TrackedCaps>
+          );
           return (
             <View
               key={item.key}
               style={{ alignItems: 'center', paddingVertical: 8 }}
             >
-              <TrackedCaps {...typePresets.dateDivider} color={dividerColor}>
-                {item.label}
-              </TrackedCaps>
+              {surface === 'card' ? (
+                // On the takeover the divider sits on a card ground, where white
+                // alone misses 4.5:1. See `dividerBacking` in lib/theme.ts.
+                <View
+                  testID="thread-divider-backing"
+                  style={{
+                    backgroundColor: dividerBacking.color,
+                    borderRadius: dividerBacking.radiusPx,
+                    paddingHorizontal: dividerBacking.paddingHorizontalPx,
+                    paddingVertical: dividerBacking.paddingVerticalPx,
+                  }}
+                >
+                  {label}
+                </View>
+              ) : (
+                label
+              )}
             </View>
           );
         }

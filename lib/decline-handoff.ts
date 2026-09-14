@@ -37,6 +37,13 @@ export function buildDeclineHandoffDraft(
     category: null,
     voiceFidelity: null,
     reviewReason: null,
+    // The server's row carries this code, and its label arrives with the row on
+    // the realtime reload. The takeover's ground comes from the route's
+    // `bucket`, not from here.
+    reviewReasonCode: 'operator_decline_initiated',
+    reviewTriggers: [],
+    reviewTriggerLabels: [],
+    ungroundedClaims: [],
     recognitionState: commitment.recognitionState,
     agentReasoning: null,
     pendingSinceMs: 0,

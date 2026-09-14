@@ -61,6 +61,20 @@ export const PendingDraftSchema = z
     category: z.string().nullable(),
     voiceFidelity: z.number().nullable(),
     reviewReason: z.string().nullable(),
+    // TAC-364. Contract-locked and always present on the wire: the RAW primary
+    // trigger code, the full trigger set as codes (primary included, never
+    // deduped server-side), the display labels parallel to it, and the claims
+    // the grounding check flagged, verbatim. The ground keys on
+    // `reviewReasonCode`, never on `reviewReason`'s prose.
+    //
+    // `.catch` rather than a strict parse: `drafts` is one array, so a single
+    // malformed field would fail the whole queue, and each fallback is exactly
+    // what "nothing recorded" means. `''` puts the card on the mid-thread ground
+    // (lib/review-bucket.ts); `[]` renders nothing.
+    reviewReasonCode: z.string().catch(''),
+    reviewTriggers: z.array(z.string()).catch([]),
+    reviewTriggerLabels: z.array(z.string()).catch([]),
+    ungroundedClaims: z.array(z.string()).catch([]),
     recognitionState: RecognitionStateSchema.nullable(),
     // Tolerant during the cross-repo rollout: TAC-278 introduces the
     // server-side `agent_reasoning` column + RPC SELECT. Until that ships

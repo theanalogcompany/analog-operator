@@ -6,6 +6,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { type SwipeDirection } from '@/hooks/use-queue-swipe';
+import { CARD_COPY } from '@/lib/card-copy';
 import { fadeInAt } from '@/lib/entrance';
 import { useEntrance, useRidesEntranceSlot } from '@/lib/entrance-context';
 import { entrance, hint, typePresets } from '@/lib/theme';
@@ -110,7 +111,7 @@ export function SwipeHints({
           <Animated.Text
             allowFontScaling={false}
             className="font-inter-tight-medium"
-            accessibilityLabel="Swipe left to decline"
+            accessibilityLabel={CARD_COPY.hints.decline}
             style={[{ letterSpacing: typePresets.hint.tracking }, leftStyle]}
           >
             ← DECLINE
@@ -120,7 +121,7 @@ export function SwipeHints({
           <Animated.Text
             allowFontScaling={false}
             className="font-inter-tight-medium"
-            accessibilityLabel="Swipe right to acknowledge"
+            accessibilityLabel={CARD_COPY.hints.acknowledge}
             style={[{ letterSpacing: typePresets.hint.tracking }, rightStyle]}
           >
             ACKNOWLEDGE →
@@ -150,7 +151,7 @@ export function SwipeHints({
         allowFontScaling={false}
           className="font-inter-tight-medium"
           accessibilityLabel={
-            canSend ? 'Swipe left to edit' : 'Swipe left to write'
+            canSend ? CARD_COPY.hints.edit : CARD_COPY.hints.write
           }
           style={[{ letterSpacing: typePresets.hint.tracking }, leftStyle]}
         >
@@ -182,7 +183,7 @@ export function SwipeHints({
           <Animated.Text
         allowFontScaling={false}
             className="font-inter-tight-medium"
-            accessibilityLabel="Swipe right to send"
+            accessibilityLabel={CARD_COPY.hints.send}
             style={[{ letterSpacing: typePresets.hint.tracking }, rightStyle]}
           >
             SEND →
@@ -191,7 +192,7 @@ export function SwipeHints({
           <Text
         allowFontScaling={false}
             className="font-inter-tight-medium"
-            accessibilityLabel="Swipe right to send, unavailable — nothing drafted"
+            accessibilityLabel={CARD_COPY.hints.sendUnavailable}
             style={{
               fontSize: hint.restSizePx,
               letterSpacing: typePresets.hint.tracking,

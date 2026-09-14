@@ -8,6 +8,7 @@
  */
 
 import { type HeadsUpCommitment } from '@/lib/api/queue';
+import { CARD_COPY } from '@/lib/card-copy';
 
 /**
  * Types whose commitment carries a verification code the guest reads out at the
@@ -90,7 +91,8 @@ export function headsUpStripLabel(
   timezone: string,
 ): string {
   const arrival = arrivalLabel(commitment.expected_arrival, now, timezone);
-  return arrival === 'Now' ? 'Commitment · Due now' : `Commitment · Due ${arrival}`;
+  const kind = CARD_COPY.strip.commitment;
+  return arrival === 'Now' ? `${kind} · Due now` : `${kind} · Due ${arrival}`;
 }
 
 /** How long ago the promise was made, for the head's elapsed label. */

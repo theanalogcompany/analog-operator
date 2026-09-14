@@ -161,7 +161,7 @@ export default function ConversationThreadScreen() {
 
   if (!guest) {
     return (
-      <GroundScreen name="neutral">
+      <GroundScreen name="resting">
         <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 32 }}>
           <Text
         allowFontScaling={false}
@@ -202,7 +202,7 @@ export default function ConversationThreadScreen() {
   // third timestamp treatment on one screen was noise.
 
   return (
-    <GroundScreen name="neutral">
+    <GroundScreen name="resting">
       <View
         style={{
           flexDirection: 'row',
