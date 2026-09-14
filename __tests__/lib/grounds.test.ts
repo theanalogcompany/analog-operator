@@ -1,6 +1,7 @@
 import {
   GROUNDS,
   GROUND_NAMES,
+  VEIL_BASE_COLOR,
   VEIL_GROUND,
   type GroundName,
 } from '@/lib/grounds';
@@ -39,6 +40,11 @@ describe('grounds', () => {
     const [ramp] = VEIL_GROUND.layers;
     expect(ramp.role).toBe('ramp');
     expect(ramp.colors).toEqual(['#3A1A0C', '#1C0D06']);
+  });
+
+  it("paints the entrance underlay in the veil's own darkest stop", () => {
+    const [ramp] = VEIL_GROUND.layers;
+    expect(ramp.colors[ramp.colors.length - 1]).toBe(VEIL_BASE_COLOR);
   });
 
   it('defines every declared role', () => {

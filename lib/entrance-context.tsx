@@ -1,8 +1,10 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -17,6 +19,7 @@ import {
 import {
   consumeColdLaunch,
   resolveEntranceMode,
+  ridesEntranceClock,
   type EntranceMode,
 } from '@/lib/entrance';
 import { entrance } from '@/lib/theme';
@@ -26,28 +29,38 @@ export type { EntranceMode };
 export type EntranceValue = {
   readonly mode: EntranceMode;
   /**
-   * Milliseconds since the entrance began.
+   * Milliseconds since the entrance began, on the UI thread.
    *
-   * Pinned at `entrance.totalMs` whenever `mode !== 'full'`, so a consumer
-   * never branches on whether an entrance is playing — it asks the ramp for its
-   * opacity at the current clock and gets 1 when there is no entrance. The
-   * "layers that mount late render resolved" rule and the "no entrance at all"
-   * case are then the same code path.
+   * Pinned at `entrance.totalMs` whenever `mode !== 'full'`, so a ramp read
+   * outside an entrance returns its resolved value.
    */
   readonly clock: SharedValue<number>;
   /** 0 -> 1 across `reducedMotionFadeMs`. Pinned at 1 unless `mode` is
    *  `reduced`. */
   readonly reduced: SharedValue<number>;
   /**
-   * True from the provider's first frame until the entrance clock runs out, on
-   * a cold launch only. Anything asking "does the entrance own this layer right
-   * now?" reads this, never `mode` — `mode` stays `'full'` for the whole
+   * True while an entrance owns the screen: the 1.7s of a full entrance, or the
+   * short fade of a reduced one. Anything asking "does the entrance own this
+   * layer right now?" reads this, never `mode` — `mode` stays set for the whole
    * process, so a screen that mounts later would think it was still inside it.
    */
   readonly running: boolean;
+  /**
+   * Milliseconds since the entrance began, read on the JS thread.
+   *
+   * For decisions React makes once — whether a layer mounting now plays its
+   * slot, whether a ground that just arrived can still ride the clock — never
+   * for animation, which reads `clock`. `entrance.totalMs` whenever there is no
+   * full entrance.
+   */
+  readonly elapsedMs: () => number;
 };
 
 const EntranceContext = createContext<EntranceValue | null>(null);
+
+function resolvedElapsedMs(): number {
+  return entrance.totalMs;
+}
 
 /**
  * The entrance clock, or a resolved stand-in when there is no provider above.
@@ -73,6 +86,7 @@ export function useEntrance(): EntranceValue {
         running: false,
         clock: fallbackClock,
         reduced: fallbackReduced,
+        elapsedMs: resolvedElapsedMs,
       }) as const,
     [fallbackClock, fallbackReduced],
   );
@@ -80,13 +94,38 @@ export function useEntrance(): EntranceValue {
 }
 
 /**
+ * Whether a layer mounting now plays its entrance slot, or renders resolved.
+ *
+ * Decided once, at mount. A layer that mounts before its slot begins rides the
+ * boot clock. One that mounts after it — the deck of a queue that landed late,
+ * the next card after a swipe — appears in place instead of joining its ramp
+ * partway through. Without a provider, and outside a full entrance, nothing
+ * rides. (TAC-384.)
+ */
+export function useRidesEntranceSlot(slotStartMs: number): boolean {
+  const ctx = useContext(EntranceContext);
+  const [rides] = useState(
+    () =>
+      ctx !== null &&
+      ridesEntranceClock({ elapsedMs: ctx.elapsedMs(), slotStartMs }),
+  );
+  return rides;
+}
+
+/**
  * Owns the one clock every entrance layer reads.
  *
  * Mounted at the root, immediately inside the gate that holds the tree back
  * until fonts and the session resolve — so it mounts once, on the first frame
- * the app has anything to show, whatever that screen is.
+ * the app has anything to show. `signedIn` is read on that frame only.
  */
-export function EntranceProvider({ children }: { children: ReactNode }) {
+export function EntranceProvider({
+  children,
+  signedIn,
+}: {
+  children: ReactNode;
+  signedIn: boolean;
+}) {
   const reducedMotion = useReducedMotion();
 
   // Decided synchronously, on the provider's first render, and never revisited.
@@ -104,19 +143,24 @@ export function EntranceProvider({ children }: { children: ReactNode }) {
   const [mode] = useState<EntranceMode>(() =>
     resolveEntranceMode({
       coldLaunch: consumeColdLaunch(),
+      signedIn,
       reducedMotion,
     }),
   );
 
   const clock = useSharedValue<number>(mode === 'full' ? 0 : entrance.totalMs);
   const reduced = useSharedValue<number>(mode === 'reduced' ? 0 : 1);
-  const [running, setRunning] = useState(mode === 'full');
+  const [running, setRunning] = useState(mode !== 'off');
+  // When the clock started, on the JS thread. Null until the start effect runs;
+  // children's effects run before this one, and for them it is still t=0.
+  const startedAt = useRef<number | null>(null);
 
   useEffect(() => {
     // Linear, because the easing belongs to each layer's own ramp. A single
     // eased master clock would ease every layer twice and none of them by the
     // curve the design specifies.
     if (mode === 'full') {
+      startedAt.current = performance.now();
       clock.value = withTiming(entrance.totalMs, {
         duration: entrance.totalMs,
         easing: Easing.linear,
@@ -131,12 +175,24 @@ export function EntranceProvider({ children }: { children: ReactNode }) {
         duration: entrance.reducedMotionFadeMs,
         easing: Easing.linear,
       });
+      const timer = setTimeout(
+        () => setRunning(false),
+        entrance.reducedMotionFadeMs,
+      );
+      return () => clearTimeout(timer);
     }
   }, [mode, clock, reduced]);
 
+  const elapsedMs = useCallback((): number => {
+    if (mode !== 'full') return entrance.totalMs;
+    return startedAt.current === null
+      ? 0
+      : performance.now() - startedAt.current;
+  }, [mode]);
+
   const value = useMemo<EntranceValue>(
-    () => ({ mode, running, clock, reduced }),
-    [mode, running, clock, reduced],
+    () => ({ mode, running, clock, reduced, elapsedMs }),
+    [mode, running, clock, reduced, elapsedMs],
   );
 
   return (

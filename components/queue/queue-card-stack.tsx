@@ -13,7 +13,7 @@ import { useHaptics } from '@/hooks/use-haptics';
 import { useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type PendingDraft } from '@/lib/api/queue';
 import { cardRiseAt, fadeInAt } from '@/lib/entrance';
-import { useEntrance } from '@/lib/entrance-context';
+import { useEntrance, useRidesEntranceSlot } from '@/lib/entrance-context';
 import { card, entrance, layout, peek } from '@/lib/theme';
 
 import { QueueCard } from './queue-card';
@@ -164,6 +164,7 @@ function FrontCard({
   });
 
   const { clock: entranceClock } = useEntrance();
+  const riseRides = useRidesEntranceSlot(entrance.cardDelayMs);
 
   const tap = Gesture.Tap()
     .maxDuration(300)
@@ -180,16 +181,18 @@ function FrontCard({
   // double-fires as both.
   const gesture = Gesture.Exclusive(pan, tap);
 
-  // The card's rise: opacity and offset from ONE ramp on the boot clock, never
-  // this mount, so a late mount renders resolved and a swipe's remount is a
-  // no-op. See lib/entrance.ts. (TAC-384.)
+  // The card's rise: opacity and offset from ONE ramp on the boot clock. A card
+  // that mounts after its slot has begun — a queue that landed late, the next
+  // card after a swipe — appears in place instead. (TAC-384.)
   const cardStyle = useAnimatedStyle(() => {
-    const rise = cardRiseAt({
-      elapsedMs: entranceClock.value,
-      delayMs: entrance.cardDelayMs,
-      durationMs: entrance.cardDurationMs,
-      fromPx: entrance.cardRiseFromPx,
-    });
+    const rise = riseRides
+      ? cardRiseAt({
+          elapsedMs: entranceClock.value,
+          delayMs: entrance.cardDelayMs,
+          durationMs: entrance.cardDurationMs,
+          fromPx: entrance.cardRiseFromPx,
+        })
+      : { opacity: 1, translateY: 0 };
     return {
       opacity: rise.opacity,
       transform: [
@@ -299,18 +302,22 @@ function PeekSlab({ depth, height, intensity, draft }: PeekSlabProps) {
     depth === 'near' ? entrance.peekNearDelayMs : entrance.peekFarDelayMs;
   const entranceDurationMs =
     depth === 'near' ? entrance.peekNearDurationMs : entrance.peekFarDurationMs;
+  const slabRides = useRidesEntranceSlot(entranceDelayMs);
 
   // The drag opacity and the entrance opacity multiply: the slab's alpha curve
   // through a swipe is unchanged, it is simply scaled by how far the entrance
-  // has brought the slab in. Outside a cold launch the second factor is 1.
+  // has brought the slab in. Outside a cold launch, or for a slab that mounted
+  // after its slot, the second factor is 1.
   const style = useAnimatedStyle(() => ({
     opacity:
       peekOpacity(base, gain, intensity.value) *
-      fadeInAt({
-        elapsedMs: entranceClock.value,
-        delayMs: entranceDelayMs,
-        durationMs: entranceDurationMs,
-      }),
+      (slabRides
+        ? fadeInAt({
+            elapsedMs: entranceClock.value,
+            delayMs: entranceDelayMs,
+            durationMs: entranceDurationMs,
+          })
+        : 1),
   }));
 
   return (

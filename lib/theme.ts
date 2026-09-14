@@ -94,11 +94,11 @@ export const entrance = {
   /**
    * The card's bucket ground crossfading over clay.
    *
-   * Bound to the card's entrance (940ms, same instant as `cardDelayMs`) and
-   * never to the response — a fast fetch must not produce two ground changes
-   * inside the entrance. Because it is a pure function of the boot clock, a
-   * queue that resolves at 300ms and one that resolves at 2s produce the same
-   * frames for the clay phase either way.
+   * Bound to the card's entrance (940ms, same instant as `cardDelayMs`) when the
+   * queue resolves before it, never to the response — a fast fetch must not
+   * produce two ground changes inside the entrance. A queue that resolves after
+   * 940ms has missed the slot and takes the ordinary deck crossfade instead (see
+   * `ridesEntranceClock`).
    *
    * TAC-384 specifies 420ms on the grounds that it is TAC-364's deck-crossfade
    * duration and the app should have ONE ground-transition number. The shipped

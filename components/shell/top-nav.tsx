@@ -5,7 +5,7 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { useNotificationPermission } from '@/hooks/use-notification-permission';
 import { fadeInAt } from '@/lib/entrance';
-import { useEntrance } from '@/lib/entrance-context';
+import { useEntrance, useRidesEntranceSlot } from '@/lib/entrance-context';
 import { useQueueContext } from '@/lib/queue-context';
 import { entrance, nav, typePresets } from '@/lib/theme';
 
@@ -27,6 +27,7 @@ export function TopNav() {
   const queue = useQueueContext();
   const permission = useNotificationPermission();
   const { clock } = useEntrance();
+  const navRides = useRidesEntranceSlot(entrance.navDelayMs);
 
   // The Texts tab stays active while a thread is open.
   const active: TabKey = pathname.startsWith('/you')
@@ -38,11 +39,13 @@ export function TopNav() {
   // The nav arrives just after the card, on the boot clock; a constant 1
   // outside a cold launch. (TAC-384.)
   const entranceStyle = useAnimatedStyle(() => ({
-    opacity: fadeInAt({
-      elapsedMs: clock.value,
-      delayMs: entrance.navDelayMs,
-      durationMs: entrance.navDurationMs,
-    }),
+    opacity: navRides
+      ? fadeInAt({
+          elapsedMs: clock.value,
+          delayMs: entrance.navDelayMs,
+          durationMs: entrance.navDurationMs,
+        })
+      : 1,
   }));
 
   return (

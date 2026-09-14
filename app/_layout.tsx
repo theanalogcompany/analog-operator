@@ -105,13 +105,14 @@ export default function RootLayout() {
           {/*
             The entrance provider sits immediately inside the gate above, which
             is the app's only true cold-launch seam: the tree is unmounted until
-            fonts and the session resolve, then mounts in one frame. Mounting
-            here — rather than inside the signed-in branch — is what makes the
-            entrance play once for whichever screen comes first, and what stops
-            it playing again on the queue after the operator signs in. By then
-            the sign-in screen has already spent the flag. (TAC-384.)
+            fonts and the session resolve, then mounts in one frame. It spends
+            the cold-launch flag on that frame whatever the session is, but only
+            plays when signed in: the sign-in screen draws its own mark, and an
+            entrance over it would show two. Spending the flag there anyway is
+            what stops the queue reached by signing in from playing one.
+            (TAC-384.)
           */}
-          <EntranceProvider>
+          <EntranceProvider signedIn={isSignedIn}>
             <VenueProvider>
               <QueueProvider>
                 <Stack screenOptions={{ headerShown: false }}>

@@ -229,6 +229,13 @@ export const GROUNDS: Record<GroundName, Ground> = {
 };
 
 /**
+ * The veil's darkest stop, and the flat colour painted under the ground while an
+ * entrance owns it (see `GroundScreen`). Without it, what shows through a ground
+ * that is still fading in is the navigator's default light grey. (TAC-384.)
+ */
+export const VEIL_BASE_COLOR = '#1C0D06';
+
+/**
  * The cold-launch entrance's near-black veil (TAC-384).
  *
  * Deliberately NOT a `GroundName`: no screen names it, it never appears in
@@ -243,7 +250,7 @@ export const VEIL_GROUND: Ground = {
   layers: [
     {
       role: 'ramp',
-      colors: ['#3A1A0C', '#1C0D06'],
+      colors: ['#3A1A0C', VEIL_BASE_COLOR],
       locations: [0, 1],
       ...ANGLE_168,
     },

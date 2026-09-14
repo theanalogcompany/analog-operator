@@ -213,39 +213,42 @@ describe('RootLayout — first-authenticated-render permission prompt (TAC-288)'
 });
 
 /**
- * The entrance is armed at BOOT, not at auth — and that single choice is what
- * makes the ticket's three "never" rules true at once.
+ * The cold-launch flag is spent at BOOT, whatever the session — but the entrance
+ * only plays when that launch is signed in.
  *
- * Rule 1 as originally written said "never after sign-in", which read literally
- * would mean a first-time operator never sees the entrance that introduces the
- * app: their first launch is the sign-in screen, so the entrance would be spent
- * on nobody and their second launch would show it. The reworded rule is "cold
- * launch only, INCLUDING the first launch at sign-in" — so the sign-in screen
- * gets it, and the queue reached by authenticating does not, because by then
- * the flag is already spent. (TAC-384.)
+ * A signed-out launch plays nothing because the sign-in screen draws its own
+ * mark, and the entrance's mark over it reads as two logos (decided 2026-09-14,
+ * reversing an earlier call to play it on sign-in). Spending the flag there
+ * anyway is what keeps the queue reached by authenticating from playing one.
+ * `EntranceOverlay` renders only during a full entrance, so its presence is the
+ * observable. It is hidden from screen readers, and RNTL skips hidden elements by
+ * default — so every query passes `includeHiddenElements`, or "no overlay" would
+ * pass even when one rendered. (TAC-384.)
  */
 describe('RootLayout — cold-launch entrance arming (TAC-384)', () => {
-  it('arms the entrance on a signed-out cold launch, so sign-in gets it', () => {
+  it('spends the flag on a signed-out cold launch but plays nothing', () => {
     mockSession = { status: 'signed-out', session: null };
-    render(<RootLayout />);
+    const { queryByTestId } = render(<RootLayout />);
     expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+    expect(consumeColdLaunchMock).toHaveLastReturnedWith(true);
+    expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).toBeNull();
   });
 
-  it('arms the entrance on a signed-in cold launch', () => {
+  it('plays the entrance on a signed-in cold launch', () => {
     mockSession = {
       status: 'signed-in',
       session: { user: { email: 'jaipal@theanalog.company' } },
     };
-    render(<RootLayout />);
+    const { queryByTestId } = render(<RootLayout />);
     expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+    expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).not.toBeNull();
   });
 
   it('does NOT re-arm on the queue after authenticating', () => {
-    // The SMS-OTP path: signed-out first, then signed-in. The entrance belongs
-    // to the sign-in screen that already played it; crossing the auth gate must
-    // not start a second one.
+    // The SMS-OTP path: signed-out first, then signed-in. The signed-out launch
+    // already spent the flag, so crossing the auth gate must not start one.
     mockSession = { status: 'signed-out', session: null };
-    const { rerender } = render(<RootLayout />);
+    const { rerender, queryByTestId } = render(<RootLayout />);
     expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
     expect(consumeColdLaunchMock).toHaveLastReturnedWith(true);
 
@@ -255,6 +258,7 @@ describe('RootLayout — cold-launch entrance arming (TAC-384)', () => {
     };
     rerender(<RootLayout />);
     expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+    expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).toBeNull();
   });
 
   it('does not arm anything while the gate is still closed', () => {

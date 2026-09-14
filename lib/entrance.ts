@@ -15,11 +15,10 @@
  * the card's 940ms slot. If each layer started its own animation at its own
  * mount, a slow fetch would start the card's rise late and a fast one would
  * start it early — the entrance would be a different length on every launch.
- * Driven from a single clock, a layer that mounts at t=1200ms reads the clock,
- * finds its window has passed, and renders resolved. That is what makes "a slow
- * or failed queue fetch does not extend, restart, or stall the entrance" and
- * "if data arrives late, do not replay" true by construction rather than by a
- * guard somebody has to remember. (TAC-384.)
+ * Driven from a single clock, a slow or failed fetch cannot extend, restart or
+ * stall the entrance. A layer that mounts after its slot has begun renders
+ * resolved — but that part is a rule each layer opts into through
+ * `useRidesEntranceSlot`, not something the clock gives for free. (TAC-384.)
  *
  * Per CLAUDE.md/TAC-312 these are exported and unit-tested directly: the
  * behaviour lives in the gesture/animation layer, so something has to exercise
@@ -52,9 +51,9 @@ let coldLaunchAvailable = true;
  * True exactly once per JS context, false forever after.
  *
  * Drained at the root the first time the app has anything to show, whatever
- * that screen is — sign-in or queue. Arming at boot rather than at auth is what
- * makes "never on the queue after authenticating" true: by the time the
- * operator finishes signing in, the sign-in screen has already spent it.
+ * that screen is. It is spent on a signed-out launch too, where nothing plays —
+ * which is what makes "never on the queue after authenticating" true: by the
+ * time the operator finishes signing in, the flag is already gone.
  */
 export function consumeColdLaunch(): boolean {
   const was = coldLaunchAvailable;
@@ -69,7 +68,8 @@ export function __resetEntranceStateForTests(): void {
 }
 
 /**
- * `off`     — not a cold launch. Nothing animates; every layer renders resolved.
+ * `off`     — not a cold launch, or a signed-out one. Nothing animates; every
+ *             layer renders resolved.
  * `full`    — the Wick entrance.
  * `reduced` — `prefers-reduced-motion`. Skip to the resolved state; the only
  *             motion is one short ground cross-fade. No veil, no mark, no rise.
@@ -85,16 +85,39 @@ export type EntranceMode = 'off' | 'full' | 'reduced';
  * accessibility API — the wiring is then tested separately and neither test
  * pretends to cover the other.
  *
- * Reduced motion loses to "not a cold launch": if there is no entrance to play,
- * there is nothing to reduce.
+ * A signed-out launch plays nothing: the sign-in screen draws its own mark, and
+ * the entrance's mark over it reads as two logos (decided 2026-09-14, reversing
+ * an earlier call to play it on sign-in). Reduced motion loses to both: if there
+ * is no entrance to play, there is nothing to reduce.
  */
 export function resolveEntranceMode(args: {
   coldLaunch: boolean;
+  signedIn: boolean;
   reducedMotion: boolean;
 }): EntranceMode {
-  const { coldLaunch, reducedMotion } = args;
-  if (!coldLaunch) return 'off';
+  const { coldLaunch, signedIn, reducedMotion } = args;
+  if (!coldLaunch || !signedIn) return 'off';
   return reducedMotion ? 'reduced' : 'full';
+}
+
+/**
+ * Whether something turning up at `elapsedMs` can still take an entrance slot
+ * that starts at `slotStartMs`.
+ *
+ * The late-data rule. A layer that mounts, or a ground that becomes known,
+ * before its slot rides the boot clock. One that turns up after has missed it:
+ * joining a ramp already under way would mount it partly opaque, which is a
+ * snap — so it takes its ordinary behaviour instead. At the boundary it still
+ * rides, because the ramp there is at zero.
+ *
+ * Not a worklet: React calls it once, when something mounts or changes.
+ * (TAC-384.)
+ */
+export function ridesEntranceClock(args: {
+  elapsedMs: number;
+  slotStartMs: number;
+}): boolean {
+  return args.elapsedMs <= args.slotStartMs;
 }
 
 /* -------------------------------------------------------------------------- */

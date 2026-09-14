@@ -7,6 +7,7 @@ import {
   fadeOutAt,
   markOpacityAt,
   resolveEntranceMode,
+  ridesEntranceClock,
 } from '@/lib/entrance';
 import { entrance } from '@/lib/theme';
 
@@ -139,7 +140,9 @@ describe('the veil and the ground', () => {
     expect(veil(mid)).toBeGreaterThan(0);
     expect(ground(mid)).toBeLessThan(1);
     expect(ground(mid)).toBeGreaterThan(0);
-    // Same eased curve, mirrored — so the composite never dips or blooms.
+    // Same eased curve, mirrored: the veil leaves exactly as fast as the ground
+    // arrives. What shows through the partly-transparent middle is the
+    // underlay, asserted in __tests__/components/ground/ground-screen.test.tsx.
     expect(veil(mid) + ground(mid)).toBeCloseTo(1, 6);
   });
 
@@ -194,8 +197,9 @@ describe('the bucket ground crossfade', () => {
    * entrance, never to the response." A fast fetch must not produce two ground
    * changes inside the entrance.
    *
-   * Structurally, that means the bucket shares the card's offset and reads the
-   * same clock — it has no way to observe when the queue resolved.
+   * Structurally, the bucket shares the card's offset and reads the same clock.
+   * A queue that resolves after that offset takes the ordinary crossfade
+   * instead; that decision lives in GroundScreen and is tested there.
    */
   it('starts with the card, not with the response', () => {
     expect(entrance.bucketDelayMs).toBe(entrance.cardDelayMs);
@@ -320,12 +324,12 @@ describe('consumeColdLaunch', () => {
 describe('resolveEntranceMode', () => {
   it('plays the full entrance on a cold launch', () => {
     expect(
-      resolveEntranceMode({ coldLaunch: true, reducedMotion: false }),
+      resolveEntranceMode({ coldLaunch: true, signedIn: true, reducedMotion: false }),
     ).toBe('full');
   });
 
   it('reduces the entrance when the operator asked for less motion', () => {
-    expect(resolveEntranceMode({ coldLaunch: true, reducedMotion: true })).toBe(
+    expect(resolveEntranceMode({ coldLaunch: true, signedIn: true, reducedMotion: true })).toBe(
       'reduced',
     );
   });
@@ -334,13 +338,64 @@ describe('resolveEntranceMode', () => {
     // Resume from background, a tab switch, a venue switch, and the queue
     // after signing in all land here.
     expect(
-      resolveEntranceMode({ coldLaunch: false, reducedMotion: false }),
+      resolveEntranceMode({ coldLaunch: false, signedIn: true, reducedMotion: false }),
     ).toBe('off');
   });
 
   it('prefers off over reduced — there is nothing to reduce', () => {
     expect(
-      resolveEntranceMode({ coldLaunch: false, reducedMotion: true }),
+      resolveEntranceMode({ coldLaunch: false, signedIn: true, reducedMotion: true }),
     ).toBe('off');
+  });
+});
+
+describe('resolveEntranceMode — signed out', () => {
+  /**
+   * The sign-in screen draws its own mark, so an entrance over it shows two
+   * logos. Signed out plays nothing, whatever reduced motion says. (Decided
+   * 2026-09-14, reversing an earlier call to play it on sign-in.)
+   */
+  it('plays nothing on a signed-out cold launch', () => {
+    expect(
+      resolveEntranceMode({ coldLaunch: true, signedIn: false, reducedMotion: false }),
+    ).toBe('off');
+    expect(
+      resolveEntranceMode({ coldLaunch: true, signedIn: false, reducedMotion: true }),
+    ).toBe('off');
+  });
+});
+
+describe('ridesEntranceClock', () => {
+  it('rides a slot that has not begun', () => {
+    expect(
+      ridesEntranceClock({ elapsedMs: 0, slotStartMs: entrance.bucketDelayMs }),
+    ).toBe(true);
+    expect(
+      ridesEntranceClock({ elapsedMs: 300, slotStartMs: entrance.bucketDelayMs }),
+    ).toBe(true);
+  });
+
+  it('still rides at the boundary, where the ramp is at zero', () => {
+    expect(
+      ridesEntranceClock({
+        elapsedMs: entrance.bucketDelayMs,
+        slotStartMs: entrance.bucketDelayMs,
+      }),
+    ).toBe(true);
+  });
+
+  /**
+   * The slow-fetch case. A queue that lands at 1.2s has missed the card's 940ms
+   * slot; riding it would mount the bucket ground nearly opaque over clay, a
+   * hard cut. It takes the ordinary crossfade instead, and the card appears in
+   * place.
+   */
+  it('does not ride a slot that has already begun', () => {
+    expect(
+      ridesEntranceClock({ elapsedMs: 941, slotStartMs: entrance.bucketDelayMs }),
+    ).toBe(false);
+    expect(
+      ridesEntranceClock({ elapsedMs: 1_200, slotStartMs: entrance.cardDelayMs }),
+    ).toBe(false);
   });
 });

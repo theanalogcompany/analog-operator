@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
@@ -13,11 +12,6 @@ import { entrance } from '@/lib/theme';
 // sign-in frame already uses. Not a second asset.
 const MARK = require('../../assets/images/logo.png');
 
-/** The mark is the last thing on screen; once it has faded there is nothing
- *  left to paint, so the whole overlay leaves rather than sitting at zero
- *  opacity over every subsequent frame. */
-const OVERLAY_LIFETIME_MS = entrance.markDelayMs + entrance.markDurationMs;
-
 /**
  * The two layers of the entrance that belong to no screen: the near-black veil
  * and the mark that fades up through it.
@@ -29,14 +23,7 @@ const OVERLAY_LIFETIME_MS = entrance.markDelayMs + entrance.markDurationMs;
  * (TAC-384.)
  */
 export function EntranceOverlay() {
-  const { mode, clock } = useEntrance();
-  const [visible, setVisible] = useState(mode === 'full');
-
-  useEffect(() => {
-    if (mode !== 'full') return;
-    const timer = setTimeout(() => setVisible(false), OVERLAY_LIFETIME_MS);
-    return () => clearTimeout(timer);
-  }, [mode]);
+  const { mode, running, clock } = useEntrance();
 
   const veilStyle = useAnimatedStyle(() => ({
     opacity: fadeOutAt({
@@ -56,10 +43,15 @@ export function EntranceOverlay() {
     }),
   }));
 
-  if (!visible) return null;
+  // Leaves when the entrance ends, not at the mark's last frame. The UI clock only
+  // starts once the first tree has mounted, so a JS timer set to 1240ms could
+  // remove the mark on a slow launch while it was still visible. The extra
+  // half-second is spent at zero opacity.
+  if (mode !== 'full' || !running) return null;
 
   return (
     <View
+      testID="entrance-overlay"
       pointerEvents="none"
       style={StyleSheet.absoluteFill}
       accessibilityElementsHidden

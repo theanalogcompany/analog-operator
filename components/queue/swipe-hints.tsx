@@ -7,7 +7,7 @@ import Animated, {
 
 import { type SwipeDirection } from '@/hooks/use-queue-swipe';
 import { fadeInAt } from '@/lib/entrance';
-import { useEntrance } from '@/lib/entrance-context';
+import { useEntrance, useRidesEntranceSlot } from '@/lib/entrance-context';
 import { entrance, hint, typePresets } from '@/lib/theme';
 
 /**
@@ -49,15 +49,18 @@ export function SwipeHints({
   onPressHelp,
 }: Props) {
   const { clock } = useEntrance();
+  const hintsRide = useRidesEntranceSlot(entrance.hintsDelayMs);
 
-  // Last in, 380ms after the card has settled. The hints are the instruction,
-  // and the design holds them back until there is something to instruct about.
+  // Last in, as the card settles. The hints are the instruction, and the design
+  // holds them back until there is something to instruct about.
   const entranceStyle = useAnimatedStyle(() => ({
-    opacity: fadeInAt({
-      elapsedMs: clock.value,
-      delayMs: entrance.hintsDelayMs,
-      durationMs: entrance.hintsDurationMs,
-    }),
+    opacity: hintsRide
+      ? fadeInAt({
+          elapsedMs: clock.value,
+          delayMs: entrance.hintsDelayMs,
+          durationMs: entrance.hintsDurationMs,
+        })
+      : 1,
   }));
 
   const leftStyle = useAnimatedStyle(() => {
