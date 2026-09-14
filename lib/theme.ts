@@ -53,6 +53,79 @@ export const ground = {
 } as const;
 
 /**
+ * The cold-launch entrance — "Wick" (TAC-384).
+ *
+ * Every value is an ABSOLUTE offset from one clock started at boot, not a
+ * per-layer delay — see lib/entrance.ts for why.
+ *
+ * The numbers are exact: the relationship between the mark's hold and the
+ * ground's arrival IS the effect, and shifting either by 100ms changes what it
+ * feels like. Do not round.
+ */
+export const entrance = {
+  totalMs: 1_700,
+
+  /**
+   * The mark: in, hold, out. `markFadeInStop` and `markHoldStop` are the 38%
+   * and 62% stops of the `om-mark` keyframes, as fractions of `markDurationMs`.
+   *
+   * These describe ONE ramp evaluated by one pure function, never two
+   * animations on one value. Two animations with backwards fill is the defect
+   * that shipped in the design file twice: the later one's 0% keyframe wins
+   * during its delay and the fade-in never renders, so the mark hard-cuts to
+   * full opacity on frame one. See `markOpacityAt` in `lib/entrance.ts`.
+   */
+  markDelayMs: 60,
+  markDurationMs: 1_180,
+  markFadeInStop: 0.38,
+  markHoldStop: 0.62,
+  markSizePx: 44,
+
+  /** Veil out and clay in are the same 700ms window run in opposite
+   *  directions, which is what makes the ground look lit rather than swapped. */
+  groundDelayMs: 200,
+  groundDurationMs: 700,
+
+  /** The card's rise — the one non-opacity animation in the entrance. */
+  cardDelayMs: 940,
+  cardDurationMs: 560,
+  cardRiseFromPx: 26,
+
+  /**
+   * The card's bucket ground crossfading over clay.
+   *
+   * Bound to the card's entrance (940ms, same instant as `cardDelayMs`) when the
+   * queue resolves before it, never to the response — a fast fetch must not
+   * produce two ground changes inside the entrance. A queue that resolves after
+   * 940ms has missed the slot and takes the ordinary deck crossfade instead (see
+   * `ridesEntranceClock`).
+   *
+   * TAC-384 specifies 420ms on the grounds that it is TAC-364's deck-crossfade
+   * duration and the app should have ONE ground-transition number. The shipped
+   * `ground.crossfadeDurationMs` is still 320 — it predates that decision — so
+   * the two are deliberately separate today. When TAC-364 moves the deck to
+   * 420, collapse these into a single token rather than keeping both.
+   */
+  bucketDelayMs: 940,
+  bucketDurationMs: 420,
+
+  navDelayMs: 960,
+  navDurationMs: 400,
+
+  peekNearDelayMs: 1_000,
+  peekNearDurationMs: 420,
+  peekFarDelayMs: 1_060,
+  peekFarDurationMs: 420,
+
+  hintsDelayMs: 1_320,
+  hintsDurationMs: 360,
+
+  /** `prefers-reduced-motion`: skip to the resolved state. No veil, no mark,
+   *  no rise — "a cross-fade of 150ms at most" is the whole budget. */
+  reducedMotionFadeMs: 150,
+} as const;
+
+/**
  * The queue card. Height is fixed so every card is the same size regardless of
  * how many messages it holds — see `resolveCardLayout` in
  * `components/queue/queue-card-stack.tsx` for what happens when 560 doesn't fit.
@@ -190,6 +263,8 @@ export const body = {
 export const easing = {
   /** cubic-bezier(.2,.8,.2,1) — used for all major transitions in the design */
   emphasizedDecelerate: [0.2, 0.8, 0.2, 1] as const,
+  /** cubic-bezier(.25,.1,.25,1) — CSS `ease`; every opacity ramp in the cold-launch entrance */
+  ease: [0.25, 0.1, 0.25, 1] as const,
 };
 
 export const recognition = {

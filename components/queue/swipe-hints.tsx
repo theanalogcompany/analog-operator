@@ -6,7 +6,9 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { type SwipeDirection } from '@/hooks/use-queue-swipe';
-import { hint, typePresets } from '@/lib/theme';
+import { fadeInAt } from '@/lib/entrance';
+import { useEntrance, useRidesEntranceSlot } from '@/lib/entrance-context';
+import { entrance, hint, typePresets } from '@/lib/theme';
 
 /**
  * How a hint reads at a given drag. Pure and `'worklet'`-marked so the UI
@@ -54,6 +56,21 @@ export function SwipeHints({
   onPressHelp,
   kind = 'draft',
 }: Props) {
+  const { clock } = useEntrance();
+  const hintsRide = useRidesEntranceSlot(entrance.hintsDelayMs);
+
+  // Last in, as the card settles. The hints are the instruction, and the design
+  // holds them back until there is something to instruct about.
+  const entranceStyle = useAnimatedStyle(() => ({
+    opacity: hintsRide
+      ? fadeInAt({
+          elapsedMs: clock.value,
+          delayMs: entrance.hintsDelayMs,
+          durationMs: entrance.hintsDurationMs,
+        })
+      : 1,
+  }));
+
   const leftStyle = useAnimatedStyle(() => {
     const { grow, dim } = hintState({
       side: 'left',
@@ -118,12 +135,15 @@ export function SwipeHints({
     // the hints never steal a swipe — but the row also carries the only "Chat
     // with Jaipal" affordance on this screen, and killing that would be a
     // regression, not a translation. The hints themselves stay inert.
-    <View
+    <Animated.View
       pointerEvents="box-none"
-      style={{
-        flexDirection: 'row',
-        alignItems: 'baseline',
-      }}
+      style={[
+        {
+          flexDirection: 'row',
+          alignItems: 'baseline',
+        },
+        entranceStyle,
+      ]}
     >
       <View pointerEvents="none" style={{ flex: 1, alignItems: 'flex-start' }}>
         <Animated.Text
@@ -182,6 +202,6 @@ export function SwipeHints({
           </Text>
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 }

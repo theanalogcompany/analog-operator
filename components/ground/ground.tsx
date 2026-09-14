@@ -1,21 +1,19 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, View } from 'react-native';
 
-import { GROUNDS, type GroundName } from '@/lib/grounds';
-
-type Props = {
-  name: GroundName;
-};
+import { GROUNDS, type Ground as GroundValue, type GroundName } from '@/lib/grounds';
 
 /**
- * Paints one named ground as stacked full-bleed gradient layers.
+ * Paints an arbitrary ground value as stacked full-bleed gradient layers.
  *
- * Knows nothing about screens, tones or navigation — it renders whatever
- * `lib/grounds.ts` says the name means. `dither` is on for the same reason it
- * is on the swipe washes: multi-stop alpha ramps band visibly on-device.
+ * Split out from `Ground` so the cold-launch veil — which is a gradient but
+ * deliberately not a named screen ground — can reuse the same painter instead
+ * of hand-rolling a second `LinearGradient` stack. (TAC-384.)
+ *
+ * `dither` is on for the same reason it is on the swipe washes: multi-stop
+ * alpha ramps band visibly on-device.
  */
-export function Ground({ name }: Props) {
-  const ground = GROUNDS[name];
+export function GroundPaint({ ground }: { ground: GroundValue }) {
   return (
     <View
       pointerEvents="none"
@@ -42,4 +40,18 @@ export function Ground({ name }: Props) {
       ))}
     </View>
   );
+}
+
+type Props = {
+  name: GroundName;
+};
+
+/**
+ * Paints one named ground.
+ *
+ * Knows nothing about screens, tones or navigation — it renders whatever
+ * `lib/grounds.ts` says the name means.
+ */
+export function Ground({ name }: Props) {
+  return <GroundPaint ground={GROUNDS[name]} />;
 }

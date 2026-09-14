@@ -46,6 +46,7 @@ export type GroundName =
   | 'queueStone'
   | 'queueInk'
   | 'neutral'
+  | 'resting'
   | 'auth';
 
 export const GROUND_NAMES: readonly GroundName[] = [
@@ -53,6 +54,7 @@ export const GROUND_NAMES: readonly GroundName[] = [
   'queueStone',
   'queueInk',
   'neutral',
+  'resting',
   'auth',
 ];
 
@@ -207,5 +209,50 @@ export const GROUNDS: Record<GroundName, Ground> = {
   // These were aliases of the two above until the contrast numbers came in;
   // they are now deliberately different and must not be collapsed back.
   neutral: stoneGround(TYPE_HIGHLIGHT),
+  /**
+   * The queue with nothing pending, and the ground the cold-launch entrance
+   * resolves into.
+   *
+   * Clay at the TYPE highlight, not the card highlight: "You're all caught up"
+   * sits directly on this ground, and 0.26+ washes white text below 4.5:1 (see
+   * the note on `CARD_HIGHLIGHT`). Same value as `auth` today and deliberately
+   * a separate name — per this module's naming rule, roles get names before
+   * they get distinct values, so the sign-in flow and the resting queue can
+   * diverge later without touching a screen.
+   *
+   * TAC-364 makes clay the resting state for every screen with nothing pending.
+   * This is the queue's half of that; Texts / thread / You still name `neutral`
+   * and move when TAC-364's colour system lands. (TAC-384.)
+   */
+  resting: clayGround(TYPE_HIGHLIGHT),
   auth: clayGround(TYPE_HIGHLIGHT),
+};
+
+/**
+ * The veil's darkest stop, and the flat colour painted under the ground while an
+ * entrance owns it (see `GroundScreen`). Without it, what shows through a ground
+ * that is still fading in is the navigator's default light grey. (TAC-384.)
+ */
+export const VEIL_BASE_COLOR = '#1C0D06';
+
+/**
+ * The cold-launch entrance's near-black veil (TAC-384).
+ *
+ * Deliberately NOT a `GroundName`: no screen names it, it never appears in
+ * `GROUND_NAMES`, and it is not a resting state for anything — it is one layer
+ * of one animation, which happens to be a gradient and therefore belongs in
+ * this file rather than hardcoded into a component.
+ *
+ * A single ramp, no highlight and no scrim: it is already dark enough that
+ * neither would read, and the mark on top of it is pure white.
+ */
+export const VEIL_GROUND: Ground = {
+  layers: [
+    {
+      role: 'ramp',
+      colors: ['#3A1A0C', VEIL_BASE_COLOR],
+      locations: [0, 1],
+      ...ANGLE_168,
+    },
+  ],
 };

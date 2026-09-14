@@ -1,4 +1,10 @@
-import { GROUNDS, GROUND_NAMES, type GroundName } from '@/lib/grounds';
+import {
+  GROUNDS,
+  GROUND_NAMES,
+  VEIL_BASE_COLOR,
+  VEIL_GROUND,
+  type GroundName,
+} from '@/lib/grounds';
 
 /**
  * These colors are placeholders pending a separate color exercise, so nothing
@@ -6,18 +12,39 @@ import { GROUNDS, GROUND_NAMES, type GroundName } from '@/lib/grounds';
  * real palette lands, which is exactly the churn `lib/grounds.ts` exists to
  * prevent.
  *
- * What IS worth locking is the structure the swap has to preserve: five named
- * roles, every one renderable, and the two aliases still pointing somewhere.
+ * What IS worth locking is the structure the swap has to preserve: six named
+ * roles, every one renderable, and the aliases still pointing somewhere.
  */
 describe('grounds', () => {
-  it('declares all five roles', () => {
+  it('declares all six roles', () => {
     expect(GROUND_NAMES).toEqual([
       'queueClay',
       'queueStone',
       'queueInk',
       'neutral',
+      'resting',
       'auth',
     ]);
+  });
+
+  // The veil is a gradient but not a screen ground: no screen names it, it is
+  // nobody's resting state, and putting it in GROUND_NAMES would offer it to
+  // every `GroundName` call site as though a screen could settle on it.
+  it('keeps the entrance veil out of the named grounds', () => {
+    expect(GROUND_NAMES).not.toContain('veil');
+    expect(Object.values(GROUNDS)).not.toContain(VEIL_GROUND);
+  });
+
+  it('renders the entrance veil as a single dark ramp', () => {
+    expect(VEIL_GROUND.layers).toHaveLength(1);
+    const [ramp] = VEIL_GROUND.layers;
+    expect(ramp.role).toBe('ramp');
+    expect(ramp.colors).toEqual(['#3A1A0C', '#1C0D06']);
+  });
+
+  it("paints the entrance underlay in the veil's own darkest stop", () => {
+    const [ramp] = VEIL_GROUND.layers;
+    expect(ramp.colors[ramp.colors.length - 1]).toBe(VEIL_BASE_COLOR);
   });
 
   it('defines every declared role', () => {
@@ -78,6 +105,15 @@ describe('grounds', () => {
   it('separates the type grounds from the card grounds', () => {
     expect(GROUNDS.neutral).not.toBe(GROUNDS.queueStone);
     expect(GROUNDS.auth).not.toBe(GROUNDS.queueClay);
+    expect(GROUNDS.resting).not.toBe(GROUNDS.queueClay);
+  });
+
+  // `resting` is the ground the cold-launch entrance settles on AND the ground
+  // an empty queue sits on. They have to be the same value or the entrance ends
+  // by transitioning into the empty state, which is the one thing TAC-384's
+  // third case forbids.
+  it('gives the resting queue the same clay the entrance resolves into', () => {
+    expect(GROUNDS.resting).toEqual(GROUNDS.auth);
   });
 
   it('differs from its card ground only in the highlight', () => {
@@ -86,6 +122,7 @@ describe('grounds', () => {
     for (const [type, cardGround] of [
       ['neutral', 'queueStone'],
       ['auth', 'queueClay'],
+      ['resting', 'queueClay'],
     ] as const) {
       // Same ramp, same scrim — only the highlight is quieter.
       expect(layerOf(GROUNDS[type], 'ramp')).toEqual(

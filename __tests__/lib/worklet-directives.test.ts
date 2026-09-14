@@ -2,6 +2,15 @@ import { isComposerTap, peekOpacity } from '@/components/queue/queue-card-stack'
 import { hintState } from '@/components/queue/swipe-hints';
 import { washOpacity } from '@/components/queue/swipe-overlay';
 import { resolveSwipeOutcome } from '@/hooks/use-queue-swipe';
+import {
+  cardRiseAt,
+  cubicBezierAt,
+  easeAt,
+  easeDecelerateAt,
+  fadeInAt,
+  fadeOutAt,
+  markOpacityAt,
+} from '@/lib/entrance';
 
 /**
  * Every helper called from inside a worklet must itself be a worklet.
@@ -32,6 +41,19 @@ const workletHelpers = {
   isComposerTap,
   // Called from the Pan gesture's onEnd, on the UI thread.
   resolveSwipeOutcome,
+
+  // The cold-launch entrance ramps (TAC-384). Every one of these is called
+  // from inside a useAnimatedStyle, and the easing helpers are called from
+  // inside the ramps — so the whole chain has to be workletized, not just the
+  // functions the components name directly. A plain JS function reached from a
+  // worklet throws on the UI thread, and only a release build says so.
+  fadeInAt,
+  fadeOutAt,
+  markOpacityAt,
+  cardRiseAt,
+  easeAt,
+  easeDecelerateAt,
+  cubicBezierAt,
 } as const;
 
 describe('worklet directives', () => {
@@ -47,6 +69,6 @@ describe('worklet directives', () => {
   it('covers every helper, so the list cannot silently fall behind', () => {
     // A reminder rather than a real constraint: if you extracted a new helper
     // and did not add it above, this count is the thing that nags you.
-    expect(Object.keys(workletHelpers)).toHaveLength(5);
+    expect(Object.keys(workletHelpers)).toHaveLength(12);
   });
 });

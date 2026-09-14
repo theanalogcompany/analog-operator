@@ -112,10 +112,11 @@ export default function QueueScreen() {
   const top = displayItems[0];
   // The ground encodes why the top card was flagged, so the operator knows what
   // kind of decision is in front of them before reading a word. With an empty
-  // deck there is no decision, so it settles to neutral.
+  // deck there is no decision, so it settles to clay — `resting`, which must
+  // also be the entrance's ground; see CLAUDE.md. (TAC-384.)
   const groundName = top
     ? groundForTone(top.kind === 'draft' ? toneFor(top.draft) : HEADS_UP_TONE)
-    : 'neutral';
+    : 'resting';
 
   // A tapped notification may be for a guest at a venue that isn't the one on
   // screen. Neither APNs payload carries a venueId (see lib/notifications/
@@ -309,7 +310,9 @@ export default function QueueScreen() {
   );
 
   return (
-    <GroundScreen name={groundName}>
+    // Constant on purpose: the entrance fades to clay whatever the queue
+    // returns and however fast. See `entranceGround`. (TAC-384.)
+    <GroundScreen name={groundName} entranceGround="resting">
       <TopNav />
 
       {queue.status === 'loading' ? (

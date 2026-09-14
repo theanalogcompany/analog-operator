@@ -13,12 +13,14 @@ import { useCommitmentThread } from '@/hooks/use-commitment-thread';
 import { useHaptics } from '@/hooks/use-haptics';
 import { type SwipeOutcome, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type HeadsUpCommitment, type PendingDraft } from '@/lib/api/queue';
+import { cardRiseAt, fadeInAt } from '@/lib/entrance';
+import { useEntrance, useRidesEntranceSlot } from '@/lib/entrance-context';
 import {
   type QueueItem,
   canCommitRightFor,
   swipeActionFor,
 } from '@/lib/queue-items';
-import { card, layout, peek } from '@/lib/theme';
+import { card, entrance, layout, peek } from '@/lib/theme';
 
 import { HeadsUpCard } from './heads-up-card';
 import { QueueCard } from './queue-card';
@@ -210,6 +212,8 @@ function FrontCard({
     enabled: !busy,
   });
 
+  const { clock: entranceClock } = useEntrance();
+  const riseRides = useRidesEntranceSlot(entrance.cardDelayMs);
   const thread = useCommitmentThread(
     item.kind === 'headsUp' ? item.commitment.sourceMessageId : null,
     item.kind === 'headsUp',
@@ -230,12 +234,27 @@ function FrontCard({
   // double-fires as both.
   const gesture = Gesture.Exclusive(pan, tap);
 
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { rotate: `${rotation.value}deg` },
-    ],
-  }));
+  // The card's rise: opacity and offset from ONE ramp on the boot clock. A card
+  // that mounts after its slot has begun — a queue that landed late, the next
+  // card after a swipe — appears in place instead. (TAC-384.)
+  const cardStyle = useAnimatedStyle(() => {
+    const rise = riseRides
+      ? cardRiseAt({
+          elapsedMs: entranceClock.value,
+          delayMs: entrance.cardDelayMs,
+          durationMs: entrance.cardDurationMs,
+          fromPx: entrance.cardRiseFromPx,
+        })
+      : { opacity: 1, translateY: 0 };
+    return {
+      opacity: rise.opacity,
+      transform: [
+        { translateX: translateX.value },
+        { translateY: rise.translateY },
+        { rotate: `${rotation.value}deg` },
+      ],
+    };
+  });
 
   return (
     <View style={{ flex: 1 }}>
@@ -342,8 +361,30 @@ function PeekSlab({ depth, height, intensity, item }: PeekSlabProps) {
   const base = config.baseOpacity;
   const gain = config.dragGain;
 
+  const { clock: entranceClock } = useEntrance();
+  // The slabs arrive behind the card, near first. Two separate offsets rather
+  // than one shared delay: the 60ms between them is what makes the deck read as
+  // having depth instead of appearing as a single block.
+  const entranceDelayMs =
+    depth === 'near' ? entrance.peekNearDelayMs : entrance.peekFarDelayMs;
+  const entranceDurationMs =
+    depth === 'near' ? entrance.peekNearDurationMs : entrance.peekFarDurationMs;
+  const slabRides = useRidesEntranceSlot(entranceDelayMs);
+
+  // The drag opacity and the entrance opacity multiply: the slab's alpha curve
+  // through a swipe is unchanged, it is simply scaled by how far the entrance
+  // has brought the slab in. Outside a cold launch, or for a slab that mounted
+  // after its slot, the second factor is 1.
   const style = useAnimatedStyle(() => ({
-    opacity: peekOpacity(base, gain, intensity.value),
+    opacity:
+      peekOpacity(base, gain, intensity.value) *
+      (slabRides
+        ? fadeInAt({
+            elapsedMs: entranceClock.value,
+            delayMs: entranceDelayMs,
+            durationMs: entranceDurationMs,
+          })
+        : 1),
   }));
 
   return (

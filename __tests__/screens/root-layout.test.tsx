@@ -16,6 +16,10 @@ let mockSession: SessionState = { status: 'loading', session: null };
 
 // All the boot-time side effects from app/_layout.tsx are mocked to no-ops so
 // the test only observes the permission-request behavior.
+jest.mock('@/lib/entrance', () => {
+  const actual = jest.requireActual('@/lib/entrance');
+  return { ...actual, consumeColdLaunch: jest.fn(actual.consumeColdLaunch) };
+});
 jest.mock('@/lib/auth/use-session', () => ({
   useSession: () => mockSession,
 }));
@@ -97,6 +101,13 @@ jest.mock('@expo-google-fonts/inter-tight', () => ({
   useFonts: () => [true],
 }));
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const entranceModule = require('@/lib/entrance') as {
+  consumeColdLaunch: jest.Mock;
+  __resetEntranceStateForTests: () => void;
+};
+const consumeColdLaunchMock = entranceModule.consumeColdLaunch;
+
 const getPermissionsAsyncMock = Notifications.getPermissionsAsync as jest.Mock;
 const requestPermissionsAsyncMock = Notifications.requestPermissionsAsync as jest.Mock;
 
@@ -106,6 +117,8 @@ const RootLayout = require('@/app/_layout').default as () => React.ReactNode;
 
 beforeEach(() => {
   mockSession = { status: 'loading', session: null };
+  entranceModule.__resetEntranceStateForTests();
+  consumeColdLaunchMock.mockClear();
   getPermissionsAsyncMock.mockReset();
   requestPermissionsAsyncMock.mockReset();
   getPermissionsAsyncMock.mockResolvedValue({ status: 'undetermined' });
@@ -196,5 +209,64 @@ describe('RootLayout — first-authenticated-render permission prompt (TAC-288)'
     await Promise.resolve();
     await Promise.resolve();
     expect(requestPermissionsAsyncMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The cold-launch flag is spent at BOOT, whatever the session — but the entrance
+ * only plays when that launch is signed in.
+ *
+ * A signed-out launch plays nothing because the sign-in screen draws its own
+ * mark, and the entrance's mark over it reads as two logos (decided 2026-09-14,
+ * reversing an earlier call to play it on sign-in). Spending the flag there
+ * anyway is what keeps the queue reached by authenticating from playing one.
+ * `EntranceOverlay` renders only during a full entrance, so its presence is the
+ * observable. It is hidden from screen readers, and RNTL skips hidden elements by
+ * default — so every query passes `includeHiddenElements`, or "no overlay" would
+ * pass even when one rendered. (TAC-384.)
+ */
+describe('RootLayout — cold-launch entrance arming (TAC-384)', () => {
+  it('spends the flag on a signed-out cold launch but plays nothing', () => {
+    mockSession = { status: 'signed-out', session: null };
+    const { queryByTestId } = render(<RootLayout />);
+    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+    expect(consumeColdLaunchMock).toHaveLastReturnedWith(true);
+    expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('plays the entrance on a signed-in cold launch', () => {
+    mockSession = {
+      status: 'signed-in',
+      session: { user: { email: 'jaipal@theanalog.company' } },
+    };
+    const { queryByTestId } = render(<RootLayout />);
+    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+    expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).not.toBeNull();
+  });
+
+  it('does NOT re-arm on the queue after authenticating', () => {
+    // The SMS-OTP path: signed-out first, then signed-in. The signed-out launch
+    // already spent the flag, so crossing the auth gate must not start one.
+    mockSession = { status: 'signed-out', session: null };
+    const { rerender, queryByTestId } = render(<RootLayout />);
+    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+    expect(consumeColdLaunchMock).toHaveLastReturnedWith(true);
+
+    mockSession = {
+      status: 'signed-in',
+      session: { user: { email: 'jaipal@theanalog.company' } },
+    };
+    rerender(<RootLayout />);
+    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+    expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('does not arm anything while the gate is still closed', () => {
+    // The tree below the gate is unmounted until fonts and the session resolve,
+    // so the provider has not mounted and the flag is still unspent — which is
+    // what leaves it available for the first screen that actually paints.
+    mockSession = { status: 'loading', session: null };
+    render(<RootLayout />);
+    expect(consumeColdLaunchMock).not.toHaveBeenCalled();
   });
 });
