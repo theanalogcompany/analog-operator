@@ -5,6 +5,7 @@ import Animated, {
   useAnimatedStyle,
 } from 'react-native-reanimated';
 
+import { HelpFooter } from '@/components/ui/help-footer';
 import { type SwipeDirection } from '@/hooks/use-queue-swipe';
 import { CARD_COPY } from '@/lib/card-copy';
 import { fadeInAt } from '@/lib/entrance';
@@ -160,22 +161,7 @@ export function SwipeHints({
       </View>
 
       <View style={{ flex: 0, paddingHorizontal: 10 }}>
-        <Text
-        allowFontScaling={false}
-          accessibilityRole="link"
-          accessibilityLabel="Chat with Jaipal via SMS"
-          onPress={onPressHelp}
-          numberOfLines={1}
-          className="font-inter-tight-medium"
-          style={{
-            fontSize: typePresets.footer.size,
-            letterSpacing: typePresets.footer.tracking,
-            color: 'rgba(255,255,255,0.85)',
-          }}
-        >
-          {'NEED HELP? '}
-          <Text allowFontScaling={false} style={{ color: '#FFFFFF' }}>CHAT WITH JAIPAL</Text>
-        </Text>
+        <HelpFooter onPress={onPressHelp} />
       </View>
 
       <View pointerEvents="none" style={{ flex: 1, alignItems: 'flex-end' }}>

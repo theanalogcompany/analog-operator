@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
 import { GroundScreen } from '@/components/ground/ground-screen';
+import { HelpFooter } from '@/components/ui/help-footer';
 import { EmptyState } from '@/components/queue/empty-state';
 import { QueueCardStack } from '@/components/queue/queue-card-stack';
 import { UndoToast } from '@/components/queue/undo-toast';
@@ -359,21 +360,7 @@ export default function QueueScreen() {
               paddingBottom: insets.bottom + layout.hintRowGapPx,
             }}
           >
-            <Text
-        allowFontScaling={false}
-              accessibilityRole="link"
-              accessibilityLabel="Chat with Jaipal via SMS"
-              onPress={handleHelp}
-              className="font-inter-tight-medium"
-              style={{
-                fontSize: typePresets.footer.size,
-                letterSpacing: typePresets.footer.tracking,
-                color: 'rgba(255,255,255,0.85)',
-              }}
-            >
-              {'NEED HELP? '}
-              <Text allowFontScaling={false} style={{ color: '#FFFFFF' }}>CHAT WITH JAIPAL</Text>
-            </Text>
+            <HelpFooter onPress={handleHelp} />
           </View>
         </>
       ) : (

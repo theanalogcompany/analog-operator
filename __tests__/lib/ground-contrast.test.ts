@@ -1,6 +1,7 @@
 import {
   CARD_GROUND_NAMES,
   GROUNDS,
+  MESSAGES_BLUE,
   STRIP_COLORS,
   type CardGroundName,
   type GradientLayer,
@@ -215,7 +216,13 @@ describe('the edit takeover header', () => {
     takeoverHeader.nameLineHeightPx +
     takeoverHeader.blockPaddingTopPx +
     typePresets.flagReason.lineHeight +
-    [caps.reasonLines, caps.alsoLines, caps.claimLines, caps.reasoningLines].reduce(
+    // The Also block at its tallest: every row at its line cap. (TAC-388.)
+    [
+      caps.reasonLines,
+      caps.alsoItems * caps.alsoItemLines,
+      caps.claimLines,
+      caps.reasoningLines,
+    ].reduce(
       (sum, lines) => sum + reviewDetail.gapPx + lines * reviewDetail.lineHeightPx,
       0,
     );
@@ -278,4 +285,67 @@ describe('the edit takeover date dividers', () => {
   it('needs the backing: Honey misses 4.5:1 without it', () => {
     expect(minDivider('midThread', false)).toBeLessThan(4.5);
   });
+});
+
+/**
+ * The "Chat with Jaipal" pill: iMessage blue with a white label, over every
+ * ground it renders on. (TAC-388.)
+ *
+ * The label is 9.5pt tracked caps, normal text under WCAG, so white on the fill
+ * needs 4.5:1, and that is the governing figure. Under WCAG 1.4.11 a control
+ * identified by its own readable label needs no contrasting boundary, so the
+ * pill's edge against the ground is recorded here, not gated. It is below 3:1
+ * on every ground and no blue can lift it: white text needs a darker fill and
+ * the edge needs a lighter one. Pinned, so a change to a ground or the fill
+ * forces someone to read the figures again.
+ */
+describe('the help pill', () => {
+  function contrast(a: RGB, b: RGB): number {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+  const rgbOf = (color: string): RGB => {
+    const [r, g, b] = parseColor(color);
+    return [r, g, b];
+  };
+
+  // "CHAT WITH JAIPAL" at 9.5pt with 1.7 tracking is 110.3pt wide (glyph
+  // advances from the shipped Inter Tight Medium), plus 10pt either side. The
+  // rows cover the hint row, the empty queue and the sign-in footer.
+  const PILL_WIDTH = 130.3;
+  const XS = span(W / 2 - PILL_WIDTH / 2, W / 2 + PILL_WIDTH / 2, 30);
+  const YS = span(812, 842, 15);
+
+  it('keeps its white label at 4.5:1 on the fill', () => {
+    expect(whiteOn(rgbOf(MESSAGES_BLUE))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // Why the fill is not stock: stock iMessage blue misses the text bar.
+  it('would miss 4.5:1 on stock iMessage blue', () => {
+    expect(whiteOn(rgbOf('#007AFF'))).toBeLessThan(4.5);
+  });
+
+  const RECORDED_EDGE: Record<keyof typeof GROUNDS, number> = {
+    obligation: 2.41,
+    outsideDraft: 1.78,
+    draftWrong: 2.03,
+    midThread: 1.22,
+    headsUp: 1.88,
+    resting: 2.48,
+    auth: 2.48,
+  };
+
+  it.each(Object.entries(RECORDED_EDGE))(
+    '%s: the pill edge measures what TAC-388 recorded',
+    (name, recorded) => {
+      const fill = rgbOf(MESSAGES_BLUE);
+      let min = Infinity;
+      for (const y of YS) {
+        for (const x of XS) {
+          min = Math.min(min, contrast(fill, composite(GROUNDS[name as keyof typeof GROUNDS], x, y)));
+        }
+      }
+      expect(Math.abs(min - recorded)).toBeLessThanOrEqual(0.02);
+    },
+  );
 });

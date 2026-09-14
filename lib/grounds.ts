@@ -273,6 +273,14 @@ export const STRIP_COLORS: Record<CardGroundName, string> = {
 };
 
 /**
+ * iMessage blue, as the fill of the "Chat with Jaipal" pill (see `HelpFooter`).
+ * One step darker than stock `#007AFF` at the same hue: white 9.5pt caps on
+ * stock give 4.02:1, on this 4.51:1. __tests__/lib/ground-contrast.test.ts holds
+ * the figures. (TAC-388.)
+ */
+export const MESSAGES_BLUE = '#0072EF';
+
+/**
  * The veil's darkest stop, and the flat colour painted under the ground while an
  * entrance owns it (see `GroundScreen`). Without it, what shows through a ground
  * that is still fading in is the navigator's default light grey. (TAC-384.)

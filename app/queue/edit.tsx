@@ -10,10 +10,12 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { type Edge, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
+import { Ground } from '@/components/ground/ground';
 import { GroundScreen } from '@/components/ground/ground-screen';
 import { queueCardDisplayName } from '@/components/queue/queue-card';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
@@ -41,6 +43,15 @@ import {
   typePresets,
 } from '@/lib/theme';
 import { computeItems } from '@/lib/thread-cluster';
+
+/**
+ * The takeover pads its own top. It opens as a `transparentModal`, where the
+ * native safe-area view reports no top inset, so its header drew under the
+ * status bar while the Texts thread, the same header shape on an ordinary push,
+ * sat clear of it (confirmed on device, 2026-09-14). The root provider's inset
+ * is the window's, whatever presented the screen. (TAC-388.)
+ */
+const TAKEOVER_EDGES: readonly Edge[] = ['left', 'right'];
 
 type ThreadState =
   | { kind: 'loading'; messages: ThreadMessage[] }
@@ -97,6 +108,10 @@ export default function EditScreen() {
   }>();
   const queue = useQueueContext();
   const insets = useSafeAreaInsets();
+  const windowSize = useWindowDimensions();
+  // The height the ground is drawn at, so the pinned header's backing lines up
+  // with it. The keyboard shortens it.
+  const [frameHeight, setFrameHeight] = useState(0);
   // A decline draft reaches this screen before it reaches the queue: the server
   // created it moments ago, so the cached list cannot hold it yet. The queue
   // screen stages one built from the commitment and the decline response, and
@@ -332,166 +347,205 @@ export default function EditScreen() {
     // offset math to be correct on iOS. Nesting it inside the safe-area view
     // (the shape we shipped first) made it measure from the safe-area-adjusted
     // origin and the pinned composer never lifted above the keyboard.
-    // GroundScreen supplies the safe area itself, minus the bottom edge, which
-    // the composer's own inset padding handles when the keyboard is down.
+    // GroundScreen supplies the left and right safe area. The header row pads
+    // the top itself (see `TAKEOVER_EDGES`), and the composer's own inset
+    // padding handles the bottom when the keyboard is down.
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* The takeover's ground is the ground of the card you swiped, so the
           colour carries through instead of cutting to a new screen. */}
-      <GroundScreen name={bucket}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: takeoverHeader.rowPaddingTopPx }}>
-          <View style={{ flex: 1, alignItems: 'flex-start' }}>
+      <GroundScreen name={bucket} edges={TAKEOVER_EDGES}>
+        <View
+          style={{ flex: 1 }}
+          onLayout={(event) => setFrameHeight(event.nativeEvent.layout.height)}
+        >
+          {/* The header row and the pinned block, drawn above the thread. The
+              backing is the takeover's own ground at the frame's full height,
+              clipped to this block: opaque to the thread scrolling beneath it,
+              and indistinguishable from the ground around it. A flat fill would
+              band against a gradient. (TAC-388.) */}
+          <View testID="takeover-pinned-header" style={{ zIndex: 1, overflow: 'hidden' }}>
+            <View
+              testID="takeover-pinned-backing"
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: frameHeight || windowSize.height,
+              }}
+            >
+              <Ground name={bucket} />
+            </View>
+
+            <View
+              testID="takeover-header-row"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 20,
+                paddingTop: insets.top + takeoverHeader.rowPaddingTopPx,
+              }}
+            >
+              <View style={{ flex: 1, alignItems: 'flex-start' }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to queue"
+                  onPress={() => router.back()}
+                  hitSlop={12}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                >
+                  <TrackedCaps size={10} tracking={2.2} color="#FFFFFF" decorative>
+                    {'‹ Back'}
+                  </TrackedCaps>
+                </Pressable>
+              </View>
+              <View style={{ flex: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TrackedCaps
+                  {...typePresets.cardName}
+                  color="#FFFFFF"
+                  lineHeight={takeoverHeader.nameLineHeightPx}
+                  // One line: the header's contrast budget counts exactly one.
+                  numberOfLines={1}
+                >
+                  {queueCardDisplayName(draft)}
+                </TrackedCaps>
+                <RecognitionBadge state={draft.recognitionState} variant="ground" />
+              </View>
+              {/* Empty, and load-bearing: it balances the Back column so the name
+                  sits centred on the screen rather than centred on what's left. */}
+              <View style={{ flex: 1 }} />
+            </View>
+
+            {/* This header sits directly on the card's ground, and that bounds how
+                long it can get: on Honey, white text holds 4.5:1 only in about the
+                top third of the screen. Every line below is capped by
+                `reviewDetail.takeover`, and __tests__/lib/ground-contrast.test.ts
+                adds the caps up against that limit. Recompute before adding a line.
+                (TAC-364.) */}
+            <View
+              style={{
+                paddingHorizontal: takeoverHeader.blockPaddingHorizontalPx,
+                paddingTop: takeoverHeader.blockPaddingTopPx,
+                paddingBottom: takeoverHeader.blockPaddingBottomPx,
+              }}
+            >
+              <TrackedCaps {...typePresets.flagReason} color="#FFFFFF" numberOfLines={1}>
+                {bucket === 'headsUp'
+                  ? CARD_COPY.strip.commitment
+                  : stripLabelForDraft(draft)}
+              </TrackedCaps>
+              <ReviewDetail
+                draft={draft}
+                surface="takeover"
+                style={{ marginTop: reviewDetail.gapPx }}
+              />
+              {reasoning ? (
+                <Text
+                  allowFontScaling={false}
+                  accessibilityLabel="Agent reasoning"
+                  className="font-inter-tight"
+                  numberOfLines={reviewDetail.takeover.reasoningLines}
+                  style={{
+                    marginTop: reviewDetail.gapPx,
+                    fontSize: bodyType.reasoning.size,
+                    lineHeight: reviewDetail.lineHeightPx,
+                    color: '#FFFFFF',
+                  }}
+                >
+                  {reasoning}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Clipped, so no part of the thread can draw above its own top edge
+              and into the header. (TAC-388.) */}
+          <View testID="takeover-thread-clip" style={{ flex: 1, overflow: 'hidden' }}>
+            <ScrollView
+              ref={scrollViewRef}
+              style={{ flex: 1 }}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              contentContainerStyle={{
+                flexGrow: 1,
+                justifyContent: 'flex-end',
+                gap: 6,
+                paddingHorizontal: 22,
+                paddingVertical: 8,
+              }}
+            >
+              <ThreadBubbleList items={items} surface="card" />
+            </ScrollView>
+          </View>
+
+          <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: insets.bottom + 8 }}>
+            <View style={{ position: 'relative' }}>
+              <TextInput
+                // Stable regardless of draft state, and deliberately unchanged
+                // from the pre-redesign screen: the visible placeholder follows
+                // the new design, but what a screen reader announces is an
+                // accessibility contract, not styling.
+                accessibilityLabel="Edit the draft before sending"
+                className="font-inter-tight"
+                value={text}
+                onChangeText={setText}
+                multiline
+                editable={!submitting}
+                placeholder={
+                  hasDraft ? 'Edit the message…' : 'Type your answer to send to the guest'
+                }
+                placeholderTextColor="#6F6658"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 20,
+                  minHeight: 78,
+                  paddingTop: 14,
+                  paddingBottom: 14,
+                  paddingLeft: 16,
+                  paddingRight: 54,
+                  fontSize: 13.5,
+                  lineHeight: 20,
+                  color: '#1C1814',
+                  textAlignVertical: 'top',
+                }}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Send my version"
+                accessibilityState={{ disabled: !canSend || submitting !== null }}
+                disabled={!canSend || submitting !== null}
+                onPress={() => void handleSend()}
+                hitSlop={8}
+                style={{ position: 'absolute', right: 9, bottom: 13 }}
+              >
+                <SendGlyph size={32} opacity={canSend ? 1 : 0.4} />
+              </Pressable>
+            </View>
+
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Back to queue"
-              onPress={() => router.back()}
-              hitSlop={12}
-              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+              accessibilityLabel="Don't send anything"
+              onPress={() => void handleSkip()}
+              disabled={submitting !== null}
+              // Object form — the function form is dropped on device and this
+              // rendered left-aligned and crammed under the textarea. Cause
+              // unknown; see the CLAUDE.md gotcha before changing it back.
+              style={{ marginTop: 16, paddingBottom: 28, alignSelf: 'center' }}
             >
-              <TrackedCaps size={10} tracking={2.2} color="#FFFFFF" decorative>
-                {'‹ Back'}
+              <TrackedCaps
+                size={9.5}
+                tracking={2.2}
+                color="rgba(255,255,255,0.85)"
+                decorative
+              >
+                Don&apos;t send anything
               </TrackedCaps>
             </Pressable>
           </View>
-          <View style={{ flex: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TrackedCaps
-              {...typePresets.cardName}
-              color="#FFFFFF"
-              lineHeight={takeoverHeader.nameLineHeightPx}
-              // One line: the header's contrast budget counts exactly one.
-              numberOfLines={1}
-            >
-              {queueCardDisplayName(draft)}
-            </TrackedCaps>
-            <RecognitionBadge state={draft.recognitionState} variant="ground" />
-          </View>
-          {/* Empty, and load-bearing: it balances the Back column so the name
-              sits centred on the screen rather than centred on what's left. */}
-          <View style={{ flex: 1 }} />
-        </View>
-
-        {/* This header sits directly on the card's ground, and that bounds how
-            long it can get: on Honey, white text holds 4.5:1 only in about the
-            top third of the screen. Every line below is capped by
-            `reviewDetail.takeover`, and __tests__/lib/ground-contrast.test.ts
-            adds the caps up against that limit. Recompute before adding a line.
-            (TAC-364.) */}
-        <View
-          style={{
-            paddingHorizontal: takeoverHeader.blockPaddingHorizontalPx,
-            paddingTop: takeoverHeader.blockPaddingTopPx,
-            paddingBottom: takeoverHeader.blockPaddingBottomPx,
-          }}
-        >
-          <TrackedCaps {...typePresets.flagReason} color="#FFFFFF" numberOfLines={1}>
-            {bucket === 'headsUp'
-              ? CARD_COPY.strip.commitment
-              : stripLabelForDraft(draft)}
-          </TrackedCaps>
-          <ReviewDetail
-            draft={draft}
-            surface="takeover"
-            style={{ marginTop: reviewDetail.gapPx }}
-          />
-          {reasoning ? (
-            <Text
-              allowFontScaling={false}
-              accessibilityLabel="Agent reasoning"
-              className="font-inter-tight"
-              numberOfLines={reviewDetail.takeover.reasoningLines}
-              style={{
-                marginTop: reviewDetail.gapPx,
-                fontSize: bodyType.reasoning.size,
-                lineHeight: reviewDetail.lineHeightPx,
-                color: '#FFFFFF',
-              }}
-            >
-              {reasoning}
-            </Text>
-          ) : null}
-        </View>
-
-        <ScrollView
-          ref={scrollViewRef}
-          style={{ flex: 1 }}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: 'flex-end',
-            gap: 6,
-            paddingHorizontal: 22,
-            paddingVertical: 8,
-          }}
-        >
-          <ThreadBubbleList items={items} surface="card" />
-        </ScrollView>
-
-        <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: insets.bottom + 8 }}>
-          <View style={{ position: 'relative' }}>
-            <TextInput
-              // Stable regardless of draft state, and deliberately unchanged
-              // from the pre-redesign screen: the visible placeholder follows
-              // the new design, but what a screen reader announces is an
-              // accessibility contract, not styling.
-              accessibilityLabel="Edit the draft before sending"
-              className="font-inter-tight"
-              value={text}
-              onChangeText={setText}
-              multiline
-              editable={!submitting}
-              placeholder={
-                hasDraft ? 'Edit the message…' : 'Type your answer to send to the guest'
-              }
-              placeholderTextColor="#6F6658"
-              style={{
-                backgroundColor: '#FFFFFF',
-                borderRadius: 20,
-                minHeight: 78,
-                paddingTop: 14,
-                paddingBottom: 14,
-                paddingLeft: 16,
-                paddingRight: 54,
-                fontSize: 13.5,
-                lineHeight: 20,
-                color: '#1C1814',
-                textAlignVertical: 'top',
-              }}
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Send my version"
-              accessibilityState={{ disabled: !canSend || submitting !== null }}
-              disabled={!canSend || submitting !== null}
-              onPress={() => void handleSend()}
-              hitSlop={8}
-              style={{ position: 'absolute', right: 9, bottom: 13 }}
-            >
-              <SendGlyph size={32} opacity={canSend ? 1 : 0.4} />
-            </Pressable>
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Don't send anything"
-            onPress={() => void handleSkip()}
-            disabled={submitting !== null}
-            // Object form — the function form is dropped on device and this
-            // rendered left-aligned and crammed under the textarea. Cause
-            // unknown; see the CLAUDE.md gotcha before changing it back.
-            style={{ marginTop: 16, paddingBottom: 28, alignSelf: 'center' }}
-          >
-            <TrackedCaps
-              size={9.5}
-              tracking={2.2}
-              color="rgba(255,255,255,0.85)"
-              decorative
-            >
-              Don&apos;t send anything
-            </TrackedCaps>
-          </Pressable>
         </View>
       </GroundScreen>
     </KeyboardAvoidingView>

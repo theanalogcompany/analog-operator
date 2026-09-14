@@ -35,6 +35,14 @@ import { VenueProvider } from '@/lib/venue-context';
 
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * Queue, Texts and You are a view swap, not navigation. The tab row moves
+ * between them with `router.replace`, and a replace animates by default, so it
+ * slid each tab in. Pushes inside those stacks (the edit screen, a thread) are
+ * navigation and keep their own transitions. (TAC-388.)
+ */
+const TAB_SCREEN_OPTIONS = { animation: 'none' } as const;
+
 export default function RootLayout() {
   const [frauncesLoaded] = useFraunces({ Fraunces_400Regular_Italic });
   const [interTightLoaded] = useInterTight({
@@ -106,21 +114,21 @@ export default function RootLayout() {
             The entrance provider sits immediately inside the gate above, which
             is the app's only true cold-launch seam: the tree is unmounted until
             fonts and the session resolve, then mounts in one frame. It spends
-            the cold-launch flag on that frame whatever the session is, but only
-            plays when signed in: the sign-in screen draws its own mark, and an
-            entrance over it would show two. Spending the flag there anyway is
-            what stops the queue reached by signing in from playing one.
-            (TAC-384.)
+            the cold-launch flag on that frame and plays the entrance whatever
+            the session is: signed out, it plays over the sign-in screen, whose
+            own mark steps aside. Spending the flag there is what stops the
+            queue reached by signing in from playing a second one. (TAC-384,
+            TAC-388.)
           */}
-          <EntranceProvider signedIn={isSignedIn}>
+          <EntranceProvider>
             <VenueProvider>
               <QueueProvider>
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Protected guard={isSignedIn}>
                     <Stack.Screen name="index" />
-                    <Stack.Screen name="queue" />
-                    <Stack.Screen name="conversations" />
-                    <Stack.Screen name="you" />
+                    <Stack.Screen name="queue" options={TAB_SCREEN_OPTIONS} />
+                    <Stack.Screen name="conversations" options={TAB_SCREEN_OPTIONS} />
+                    <Stack.Screen name="you" options={TAB_SCREEN_OPTIONS} />
                   </Stack.Protected>
                   <Stack.Protected guard={!isSignedIn}>
                     <Stack.Screen name="sign-in" />

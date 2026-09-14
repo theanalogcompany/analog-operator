@@ -117,15 +117,9 @@ export function useRidesEntranceSlot(slotStartMs: number): boolean {
  *
  * Mounted at the root, immediately inside the gate that holds the tree back
  * until fonts and the session resolve — so it mounts once, on the first frame
- * the app has anything to show. `signedIn` is read on that frame only.
+ * the app has anything to show, signed in or out.
  */
-export function EntranceProvider({
-  children,
-  signedIn,
-}: {
-  children: ReactNode;
-  signedIn: boolean;
-}) {
+export function EntranceProvider({ children }: { children: ReactNode }) {
   const reducedMotion = useReducedMotion();
 
   // Decided synchronously, on the provider's first render, and never revisited.
@@ -143,7 +137,6 @@ export function EntranceProvider({
   const [mode] = useState<EntranceMode>(() =>
     resolveEntranceMode({
       coldLaunch: consumeColdLaunch(),
-      signedIn,
       reducedMotion,
     }),
   );

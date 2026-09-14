@@ -51,9 +51,10 @@ let coldLaunchAvailable = true;
  * True exactly once per JS context, false forever after.
  *
  * Drained at the root the first time the app has anything to show, whatever
- * that screen is. It is spent on a signed-out launch too, where nothing plays —
- * which is what makes "never on the queue after authenticating" true: by the
- * time the operator finishes signing in, the flag is already gone.
+ * that screen is, signed in or out. That is what makes "never on the queue
+ * after authenticating" true: a signed-out launch plays its entrance over the
+ * sign-in screen and spends the flag doing it, so by the time the operator
+ * finishes signing in the flag is already gone.
  */
 export function consumeColdLaunch(): boolean {
   const was = coldLaunchAvailable;
@@ -68,8 +69,8 @@ export function __resetEntranceStateForTests(): void {
 }
 
 /**
- * `off`     — not a cold launch, or a signed-out one. Nothing animates; every
- *             layer renders resolved.
+ * `off`     — not a cold launch. Nothing animates; every layer renders
+ *             resolved.
  * `full`    — the Wick entrance.
  * `reduced` — `prefers-reduced-motion`. Skip to the resolved state; the only
  *             motion is one short ground cross-fade. No veil, no mark, no rise.
@@ -85,18 +86,19 @@ export type EntranceMode = 'off' | 'full' | 'reduced';
  * accessibility API — the wiring is then tested separately and neither test
  * pretends to cover the other.
  *
- * A signed-out launch plays nothing: the sign-in screen draws its own mark, and
- * the entrance's mark over it reads as two logos (decided 2026-09-14, reversing
- * an earlier call to play it on sign-in). Reduced motion loses to both: if there
- * is no entrance to play, there is nothing to reduce.
+ * Auth plays no part. Every cold launch plays, signed in or out: the entrance
+ * exists to introduce the app, and a first-time operator's first launch is the
+ * signed-out one. The sign-in screens hide their own mark when it plays instead
+ * (see `AuthFrame`), so only one is ever on screen. (TAC-388, reversing
+ * TAC-384's call not to play it signed out.) Reduced motion loses to "not a cold
+ * launch": if there is no entrance to play, there is nothing to reduce.
  */
 export function resolveEntranceMode(args: {
   coldLaunch: boolean;
-  signedIn: boolean;
   reducedMotion: boolean;
 }): EntranceMode {
-  const { coldLaunch, signedIn, reducedMotion } = args;
-  if (!coldLaunch || !signedIn) return 'off';
+  const { coldLaunch, reducedMotion } = args;
+  if (!coldLaunch) return 'off';
   return reducedMotion ? 'reduced' : 'full';
 }
 

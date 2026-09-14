@@ -1,4 +1,11 @@
-import { resolveSwipeOutcome } from '@/hooks/use-queue-swipe';
+import { act, renderHook } from '@testing-library/react-native';
+import {
+  type GestureStateChangeEvent,
+  type GestureUpdateEvent,
+  type PanGestureHandlerEventPayload,
+} from 'react-native-gesture-handler';
+
+import { resolveSwipeOutcome, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { swipe } from '@/lib/theme';
 
 // TAC-312. The gesture layer had zero coverage: TAC-310's screen tests drove
@@ -86,5 +93,73 @@ describe('resolveSwipeOutcome — no commit', () => {
   it('returns on a dead release with no movement and no velocity', () => {
     expect(outcome(0, 0, true)).toBe('return');
     expect(outcome(0, 0, false)).toBe('return');
+  });
+});
+
+// TAC-388. A card sat 0.3° clockwise before it had ever been swiped, and sprang
+// back to 0.3° after every swipe that didn't commit: `residualRotationDeg` was
+// the rest pose, inherited from the prototype. These run the real hook and drive
+// the pan's own callbacks, so they read the values the card is drawn with.
+describe('useQueueSwipe: the card at rest (TAC-388)', () => {
+  type UpdateEvent = GestureUpdateEvent<PanGestureHandlerEventPayload>;
+  type EndEvent = GestureStateChangeEvent<PanGestureHandlerEventPayload>;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function mount(canCommitRight = true) {
+    const { result } = renderHook(() =>
+      useQueueSwipe({
+        onCommitRight: jest.fn(),
+        onCommitLeft: jest.fn(),
+        onRefuseRight: jest.fn(),
+        onCrossThreshold: jest.fn(),
+        canCommitRight,
+        enabled: true,
+      }),
+    );
+    return result;
+  }
+
+  it('rests at zero rotation', () => {
+    expect(swipe.residualRotationDeg).toBe(0);
+  });
+
+  it('mounts square and centred, before any swipe', () => {
+    const result = mount();
+    expect(result.current.rotation.value).toBe(0);
+    expect(result.current.translateX.value).toBe(0);
+  });
+
+  it.each([
+    ['a short drag', 30, true],
+    ['a left swipe', -(COMMIT_PX + 1), true],
+    ['a refused right swipe on a blank draft', COMMIT_PX + 1, false],
+  ])('settles square after %s', (_label, translationX, canCommitRight) => {
+    const result = mount(canCommitRight);
+    const { onUpdate, onEnd } = result.current.pan.handlers;
+    if (!onUpdate || !onEnd) throw new Error('the pan has no update or end callback');
+
+    act(() => {
+      onUpdate({ translationX } as unknown as UpdateEvent);
+    });
+    // Guards the guard: the drag has to have tilted the card, or "settles to
+    // zero" would pass on a card that never moved.
+    expect(result.current.rotation.value).not.toBe(0);
+
+    act(() => {
+      onEnd({ translationX, velocityX: 0 } as unknown as EndEvent, true);
+    });
+    // The spring-back is a timing animation; let it land.
+    act(() => {
+      jest.advanceTimersByTime(swipe.springBackDurationMs + 100);
+    });
+    expect(result.current.rotation.value).toBe(0);
+    expect(result.current.translateX.value).toBe(0);
   });
 });

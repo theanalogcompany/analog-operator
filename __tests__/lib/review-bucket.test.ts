@@ -12,6 +12,7 @@ import {
   bucketForItem,
   formatProgress,
   isReviewBucket,
+  planAlsoLines,
   secondaryTriggerLabels,
   stripColorFor,
   stripLabelForDraft,
@@ -325,5 +326,79 @@ describe('the seeded fixture deck', () => {
     const drafts = listQueueFixture();
     expect(drafts.some((d) => secondaryTriggerLabels(d).length > 0)).toBe(true);
     expect(drafts.some((d) => d.ungroundedClaims.length > 0)).toBe(true);
+  });
+});
+
+/**
+ * Which secondary reasons fit a surface, and how many are held back. (TAC-388.)
+ *
+ * A reason cut off mid-sentence is worse than one withheld: an operator reading
+ * half of it completes it themselves. So a reason that needs more lines than the
+ * surface gives it is withheld and counted, and so is anything past the item cap.
+ */
+describe('planAlsoLines', () => {
+  const A = 'First reason.';
+  const B = 'Second reason.';
+  const C = 'Third reason.';
+  const D = 'Fourth reason.';
+  const card = { maxItems: 3, maxLinesPerItem: 2 };
+  const takeover = { maxItems: 2, maxLinesPerItem: 1 };
+
+  it('has nothing to plan with no labels', () => {
+    expect(planAlsoLines({ labels: [], lineCounts: [], ...card })).toEqual({ shown: [], hidden: 0 });
+  });
+
+  it('waits until every label has been measured', () => {
+    expect(planAlsoLines({ labels: [A, B], lineCounts: [1, null], ...card })).toBeNull();
+  });
+
+  it('refuses measurements that do not pair with the labels', () => {
+    expect(planAlsoLines({ labels: [A, B], lineCounts: [1], ...card })).toBeNull();
+  });
+
+  it('shows every reason, in server order, when all of them fit', () => {
+    expect(planAlsoLines({ labels: [A, B, C], lineCounts: [2, 1, 1], ...card })).toEqual({
+      shown: [A, B, C],
+      hidden: 0,
+    });
+  });
+
+  it('fits a reason that needs exactly the lines it has', () => {
+    expect(planAlsoLines({ labels: [A], lineCounts: [2], ...card })).toEqual({
+      shown: [A],
+      hidden: 0,
+    });
+  });
+
+  it('past the item cap, keeps a line for the count', () => {
+    expect(planAlsoLines({ labels: [A, B, C], lineCounts: [1, 1, 1], ...takeover })).toEqual({
+      shown: [A],
+      hidden: 2,
+    });
+    expect(planAlsoLines({ labels: [A, B, C, D], lineCounts: [1, 1, 1, 1], ...card })).toEqual({
+      shown: [A, B],
+      hidden: 2,
+    });
+  });
+
+  it('withholds a reason too long for its lines rather than cutting it', () => {
+    expect(planAlsoLines({ labels: [A, B], lineCounts: [2, 1], ...takeover })).toEqual({
+      shown: [B],
+      hidden: 1,
+    });
+  });
+
+  it('withholds by length and by count at once', () => {
+    expect(planAlsoLines({ labels: [A, B, C, D], lineCounts: [3, 1, 2, 1], ...card })).toEqual({
+      shown: [B, C],
+      hidden: 2,
+    });
+  });
+
+  it('counts everything when nothing fits', () => {
+    expect(planAlsoLines({ labels: [A, B], lineCounts: [2, 2], ...takeover })).toEqual({
+      shown: [],
+      hidden: 2,
+    });
   });
 });

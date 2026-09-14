@@ -81,7 +81,7 @@ describe('useEntrance without a provider', () => {
 describe('EntranceProvider', () => {
   it('plays the full entrance on the first mount of a process', () => {
     render(
-      <EntranceProvider signedIn>
+      <EntranceProvider>
         <Probe />
       </EntranceProvider>,
     );
@@ -96,7 +96,7 @@ describe('EntranceProvider', () => {
    */
   it('plays nothing on a second mount', () => {
     const first = render(
-      <EntranceProvider signedIn>
+      <EntranceProvider>
         <Probe />
       </EntranceProvider>,
     );
@@ -104,7 +104,7 @@ describe('EntranceProvider', () => {
     first.unmount();
 
     render(
-      <EntranceProvider signedIn>
+      <EntranceProvider>
         <Probe />
       </EntranceProvider>,
     );
@@ -114,7 +114,7 @@ describe('EntranceProvider', () => {
 
   it('starts its clock at zero, so the mark begins from nothing', () => {
     render(
-      <EntranceProvider signedIn>
+      <EntranceProvider>
         <Probe />
       </EntranceProvider>,
     );
@@ -133,7 +133,7 @@ describe('EntranceProvider', () => {
     jest.useFakeTimers();
     try {
       render(
-        <EntranceProvider signedIn>
+        <EntranceProvider>
           <Probe />
         </EntranceProvider>,
       );
@@ -155,27 +155,35 @@ describe('EntranceProvider', () => {
   });
 
   /**
-   * The sign-in screen draws its own mark, so a signed-out launch plays
-   * nothing. It still spends the flag, and the provider never revisits its
-   * decision — so signing in afterwards, which does not remount it, plays
-   * nothing either.
+   * The provider decides once, on its first render, and a re-render never
+   * revisits it. Signing in re-renders the root without remounting the
+   * provider, so the queue reached by signing in finds the entrance already
+   * played and finished. (TAC-388.)
    */
-  it('plays nothing on a signed-out cold launch, including after signing in', () => {
-    const { rerender } = render(
-      <EntranceProvider signedIn={false}>
-        <Probe />
-      </EntranceProvider>,
-    );
-    expect(seenMode).toBe('off');
-    expect(seenRunning).toBe(false);
+  it('never replays on a re-render once the entrance has run', () => {
+    jest.useFakeTimers();
+    try {
+      const { rerender } = render(
+        <EntranceProvider>
+          <Probe />
+        </EntranceProvider>,
+      );
+      expect(seenMode).toBe('full');
+      act(() => {
+        jest.advanceTimersByTime(entrance.totalMs);
+      });
+      expect(seenRunning).toBe(false);
 
-    rerender(
-      <EntranceProvider signedIn>
-        <Probe />
-      </EntranceProvider>,
-    );
-    expect(seenMode).toBe('off');
-    expect(seenRunning).toBe(false);
+      rerender(
+        <EntranceProvider>
+          <Probe />
+        </EntranceProvider>,
+      );
+      expect(seenMode).toBe('full');
+      expect(seenRunning).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('owns the screen only for the short fade under reduced motion', () => {
@@ -183,7 +191,7 @@ describe('EntranceProvider', () => {
     jest.useFakeTimers();
     try {
       render(
-        <EntranceProvider signedIn>
+        <EntranceProvider>
           <Probe />
         </EntranceProvider>,
       );
@@ -214,7 +222,7 @@ describe('useRidesEntranceSlot', () => {
 
   it('rides every slot when the layer mounts with the entrance', () => {
     render(
-      <EntranceProvider signedIn>
+      <EntranceProvider>
         <SlotProbe slotStartMs={entrance.cardDelayMs} />
       </EntranceProvider>,
     );
@@ -230,7 +238,7 @@ describe('useRidesEntranceSlot', () => {
     jest.useFakeTimers();
     try {
       const { rerender } = render(
-        <EntranceProvider signedIn>
+        <EntranceProvider>
           <Probe />
         </EntranceProvider>,
       );
@@ -239,7 +247,7 @@ describe('useRidesEntranceSlot', () => {
       });
 
       rerender(
-        <EntranceProvider signedIn>
+        <EntranceProvider>
           <Probe />
           <SlotProbe slotStartMs={entrance.cardDelayMs} />
           <SlotProbe slotStartMs={entrance.hintsDelayMs} />
