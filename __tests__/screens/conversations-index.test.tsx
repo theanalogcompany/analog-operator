@@ -55,7 +55,7 @@ jest.mock('@/lib/conversations-context', () => ({
   useConversationsContext: () => mockConversations,
 }));
 jest.mock('@/lib/queue-context', () => ({
-  useQueueContext: () => ({ drafts: [], status: 'ready', error: null, reload: jest.fn(), optimisticallyRemove: jest.fn(), restore: jest.fn() }),
+  useQueueContext: () => ({ drafts: [], commitments: [], status: 'ready', error: null, reload: jest.fn(), optimisticallyRemove: jest.fn(), restore: jest.fn() }),
 }));
 jest.mock('@/lib/supabase/client', () => ({ supabase: { auth: { signOut: jest.fn() } } }));
 

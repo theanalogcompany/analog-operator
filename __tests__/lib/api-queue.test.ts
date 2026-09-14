@@ -1,7 +1,11 @@
 import * as fixtures from '@/lib/fixtures/queue';
 import {
   type PendingDraft,
+  type QueueSnapshot,
+  acknowledgeCommitment,
   approveDraft,
+  declineCommitment,
+  isCommitmentGone,
   editAndSend,
   getThread,
   listQueue,
@@ -27,46 +31,47 @@ describe('lib/api/queue in fixture mode', () => {
     const result = await listQueue();
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data.length).toBeGreaterThan(0);
+      expect(result.data.drafts.length).toBeGreaterThan(0);
+      expect(result.data.commitments.length).toBeGreaterThan(0);
     }
   });
 
   it('approveDraft removes the draft from the fixture queue', async () => {
-    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    const target = before.data[0].messageId;
+    const before = (await listQueue()) as { ok: true; data: QueueSnapshot };
+    const target = before.data.drafts[0].messageId;
     await approveDraft(target);
-    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    expect(after.data.find((d) => d.messageId === target)).toBeUndefined();
+    const after = (await listQueue()) as { ok: true; data: QueueSnapshot };
+    expect(after.data.drafts.find((d) => d.messageId === target)).toBeUndefined();
   });
 
   it('skipDraft removes the draft', async () => {
-    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    const target = before.data[0].messageId;
+    const before = (await listQueue()) as { ok: true; data: QueueSnapshot };
+    const target = before.data.drafts[0].messageId;
     await skipDraft(target);
-    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    expect(after.data.find((d) => d.messageId === target)).toBeUndefined();
+    const after = (await listQueue()) as { ok: true; data: QueueSnapshot };
+    expect(after.data.drafts.find((d) => d.messageId === target)).toBeUndefined();
   });
 
   it('editAndSend removes the draft on first call', async () => {
-    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    const target = before.data[0].messageId;
+    const before = (await listQueue()) as { ok: true; data: QueueSnapshot };
+    const target = before.data.drafts[0].messageId;
     await editAndSend(target, 'my version');
-    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    expect(after.data.find((d) => d.messageId === target)).toBeUndefined();
+    const after = (await listQueue()) as { ok: true; data: QueueSnapshot };
+    expect(after.data.drafts.find((d) => d.messageId === target)).toBeUndefined();
   });
 
   it('undoAction restores a removed draft', async () => {
-    const before = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    const target = before.data[0].messageId;
+    const before = (await listQueue()) as { ok: true; data: QueueSnapshot };
+    const target = before.data.drafts[0].messageId;
     await approveDraft(target);
     await undoAction(target);
-    const after = (await listQueue()) as { ok: true; data: { messageId: string }[] };
-    expect(after.data.find((d) => d.messageId === target)).toBeDefined();
+    const after = (await listQueue()) as { ok: true; data: QueueSnapshot };
+    expect(after.data.drafts.find((d) => d.messageId === target)).toBeDefined();
   });
 
   it('getThread returns the fixture thread including seed extensions for known messageIds', async () => {
-    const before = (await listQueue()) as { ok: true; data: PendingDraft[] };
-    const mayaDraft = before.data.find(
+    const before = (await listQueue()) as { ok: true; data: QueueSnapshot };
+    const mayaDraft = before.data.drafts.find(
       (d) => d.messageId === '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     );
     expect(mayaDraft).toBeDefined();
@@ -94,10 +99,17 @@ describe('lib/api/queue in fixture mode', () => {
     if (!result.ok) throw new Error('listQueue should succeed in fixture mode');
     const uuidRe =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    for (const d of result.data) {
+    for (const d of result.data.drafts) {
       expect(uuidRe.test(d.messageId)).toBe(true);
       expect(uuidRe.test(d.guestId)).toBe(true);
       expect(uuidRe.test(d.venueId)).toBe(true);
+    }
+    // The heads-up seeds too: a fixture id Zod 4 rejects would drop the card
+    // in any path that parses it.
+    for (const c of result.data.commitments) {
+      expect(uuidRe.test(c.id)).toBe(true);
+      expect(uuidRe.test(c.guestId)).toBe(true);
+      expect(uuidRe.test(c.venueId)).toBe(true);
     }
   });
 });
@@ -215,9 +227,9 @@ describe('lib/api/queue HTTP shape', () => {
     expect(init.method).toBe('GET');
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].messageId).toBe(draft.messageId);
-      expect(result.data[0].agentReasoning).toBe('lean into the warmth');
+      expect(result.data.drafts).toHaveLength(1);
+      expect(result.data.drafts[0].messageId).toBe(draft.messageId);
+      expect(result.data.drafts[0].agentReasoning).toBe('lean into the warmth');
     }
   });
 
@@ -259,8 +271,8 @@ describe('lib/api/queue HTTP shape', () => {
     const result = await listQueue();
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].agentReasoning).toBeNull();
+      expect(result.data.drafts).toHaveLength(1);
+      expect(result.data.drafts[0].agentReasoning).toBeNull();
     }
   });
 
@@ -314,7 +326,7 @@ describe('lib/api/queue HTTP shape', () => {
     const result = await listQueue();
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const bodies = result.data[0].recentContext.map((m) => m.body);
+      const bodies = result.data.drafts[0].recentContext.map((m) => m.body);
       expect(bodies).toEqual(['oldest', 'middle', 'newest']);
     }
   });
@@ -438,7 +450,190 @@ describe('lib/api/queue HTTP shape', () => {
     const result = await listQueue();
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data[0].agentReasoning).toBeNull();
+      expect(result.data.drafts[0].agentReasoning).toBeNull();
     }
   });
+  // Heads-up cards (TAC-364). Payloads are transcribed from the TAC-364
+  // `## Contract` (`{ id, venueId, guestId, type, guest: { name }, description,
+  // code, expected_arrival, created_at, recognitionState, sourceMessageId }`),
+  // never from the schema in lib/api/queue.ts. (CLAUDE.md, Cross-repo rule 5.)
+  const CONTRACT_COMMITMENT = {
+    id: '55e8b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c',
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    guestId: 'ee55b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c',
+    type: 'comp',
+    guest: { name: 'Sam' },
+    description: 'A cortado on the house',
+    code: '7K2P',
+    expected_arrival: null,
+    created_at: '2026-09-14T08:00:00.000Z',
+    recognitionState: 'regular',
+    sourceMessageId: '66f9c4b6-7e8d-4fa0-9c2b-3e4f5a6b7c8d',
+  };
+  const OTHER_COMMITMENT_ID = '77a0d5c7-8f9e-4ab1-8d3c-4f5a6b7c8d9e';
+
+  it('listQueue keeps the commitments[] the server sends, instead of stripping them', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ drafts: [], commitments: [CONTRACT_COMMITMENT] }),
+        { status: 200 },
+      ),
+    );
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.commitments).toEqual([CONTRACT_COMMITMENT]);
+  });
+
+  it('listQueue drops a commitment with no venueId rather than render it unscoped, and keeps the rest', async () => {
+    const { venueId: _unused, ...unscoped } = CONTRACT_COMMITMENT;
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          drafts: [],
+          commitments: [unscoped, { ...CONTRACT_COMMITMENT, id: OTHER_COMMITMENT_ID }],
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.commitments.map((c) => c.id)).toEqual([OTHER_COMMITMENT_ID]);
+    }
+  });
+
+  it('listQueue keeps a commitment whose display fields are missing, with safe blanks', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          drafts: [],
+          commitments: [
+            {
+              id: CONTRACT_COMMITMENT.id,
+              venueId: CONTRACT_COMMITMENT.venueId,
+              guestId: CONTRACT_COMMITMENT.guestId,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.commitments).toEqual([
+        {
+          id: CONTRACT_COMMITMENT.id,
+          venueId: CONTRACT_COMMITMENT.venueId,
+          guestId: CONTRACT_COMMITMENT.guestId,
+          type: '',
+          guest: { name: '' },
+          description: '',
+          code: null,
+          expected_arrival: null,
+          created_at: null,
+          recognitionState: null,
+          sourceMessageId: null,
+        },
+      ]);
+    }
+  });
+
+  it('listQueue reads a response with no commitments key as no heads-up cards', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ drafts: [] }), { status: 200 }),
+    );
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.commitments).toEqual([]);
+  });
+
+  it('acknowledgeCommitment posts to /api/operator/commitments/:id/acknowledge with no body', async () => {
+    const result = await acknowledgeCommitment(CONTRACT_COMMITMENT.id);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(
+      'https://api.test/api/operator/commitments/55e8b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c/acknowledge',
+    );
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeUndefined();
+    expect(result).toEqual({ ok: true, data: undefined });
+  });
+
+  it('acknowledgeCommitment surfaces 409 already_acknowledged as a card that is gone', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'already_acknowledged' }), { status: 409 }),
+    );
+    const result = await acknowledgeCommitment(CONTRACT_COMMITMENT.id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(isCommitmentGone(result.error)).toBe(true);
+  });
+
+  it('declineCommitment posts to /api/operator/commitments/:id/draft-decline with no body and returns { messageId, body }', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          messageId: '88b1e6d8-9a0f-4bc2-8e4d-5a6b7c8d9e0f',
+          body: "So sorry, we can't do the cortado today after all.",
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await declineCommitment(CONTRACT_COMMITMENT.id);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(
+      'https://api.test/api/operator/commitments/55e8b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c/draft-decline',
+    );
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeUndefined();
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        messageId: '88b1e6d8-9a0f-4bc2-8e4d-5a6b7c8d9e0f',
+        body: "So sorry, we can't do the cortado today after all.",
+      },
+    });
+  });
+
+  it('declineCommitment accepts the empty body the server degrades to', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ messageId: '88b1e6d8-9a0f-4bc2-8e4d-5a6b7c8d9e0f', body: '' }),
+        { status: 200 },
+      ),
+    );
+    const result = await declineCommitment(CONTRACT_COMMITMENT.id);
+    expect(result).toEqual({
+      ok: true,
+      data: { messageId: '88b1e6d8-9a0f-4bc2-8e4d-5a6b7c8d9e0f', body: '' },
+    });
+  });
+
+  it('declineCommitment returns PARSE when the response carries no messageId', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ body: 'x' }), { status: 200 }),
+    );
+    const result = await declineCommitment(CONTRACT_COMMITMENT.id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('PARSE');
+  });
+
+  it.each([
+    [404, 'not_found', true],
+    [409, 'invalid_state', true],
+    [422, 'refused', false],
+    [502, 'internal_error', false],
+  ])(
+    'declineCommitment surfaces HTTP %i %s, which isCommitmentGone reads as %s',
+    async (status, error, gone) => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error }), { status }),
+      );
+      const result = await declineCommitment(CONTRACT_COMMITMENT.id);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatchObject({ kind: 'HTTP', status });
+        expect(isCommitmentGone(result.error)).toBe(gone);
+      }
+    },
+  );
 });

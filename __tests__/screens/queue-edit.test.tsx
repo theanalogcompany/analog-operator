@@ -14,6 +14,11 @@ import {
   getThread,
   skipDraft,
 } from '@/lib/api/queue';
+import {
+  __resetDeclineHandoffForTests,
+  peekDeclineHandoff,
+  stageDeclineHandoff,
+} from '@/lib/decline-handoff';
 
 const mockRouter = {
   push: jest.fn(),
@@ -23,11 +28,14 @@ const mockRouter = {
 
 const mockQueue: UseQueueResult = {
   drafts: [],
+  commitments: [],
   status: 'ready',
   error: null,
   reload: jest.fn().mockResolvedValue(undefined),
   optimisticallyRemove: jest.fn(),
   restore: jest.fn(),
+  optimisticallyRemoveCommitment: jest.fn(),
+  restoreCommitment: jest.fn(),
 };
 
 jest.mock('expo-router', () => ({
@@ -509,5 +517,54 @@ describe('EditScreen — composer placeholder on a normal draft', () => {
     expect(
       screen.getByLabelText('Edit the draft before sending').props.placeholder,
     ).toBe('Edit the message…');
+  });
+});
+
+// TAC-364. A decline draft is created server-side a moment before this screen
+// opens, so the cached queue cannot hold it on first paint.
+describe('EditScreen — decline handoff (TAC-364)', () => {
+  const DECLINE_ID = '88b1e6d8-9a0f-4bc2-8e4d-5a6b7c8d9e0f';
+  const BODY = "So sorry, we can't do the cortado today after all.";
+
+  afterEach(() => {
+    __resetDeclineHandoffForTests();
+  });
+
+  it('renders the staged decline draft on first paint, not "no longer pending"', () => {
+    mockQueue.drafts = [];
+    stageDeclineHandoff(makeDraft({ messageId: DECLINE_ID, draftBody: BODY }));
+    mockRouter.params = { messageId: DECLINE_ID, prefill: BODY };
+    render(<EditScreen />);
+    expect(screen.queryByText('That draft is no longer pending.')).toBeNull();
+    expect(screen.getByDisplayValue(BODY)).toBeTruthy();
+  });
+
+  it('sends the decline through editAndSend, as the draft the server created', async () => {
+    (editAndSend as jest.Mock).mockResolvedValue({ ok: true, data: undefined });
+    mockQueue.drafts = [];
+    stageDeclineHandoff(makeDraft({ messageId: DECLINE_ID, draftBody: BODY }));
+    mockRouter.params = { messageId: DECLINE_ID, prefill: BODY };
+    render(<EditScreen />);
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Send my version'));
+    });
+    expect(editAndSend).toHaveBeenCalledWith(DECLINE_ID, BODY);
+  });
+
+  it('never stands in for a different draft', () => {
+    mockQueue.drafts = [];
+    stageDeclineHandoff(makeDraft({ messageId: DECLINE_ID, draftBody: BODY }));
+    mockRouter.params = { messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d' };
+    render(<EditScreen />);
+    expect(screen.getByText('That draft is no longer pending.')).toBeTruthy();
+  });
+
+  it('lets go of the handoff when the takeover closes', () => {
+    mockQueue.drafts = [];
+    stageDeclineHandoff(makeDraft({ messageId: DECLINE_ID, draftBody: BODY }));
+    mockRouter.params = { messageId: DECLINE_ID, prefill: BODY };
+    const view = render(<EditScreen />);
+    view.unmount();
+    expect(peekDeclineHandoff(DECLINE_ID)).toBeNull();
   });
 });

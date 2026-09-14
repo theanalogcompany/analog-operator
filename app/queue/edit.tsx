@@ -23,6 +23,7 @@ import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { clearUndoState, setUndoState } from '@/hooks/use-undo-state';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { type ThreadMessage, editAndSend, getThread, skipDraft } from '@/lib/api/queue';
+import { clearDeclineHandoff, peekDeclineHandoff } from '@/lib/decline-handoff';
 import { type QueueTone, groundForTone, reasonLabelFor, toneFor } from '@/lib/queue-tone';
 import { useQueueContext } from '@/lib/queue-context';
 import {
@@ -85,10 +86,28 @@ export default function EditScreen() {
   }>();
   const queue = useQueueContext();
   const insets = useSafeAreaInsets();
-  const draft = useMemo(
-    () => queue.drafts.find((d) => d.messageId === params.messageId) ?? null,
-    [queue.drafts, params.messageId],
+  // A decline draft reaches this screen before it reaches the queue: the server
+  // created it moments ago, so the cached list cannot hold it yet. The queue
+  // screen stages one built from the commitment and the decline response, and
+  // it stands in until the realtime reload brings the real row, which then
+  // wins. Without it, every decline opened on "That draft is no longer
+  // pending". Keyed on `messageId`, so it can never stand in for any other
+  // draft. (TAC-364; see lib/decline-handoff.ts.)
+  const handoff = useMemo(
+    () => peekDeclineHandoff(params.messageId),
+    [params.messageId],
   );
+  const draft = useMemo(
+    () =>
+      queue.drafts.find((d) => d.messageId === params.messageId) ?? handoff,
+    [queue.drafts, params.messageId, handoff],
+  );
+  useEffect(() => {
+    const messageId = params.messageId;
+    return () => {
+      if (messageId) clearDeclineHandoff(messageId);
+    };
+  }, [params.messageId]);
 
   const [text, setText] = useState<string>(params.prefill ?? draft?.draftBody ?? '');
   const [submitting, setSubmitting] = useState<'edit' | 'skip' | null>(null);

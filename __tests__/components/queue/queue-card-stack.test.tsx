@@ -17,6 +17,7 @@ import {
 } from '@/components/queue/swipe-overlay';
 import { hintState } from '@/components/queue/swipe-hints';
 import { type PendingDraft } from '@/lib/api/queue';
+import { draftItem } from '@/lib/queue-items';
 import { card, peek } from '@/lib/theme';
 
 /**
@@ -61,6 +62,8 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
     ...overrides,
   };
 }
+
+const deck = (...drafts: PendingDraft[]) => drafts.map(draftItem);
 
 describe('resolveCardLayout', () => {
   it('uses the design geometry when there is room for it', () => {
@@ -243,12 +246,14 @@ describe('QueueCardStack — wiring', () => {
     render(
       <Wrapper>
         <QueueCardStack
-          drafts={[makeDraft()]}
+          items={deck(makeDraft())}
           position={1}
           total={4}
           onApprove={noop}
           onEdit={noop}
           onRefuseApprove={noop}
+          onAcknowledge={noop}
+          onDecline={noop}
           onPressHelp={noop}
         />
       </Wrapper>,
@@ -265,18 +270,20 @@ describe('QueueCardStack — wiring', () => {
     render(
       <Wrapper>
         <QueueCardStack
-          drafts={[
+          items={deck(
             makeDraft(),
             makeDraft({
               messageId: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
               guestDisplayName: 'Devon L.',
             }),
-          ]}
+          )}
           position={1}
           total={4}
           onApprove={noop}
           onEdit={noop}
           onRefuseApprove={noop}
+          onAcknowledge={noop}
+          onDecline={noop}
           onPressHelp={noop}
         />
       </Wrapper>,
@@ -294,18 +301,20 @@ describe('QueueCardStack — wiring', () => {
     render(
       <Wrapper>
         <QueueCardStack
-          drafts={[
+          items={deck(
             makeDraft(),
             makeDraft({
               messageId: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
               guestDisplayName: 'Devon L.',
             }),
-          ]}
+          )}
           position={1}
           total={4}
           onApprove={noop}
           onEdit={noop}
           onRefuseApprove={noop}
+          onAcknowledge={noop}
+          onDecline={noop}
           onPressHelp={noop}
         />
       </Wrapper>,
@@ -319,7 +328,7 @@ describe('QueueCardStack — wiring', () => {
     render(
       <Wrapper>
         <QueueCardStack
-          drafts={[
+          items={deck(
             makeDraft(),
             makeDraft({
               messageId: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
@@ -329,12 +338,14 @@ describe('QueueCardStack — wiring', () => {
               messageId: '33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a',
               guestDisplayName: 'Priya N.',
             }),
-          ]}
+          )}
           position={1}
           total={4}
           onApprove={noop}
           onEdit={noop}
           onRefuseApprove={noop}
+          onAcknowledge={noop}
+          onDecline={noop}
           onPressHelp={noop}
         />
       </Wrapper>,
@@ -351,18 +362,20 @@ describe('QueueCardStack — wiring', () => {
     render(
       <Wrapper>
         <QueueCardStack
-          drafts={[
+          items={deck(
             makeDraft(),
             makeDraft({
               messageId: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
               guestDisplayName: 'Devon L.',
             }),
-          ]}
+          )}
           position={1}
           total={4}
           onApprove={noop}
           onEdit={noop}
           onRefuseApprove={noop}
+          onAcknowledge={noop}
+          onDecline={noop}
           onPressHelp={noop}
         />
       </Wrapper>,
@@ -376,12 +389,14 @@ describe('QueueCardStack — wiring', () => {
     render(
       <Wrapper>
         <QueueCardStack
-          drafts={[makeDraft()]}
+          items={deck(makeDraft())}
           position={1}
           total={4}
           onApprove={noop}
           onEdit={noop}
           onRefuseApprove={noop}
+          onAcknowledge={noop}
+          onDecline={noop}
           onPressHelp={noop}
         />
       </Wrapper>,
@@ -394,12 +409,14 @@ describe('QueueCardStack — wiring', () => {
     render(
       <Wrapper>
         <QueueCardStack
-          drafts={[makeDraft({ draftBody: '' })]}
+          items={deck(makeDraft({ draftBody: '' }))}
           position={1}
           total={4}
           onApprove={noop}
           onEdit={noop}
           onRefuseApprove={noop}
+          onAcknowledge={noop}
+          onDecline={noop}
           onPressHelp={noop}
         />
       </Wrapper>,
@@ -418,12 +435,14 @@ describe('QueueCardStack — wiring', () => {
     render(
       <Wrapper>
         <QueueCardStack
-          drafts={[]}
+          items={[]}
           position={1}
           total={0}
           onApprove={noop}
           onEdit={noop}
           onRefuseApprove={noop}
+          onAcknowledge={noop}
+          onDecline={noop}
           onPressHelp={noop}
         />
       </Wrapper>,

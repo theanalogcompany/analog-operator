@@ -5,7 +5,7 @@ import { TopNav } from '@/components/shell/top-nav';
 const mockReplace = jest.fn();
 let mockPathname = '/queue';
 let mockPermission = 'granted';
-const mockQueue = { drafts: [] as unknown[] };
+const mockQueue = { drafts: [] as unknown[], commitments: [] as unknown[] };
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, push: jest.fn() }),
@@ -21,6 +21,7 @@ beforeEach(() => {
   mockPathname = '/queue';
   mockPermission = 'granted';
   mockQueue.drafts = [];
+  mockQueue.commitments = [];
 });
 
 /** The nav row's three column wrappers, in order. */

@@ -2,13 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQueueRealtime } from '@/hooks/use-queue-realtime';
 import { type ApiError } from '@/lib/api/errors';
-import { type PendingDraft, listQueue } from '@/lib/api/queue';
+import {
+  type HeadsUpCommitment,
+  type PendingDraft,
+  listQueue,
+} from '@/lib/api/queue';
 import { type QueueChannelEvent } from '@/lib/realtime/queue-channel';
 
 export type QueueStatus = 'loading' | 'ready' | 'error';
 
 export type UseQueueResult = {
   drafts: PendingDraft[];
+  /** `pending_ack` commitments, rendered as heads-up cards. (TAC-364.) */
+  commitments: HeadsUpCommitment[];
   status: QueueStatus;
   error: ApiError | null;
   reload: () => Promise<void>;
@@ -16,6 +22,9 @@ export type UseQueueResult = {
   optimisticallyRemove: (messageId: string) => void;
   /** Restore a draft into the local list (called on API failure or undo). */
   restore: (draft: PendingDraft) => void;
+  /** The heads-up counterparts of the two above, keyed on the commitment id. */
+  optimisticallyRemoveCommitment: (commitmentId: string) => void;
+  restoreCommitment: (commitment: HeadsUpCommitment) => void;
 };
 
 // Queue priority: most important guest first, then oldest-waiting within a
@@ -41,9 +50,18 @@ function sortByPriority(list: PendingDraft[]): PendingDraft[] {
   });
 }
 
+// Oldest promise first, the order the server already sends them in, so a
+// restored heads-up card goes back where it was rather than to the end.
+function sortCommitments(list: HeadsUpCommitment[]): HeadsUpCommitment[] {
+  return [...list].sort((a, b) =>
+    (a.created_at ?? '').localeCompare(b.created_at ?? ''),
+  );
+}
+
 export function useQueue(options?: { enabled?: boolean }): UseQueueResult {
   const enabled = options?.enabled ?? true;
   const [drafts, setDrafts] = useState<PendingDraft[]>([]);
+  const [commitments, setCommitments] = useState<HeadsUpCommitment[]>([]);
   const [status, setStatus] = useState<QueueStatus>('loading');
   const [error, setError] = useState<ApiError | null>(null);
   const mounted = useRef(true);
@@ -70,7 +88,8 @@ export function useQueue(options?: { enabled?: boolean }): UseQueueResult {
     const result = await listQueue();
     if (!mounted.current || !enabledRef.current) return;
     if (result.ok) {
-      setDrafts(sortByPriority(result.data));
+      setDrafts(sortByPriority(result.data.drafts));
+      setCommitments(sortCommitments(result.data.commitments));
       setStatus('ready');
     } else {
       setError(result.error);
@@ -98,14 +117,15 @@ export function useQueue(options?: { enabled?: boolean }): UseQueueResult {
   useEffect(() => {
     if (!enabled) {
       setDrafts([]);
+      setCommitments([]);
       setStatus('loading');
       setError(null);
     }
   }, [enabled]);
 
   // All realtime events trigger a reload — we don't patch state locally
-  // because the raw `messages` payload doesn't carry the JOINed
-  // PendingDraft fields the queue needs.
+  // because neither raw payload (`messages`, `guest_commitments`) carries the
+  // JOINed fields the queue needs.
   const onRealtimeEvent = useCallback(
     (_event: QueueChannelEvent): void => {
       if (enabled) void reload();
@@ -125,12 +145,46 @@ export function useQueue(options?: { enabled?: boolean }): UseQueueResult {
     });
   }, []);
 
+  const optimisticallyRemoveCommitment = useCallback(
+    (commitmentId: string): void => {
+      setCommitments((prev) => prev.filter((c) => c.id !== commitmentId));
+    },
+    [],
+  );
+
+  const restoreCommitment = useCallback((commitment: HeadsUpCommitment): void => {
+    setCommitments((prev) => {
+      if (prev.some((c) => c.id === commitment.id)) return prev;
+      return sortCommitments([...prev, commitment]);
+    });
+  }, []);
+
   // Memoized so the object identity is stable across renders. lib/queue-context
   // derives the venue-filtered view from this with useMemo; a fresh object
   // every render would re-run that filter (and hand QueueCardStack a new
   // `drafts` array) on every unrelated re-render.
   return useMemo(
-    () => ({ drafts, status, error, reload, optimisticallyRemove, restore }),
-    [drafts, status, error, reload, optimisticallyRemove, restore],
+    () => ({
+      drafts,
+      commitments,
+      status,
+      error,
+      reload,
+      optimisticallyRemove,
+      restore,
+      optimisticallyRemoveCommitment,
+      restoreCommitment,
+    }),
+    [
+      drafts,
+      commitments,
+      status,
+      error,
+      reload,
+      optimisticallyRemove,
+      restore,
+      optimisticallyRemoveCommitment,
+      restoreCommitment,
+    ],
   );
 }

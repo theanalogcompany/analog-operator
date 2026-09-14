@@ -1,7 +1,10 @@
 import {
+  acknowledgeCommitmentFixture,
   approveDraftFixture,
+  declineCommitmentFixture,
   editAndSendFixture,
   fixtureUuid,
+  listCommitmentsFixture,
   listQueueFixture,
   resetQueueFixture,
   skipDraftFixture,
@@ -101,5 +104,38 @@ describe('lib/fixtures/queue emitter', () => {
       listQueueFixture().some((d) => d.messageId === newDraft.messageId),
     ).toBe(true);
     unsubscribe();
+  });
+});
+
+describe('lib/fixtures/queue heads-up cards (TAC-364)', () => {
+  it('seeds a comp with a code and a recommendation without one', () => {
+    const list = listCommitmentsFixture();
+    expect(list.map((c) => c.type)).toEqual(['comp', 'recommendation']);
+    expect(list[0].code).toBeTruthy();
+    expect(list[1].code).toBeNull();
+  });
+
+  it('acknowledge clears the card, and a repeat is a 409', () => {
+    const id = listCommitmentsFixture()[0].id;
+    expect(acknowledgeCommitmentFixture(id).ok).toBe(true);
+    expect(listCommitmentsFixture().some((c) => c.id === id)).toBe(false);
+    const again = acknowledgeCommitmentFixture(id);
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.error).toMatchObject({ kind: 'HTTP', status: 409 });
+  });
+
+  it('decline clears the card and leaves a pending draft to review, not a send', () => {
+    const c = listCommitmentsFixture()[0];
+    const draftsBefore = listQueueFixture().length;
+    const result = declineCommitmentFixture(c.id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(listCommitmentsFixture().some((x) => x.id === c.id)).toBe(false);
+    const draft = listQueueFixture().find(
+      (d) => d.messageId === result.data.messageId,
+    );
+    expect(draft?.draftBody).toBe(result.data.body);
+    expect(draft?.guestId).toBe(c.guestId);
+    expect(listQueueFixture()).toHaveLength(draftsBefore + 1);
   });
 });
