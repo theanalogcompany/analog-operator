@@ -25,6 +25,7 @@ import {
   isCommitmentGone,
   undoAction,
 } from '@/lib/api/queue';
+import { CARD_COPY } from '@/lib/card-copy';
 import {
   buildDeclineHandoffDraft,
   stageDeclineHandoff,
@@ -41,22 +42,15 @@ import {
   headsUpItemKey,
   surfaceTappedItem,
 } from '@/lib/queue-items';
-import { HEADS_UP_TONE, groundForTone, toneFor } from '@/lib/queue-tone';
 import { useQueueContext } from '@/lib/queue-context';
+import { type ReviewBucket, bucketForDraft, bucketForItem } from '@/lib/review-bucket';
 import { useVenueSelection } from '@/lib/venue-context';
 import { display, layout, typePresets } from '@/lib/theme';
 
-// One string for both refusal paths — the gesture refusal (TAC-312) and the
-// defense-in-depth guard in `handleApprove` (TAC-310). They fire on the same
-// condition and must say the same thing.
-const NOTHING_TO_SEND_MESSAGE =
-  'Nothing to send yet — swipe left to write your answer';
-
-// Heads-up card copy. No em dashes: it is read fast mid-shift. (TAC-364.)
-const ACKNOWLEDGE_FAILED_MESSAGE = "Couldn't acknowledge that. Try again.";
-const DECLINE_WRITING_MESSAGE = 'Writing the decline…';
-const DECLINE_FAILED_MESSAGE = "Couldn't write the decline. Try again.";
-const ALREADY_HANDLED_MESSAGE = 'That one was already handled.';
+// Every toast on this screen comes from `CARD_COPY`, which holds card copy to
+// the no-em-dash rule (TAC-364). `nothingToSend` serves both refusal paths, the
+// gesture refusal (TAC-312) and the defense-in-depth guard in `handleApprove`
+// (TAC-310): they fire on the same condition and must say the same thing.
 
 function handleHelp(): void {
   void openHelpSms().then((result) => {
@@ -110,13 +104,12 @@ export default function QueueScreen() {
   const progress = useSessionProgress(visibleIds, venue.selectedVenueId);
 
   const top = displayItems[0];
-  // The ground encodes why the top card was flagged, so the operator knows what
-  // kind of decision is in front of them before reading a word. With an empty
-  // deck there is no decision, so it settles to clay — `resting`, which must
-  // also be the entrance's ground; see CLAUDE.md. (TAC-384.)
-  const groundName = top
-    ? groundForTone(top.kind === 'draft' ? toneFor(top.draft) : HEADS_UP_TONE)
-    : 'resting';
+  // The ground encodes what kind of decision the top card is, so the operator
+  // knows before reading a word. It keys on the reason CODE, never the label
+  // (see lib/review-bucket.ts). With an empty deck there is no decision, so it
+  // settles to clay: `resting`, which must also be the entrance's ground; see
+  // CLAUDE.md. (TAC-384, TAC-364.)
+  const groundName = top ? bucketForItem(top) : 'resting';
 
   // A tapped notification may be for a guest at a venue that isn't the one on
   // screen. Neither APNs payload carries a venueId (see lib/notifications/
@@ -195,7 +188,7 @@ export default function QueueScreen() {
     // safe. `/approve` sends no body, so the server would ship its stored blank
     // and 422. (TAC-310.)
     if (!draft.draftBody.trim()) {
-      showToast(NOTHING_TO_SEND_MESSAGE);
+      showToast(CARD_COPY.toast.nothingToSend);
       return;
     }
     queue.optimisticallyRemove(draft.messageId);
@@ -207,7 +200,7 @@ export default function QueueScreen() {
       queue.restore(draft);
       progress.markRestored(draft.messageId);
       void clearUndoState();
-      showToast("Couldn't send — tap to retry");
+      showToast(CARD_COPY.toast.sendFailed);
     }
   };
 
@@ -216,7 +209,7 @@ export default function QueueScreen() {
   // restore, no undo state. All this owes the operator is an explanation.
   // (TAC-312.)
   const handleRefuseApprove = (): void => {
-    showToast(NOTHING_TO_SEND_MESSAGE);
+    showToast(CARD_COPY.toast.nothingToSend);
   };
 
   const handleEdit = (draft: PendingDraft): void => {
@@ -225,9 +218,9 @@ export default function QueueScreen() {
       pathname: '/queue/edit',
       params: {
         messageId: draft.messageId,
-        // The takeover's ground is the card's ground, so the color carries
+        // The takeover's ground is the card's ground, so the colour carries
         // through from the card you swiped.
-        tone: toneFor(draft),
+        bucket: bucketForDraft(draft),
       },
     });
   };
@@ -247,7 +240,7 @@ export default function QueueScreen() {
     if (isCommitmentGone(result.error)) return;
     queue.restoreCommitment(commitment);
     progress.markRestored(key);
-    showToast(ACKNOWLEDGE_FAILED_MESSAGE);
+    showToast(CARD_COPY.toast.acknowledgeFailed);
   };
 
   // Heads-up swipe-left. The server writes an apology, persists it as a PENDING
@@ -257,7 +250,7 @@ export default function QueueScreen() {
   const handleDecline = async (commitment: HeadsUpCommitment): Promise<void> => {
     if (decliningId) return;
     setDecliningId(commitment.id);
-    showToast(DECLINE_WRITING_MESSAGE);
+    showToast(CARD_COPY.toast.declineWriting);
     const result = await declineCommitment(commitment.id);
     setDecliningId(null);
     if (!result.ok) {
@@ -265,10 +258,10 @@ export default function QueueScreen() {
         queue.optimisticallyRemoveCommitment(commitment.id);
         progress.markCleared(headsUpItemKey(commitment.id));
         clearSurfaceForCommitment(commitment);
-        showToast(ALREADY_HANDLED_MESSAGE);
+        showToast(CARD_COPY.toast.alreadyHandled);
         return;
       }
-      showToast(DECLINE_FAILED_MESSAGE);
+      showToast(CARD_COPY.toast.declineFailed);
       return;
     }
     queue.optimisticallyRemoveCommitment(commitment.id);
@@ -283,7 +276,9 @@ export default function QueueScreen() {
       params: {
         messageId: result.data.messageId,
         prefill: result.data.body,
-        tone: HEADS_UP_TONE,
+        // Bay, not the decline draft's own bucket: the operator is still
+        // dealing with the heads-up card they swiped. (TAC-364, frame D1.)
+        bucket: 'headsUp' satisfies ReviewBucket,
       },
     });
   };

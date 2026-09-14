@@ -70,7 +70,7 @@ export default function YouScreen() {
   };
 
   return (
-    <GroundScreen name="neutral">
+    <GroundScreen name="resting">
       <TopNav />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ paddingHorizontal: 22, paddingTop: 22, paddingBottom: 18 }}>

@@ -76,7 +76,7 @@ export default function ConversationsScreen() {
       : recognition.stateLabels[typeFilter as RecognitionState];
 
   return (
-    <GroundScreen name="neutral">
+    <GroundScreen name="resting">
       <TopNav />
 
       {conversationsResult.status === 'loading' ? (

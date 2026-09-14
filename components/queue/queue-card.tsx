@@ -5,16 +5,18 @@ import { MessageBubble } from '@/components/ui/message-bubble';
 import { SendGlyph } from '@/components/ui/send-glyph';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type PendingDraft } from '@/lib/api/queue';
+import { CARD_COPY } from '@/lib/card-copy';
 import {
+  bucketForDraft,
   formatProgress,
-  reasonLabelFor,
   stripColorFor,
-  toneFor,
-} from '@/lib/queue-tone';
+  stripLabelForDraft,
+} from '@/lib/review-bucket';
 import { body as bodyType, card, typePresets } from '@/lib/theme';
 import { deviceTimezone, formatDayDivider } from '@/lib/thread-cluster';
 
 import { RecognitionBadge } from './recognition-badge';
+import { ReviewDetail } from './review-detail';
 
 function displayName(draft: PendingDraft): string {
   if (draft.guestDisplayName && draft.guestDisplayName.trim().length > 0) {
@@ -80,7 +82,7 @@ export function QueueCard({
   onComposerLayout,
   overlay,
 }: Props) {
-  const tone = toneFor(draft);
+  const bucket = bucketForDraft(draft);
   const name = displayName(draft);
 
   // A blank draftBody is a real server state (the agent declined to draft, or
@@ -120,7 +122,8 @@ export function QueueCard({
           flexDirection: 'column',
         }}
       >
-      {/* a. Flag strip — why this card is in front of you. */}
+      {/* a. Flag strip: what kind of decision this is, named in caps. Why it
+          was held is the sentence in the head, in sentence case. (TAC-364.) */}
       <View
         style={{
           flexDirection: 'row',
@@ -128,7 +131,7 @@ export function QueueCard({
           gap: 12,
           paddingVertical: 11,
           paddingHorizontal: card.regionInsetPx,
-          backgroundColor: stripColorFor(tone),
+          backgroundColor: stripColorFor(bucket),
           // Matches the card's own corners rather than relying solely on the
           // parent's clip.
           borderTopLeftRadius: card.radiusPx,
@@ -141,7 +144,7 @@ export function QueueCard({
           numberOfLines={2}
           style={{ flex: 1 }}
         >
-          {reasonLabelFor(draft)}
+          {stripLabelForDraft(draft)}
         </TrackedCaps>
         {position !== undefined && total !== undefined ? (
           <TrackedCaps
@@ -173,6 +176,7 @@ export function QueueCard({
             {minutesPending(draft)}
           </TrackedCaps>
         </View>
+        <ReviewDetail draft={draft} surface="card" style={{ marginTop: 12 }} />
         {reasoning ? (
           <Text
         allowFontScaling={false}
@@ -273,9 +277,7 @@ export function QueueCard({
             color={hasDraft ? '#A85638' : '#6F6658'}
             style={{ marginTop: 9, textAlign: 'right' }}
           >
-            {hasDraft
-              ? 'Draft — swipe right to send'
-              : 'Nothing drafted — swipe left to write'}
+            {hasDraft ? CARD_COPY.composer.hasDraft : CARD_COPY.composer.noDraft}
           </TrackedCaps>
         </View>
       </View>

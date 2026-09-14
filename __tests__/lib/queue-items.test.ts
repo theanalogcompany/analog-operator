@@ -40,6 +40,10 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
     pendingSinceMs: 240_000,
     recentContext: [],
     langfuseTraceId: null,
+    reviewReasonCode: '',
+    reviewTriggers: [],
+    reviewTriggerLabels: [],
+    ungroundedClaims: [],
     ...overrides,
   };
 }

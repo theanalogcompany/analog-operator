@@ -26,6 +26,10 @@ function makeDraft(): PendingDraft {
     pendingSinceMs: 240_000,
     recentContext: [],
     langfuseTraceId: null,
+    reviewReasonCode: '',
+    reviewTriggers: [],
+    reviewTriggerLabels: [],
+    ungroundedClaims: [],
   };
 }
 

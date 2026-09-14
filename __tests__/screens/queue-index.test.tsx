@@ -19,7 +19,6 @@ import {
   peekDeclineHandoff,
 } from '@/lib/decline-handoff';
 import { type QueueItem } from '@/lib/queue-items';
-import { HEADS_UP_TONE } from '@/lib/queue-tone';
 import {
   __resetTapStateForTests,
   setPendingTap,
@@ -204,44 +203,68 @@ const draftWithTone = (
   pendingSinceMs: 1,
   recentContext: [],
   langfuseTraceId: null,
+  reviewReasonCode: '',
+  reviewTriggers: [],
+  reviewTriggerLabels: [],
+  ungroundedClaims: [],
   ...overrides,
 });
 
-// The ground encodes WHY the top card was flagged, so the operator knows what
-// kind of decision is in front of them before reading a word. That makes the
-// mapping a behavior of this screen, not decoration.
+// The ground encodes WHAT KIND of decision the top card is, keyed on the reason
+// CODE, so the operator knows before reading a word. That makes the mapping a
+// behaviour of this screen, not decoration. (TAC-364.)
 describe('QueueScreen — the ground follows the top card', () => {
-  it('goes clay for a low-fidelity flag', () => {
-    mockQueue.drafts = [draftWithTone({ reviewReason: 'low fidelity score' })];
+  const arrival: HeadsUpCommitment = {
+    id: '55e8b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c',
+    venueId: VENUE_A,
+    guestId: 'ee55b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c',
+    type: 'comp',
+    guest: { name: 'Sam' },
+    description: 'A cortado on the house',
+    code: '7K2P',
+    expected_arrival: null,
+    created_at: '2026-09-14T08:00:00.000Z',
+    recognitionState: 'regular',
+    sourceMessageId: null,
+  };
+
+  it.each([
+    ['commitment_type_gated', 'obligation'],
+    ['knowledge_gap', 'outsideDraft'],
+    ['generation_failed', 'draftWrong'],
+    ['previous_pending_held', 'midThread'],
+  ])('puts a %s card on %s', (code, ground) => {
+    mockQueue.drafts = [draftWithTone({ reviewReasonCode: code })];
     renderScreen();
-    expect(lastGroundName).toBe('queueClay');
+    expect(lastGroundName).toBe(ground);
   });
 
-  it('goes stone for a new-guest flag', () => {
+  it('reads the code, not the sentence: an unknown code sits on mid-thread whatever the label says', () => {
     mockQueue.drafts = [
-      draftWithTone({ reviewReason: 'first message from new guest' }),
+      draftWithTone({
+        reviewReason: 'This offers something free. Your call.',
+        reviewReasonCode: 'a_code_this_app_does_not_know',
+      }),
     ];
     renderScreen();
-    expect(lastGroundName).toBe('queueStone');
+    expect(lastGroundName).toBe('midThread');
   });
 
-  it('goes ink when no draft was generated', () => {
-    mockQueue.drafts = [
-      draftWithTone({ reviewReason: 'no draft generated', draftBody: '' }),
-    ];
+  it('puts a heads-up card on its own ground', () => {
+    mockQueue.commitments = [arrival];
     renderScreen();
-    expect(lastGroundName).toBe('queueInk');
+    expect(lastGroundName).toBe('headsUp');
   });
 
   /**
-   * Was `neutral` (stone) until TAC-384. The empty deck now settles on
-   * `resting` (clay), and it has to: `resting` is also the ground the
-   * cold-launch entrance resolves into, and TAC-384's third case requires an
-   * empty queue to produce NO crossfade at all. If the empty deck settled on a
-   * different ground than the entrance's, the entrance would finish by
-   * transitioning into the empty state — the exact transition that case
-   * forbids. TAC-364 specifies the same thing independently: clay is the
-   * resting state for any screen with nothing pending.
+   * Was `neutral` (stone) until TAC-384. The empty deck settles on `resting`
+   * (clay), and it has to: `resting` is also the ground the cold-launch
+   * entrance resolves into, and TAC-384's third case requires an empty queue to
+   * produce NO crossfade at all. If the empty deck settled on a different ground
+   * than the entrance's, the entrance would finish by transitioning into the
+   * empty state, the exact transition that case forbids. TAC-364 specifies the
+   * same thing independently: clay is the resting state for any screen with
+   * nothing pending.
    */
   it('settles to clay with an empty deck — no decision, no color', () => {
     mockQueue.drafts = [];
@@ -260,27 +283,39 @@ describe('QueueScreen — the ground follows the top card', () => {
     renderScreen();
     expect(lastEntranceGround).toBe('resting');
 
-    mockQueue.drafts = [draftWithTone({ reviewReason: 'low fidelity score' })];
+    mockQueue.drafts = [draftWithTone({ reviewReasonCode: 'commitment_type_gated' })];
     renderScreen();
     expect(lastEntranceGround).toBe('resting');
 
-    mockQueue.drafts = [
-      draftWithTone({ reviewReason: 'no draft generated', draftBody: '' }),
-    ];
+    mockQueue.commitments = [arrival];
     renderScreen();
     expect(lastEntranceGround).toBe('resting');
   });
 
   it('reads the top card, not the deck', () => {
     mockQueue.drafts = [
-      draftWithTone({ reviewReason: 'no draft generated', draftBody: '' }),
+      draftWithTone({ reviewReasonCode: 'generation_failed', draftBody: '' }),
       draftWithTone({
         messageId: '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-        reviewReason: 'low fidelity score',
+        reviewReasonCode: 'commitment_type_gated',
       }),
     ];
     renderScreen();
-    expect(lastGroundName).toBe('queueInk');
+    expect(lastGroundName).toBe('draftWrong');
+  });
+
+  it("opens the edit takeover on the card's own ground", () => {
+    mockRouterPush.mockClear();
+    const draft = draftWithTone({ reviewReasonCode: 'commitment_type_gated' });
+    mockQueue.drafts = [draft];
+    renderScreen();
+    act(() => {
+      lastCardStackProps!.onEdit(draft);
+    });
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/queue/edit',
+      params: { messageId: draft.messageId, bucket: 'obligation' },
+    });
   });
 });
 
@@ -350,6 +385,10 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
     pendingSinceMs: 1,
     recentContext: [],
     langfuseTraceId: null,
+    reviewReasonCode: '',
+    reviewTriggers: [],
+    reviewTriggerLabels: [],
+    ungroundedClaims: [],
   });
 
   it('surfaces the pushed guest on top of the FIFO stack on mount', () => {
@@ -438,6 +477,10 @@ describe('QueueScreen — handleApprove, the screen’s approve entry', () => {
     pendingSinceMs: 120_000,
     recentContext: [],
     langfuseTraceId: null,
+    reviewReasonCode: '',
+    reviewTriggers: [],
+    reviewTriggerLabels: [],
+    ungroundedClaims: [],
   });
 
   // NOT a swipe. `QueueCardStack` is mocked to null here, so nothing in this
@@ -506,6 +549,10 @@ describe('QueueScreen refusal path', () => {
     pendingSinceMs: 120_000,
     recentContext: [],
     langfuseTraceId: null,
+    reviewReasonCode: '',
+    reviewTriggers: [],
+    reviewTriggerLabels: [],
+    ungroundedClaims: [],
   });
 
   it('hands the card stack a refusal handler', () => {
@@ -646,7 +693,7 @@ describe('QueueScreen — heads-up cards (TAC-364)', () => {
       params: {
         messageId: DECLINE_MESSAGE_ID,
         prefill: DECLINE_BODY,
-        tone: HEADS_UP_TONE,
+        bucket: 'headsUp',
       },
     });
     expect(mockQueue.optimisticallyRemoveCommitment).toHaveBeenCalledWith(c.id);

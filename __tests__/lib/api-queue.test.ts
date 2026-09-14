@@ -216,6 +216,10 @@ describe('lib/api/queue HTTP shape', () => {
         },
       ],
       langfuseTraceId: null,
+      reviewReasonCode: '',
+      reviewTriggers: [],
+      reviewTriggerLabels: [],
+      ungroundedClaims: [],
     };
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ drafts: [draft] }), { status: 200 }),
@@ -242,6 +246,101 @@ describe('lib/api/queue HTTP shape', () => {
     if (!result.ok) expect(result.error.kind).toBe('PARSE');
   });
 
+  // TAC-364 Contract: four draft fields, always present on the wire.
+  // `reviewReasonCode` is the RAW primary code. `reviewTriggers` is the full set
+  // as RAW codes, primary INCLUDED and never deduped. `reviewTriggerLabels` is
+  // parallel to it. `ungroundedClaims` is always an array, `[]` when nothing
+  // was flagged, never null.
+  const reviewWireDraft = (review: Record<string, unknown>) => ({
+    messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    venueSlug: 'mock-sextant',
+    guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    guestDisplayName: 'Maya R.',
+    guestPhoneFallback: '+15551110001',
+    draftBody: "yes, patio's open until 9",
+    category: null,
+    voiceFidelity: 0.55,
+    reviewReason: 'This offers something free. Your call.',
+    recognitionState: 'returning',
+    pendingSinceMs: 240_000,
+    recentContext: [],
+    langfuseTraceId: null,
+    ...review,
+  });
+
+  const pickReview = (draft: PendingDraft) => ({
+    reviewReasonCode: draft.reviewReasonCode,
+    reviewTriggers: draft.reviewTriggers,
+    reviewTriggerLabels: draft.reviewTriggerLabels,
+    ungroundedClaims: draft.ungroundedClaims,
+  });
+
+  it('listQueue keeps the four review fields exactly as the Contract sends them', async () => {
+    const review = {
+      reviewReasonCode: 'commitment_type_gated',
+      reviewTriggers: ['commitment_type_gated', 'fidelity_below_auto_send_floor'],
+      reviewTriggerLabels: [
+        'This offers something free. Your call.',
+        "This doesn't sound enough like you.",
+      ],
+      ungroundedClaims: [],
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ drafts: [reviewWireDraft(review)] }), { status: 200 }),
+    );
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(pickReview(result.data.drafts[0])).toEqual(review);
+  });
+
+  it('listQueue reads a draft without the four fields as nothing recorded, not a parse failure', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ drafts: [reviewWireDraft({})] }), { status: 200 }),
+    );
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(pickReview(result.data.drafts[0])).toEqual({
+        reviewReasonCode: '',
+        reviewTriggers: [],
+        reviewTriggerLabels: [],
+        ungroundedClaims: [],
+      });
+    }
+  });
+
+  // `drafts` is one array, so a strict parse would let one bad field blank the
+  // whole queue.
+  it('listQueue degrades a malformed review field to empty instead of failing every draft', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          drafts: [
+            reviewWireDraft({
+              reviewReasonCode: 42,
+              reviewTriggers: 'commitment_type_gated',
+              reviewTriggerLabels: null,
+              ungroundedClaims: null,
+            }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.drafts).toHaveLength(1);
+      expect(pickReview(result.data.drafts[0])).toEqual({
+        reviewReasonCode: '',
+        reviewTriggers: [],
+        reviewTriggerLabels: [],
+        ungroundedClaims: [],
+      });
+    }
+  });
+
   it('listQueue parses cleanly when the server omits agentReasoning (pre-TAC-278 deploy)', async () => {
     // TAC-276 schema is tolerant: agentReasoning is .nullable().optional().default(null).
     // Until sibling TAC-278 ships the server column, the field is absent from
@@ -261,6 +360,10 @@ describe('lib/api/queue HTTP shape', () => {
       pendingSinceMs: 240_000,
       recentContext: [],
       langfuseTraceId: null,
+      reviewReasonCode: '',
+      reviewTriggers: [],
+      reviewTriggerLabels: [],
+      ungroundedClaims: [],
     };
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ drafts: [draftWithoutReasoning] }), {
@@ -316,6 +419,10 @@ describe('lib/api/queue HTTP shape', () => {
         },
       ],
       langfuseTraceId: null,
+      reviewReasonCode: '',
+      reviewTriggers: [],
+      reviewTriggerLabels: [],
+      ungroundedClaims: [],
     };
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ drafts: [newestFirstPayload] }), {
@@ -440,6 +547,10 @@ describe('lib/api/queue HTTP shape', () => {
       pendingSinceMs: 240_000,
       recentContext: [],
       langfuseTraceId: null,
+      reviewReasonCode: '',
+      reviewTriggers: [],
+      reviewTriggerLabels: [],
+      ungroundedClaims: [],
     };
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ drafts: [draftWithNullReasoning] }), {

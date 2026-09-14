@@ -95,6 +95,10 @@ describe('lib/fixtures/queue emitter', () => {
         },
       ],
       langfuseTraceId: null,
+      reviewReasonCode: '',
+      reviewTriggers: [],
+      reviewTriggerLabels: [],
+      ungroundedClaims: [],
     };
 
     triggerQueueAddedFixture(newDraft);

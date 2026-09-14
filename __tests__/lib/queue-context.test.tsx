@@ -64,6 +64,10 @@ function makeDraft(over: Partial<PendingDraft> & { messageId: string }): Pending
     pendingSinceMs: 1,
     recentContext: [],
     langfuseTraceId: null,
+    reviewReasonCode: '',
+    reviewTriggers: [],
+    reviewTriggerLabels: [],
+    ungroundedClaims: [],
     ...over,
   };
 }

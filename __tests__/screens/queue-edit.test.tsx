@@ -1,3 +1,4 @@
+import { type ReactNode } from 'react';
 import { ScrollView } from 'react-native';
 
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react-native';
@@ -23,7 +24,7 @@ import {
 const mockRouter = {
   push: jest.fn(),
   back: jest.fn(),
-  params: {} as { messageId?: string; prefill?: string },
+  params: {} as { messageId?: string; prefill?: string; bucket?: string },
 };
 
 const mockQueue: UseQueueResult = {
@@ -69,6 +70,19 @@ jest.mock('@/hooks/use-thread-realtime', () => ({
   useThreadRealtime: jest.fn(),
 }));
 
+// Captures the takeover's ground DECISION. How a ground paints belongs to
+// lib/grounds.ts and its own tests.
+const mockGround: { name: string | null } = { name: null };
+jest.mock('@/components/ground/ground-screen', () => {
+  const { View } = jest.requireActual('react-native');
+  return {
+    GroundScreen: ({ name, children }: { name: string; children: ReactNode }) => {
+      mockGround.name = name;
+      return <View>{children}</View>;
+    },
+  };
+});
+
 function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
   return {
     messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
@@ -93,6 +107,10 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
       },
     ],
     langfuseTraceId: null,
+    reviewReasonCode: '',
+    reviewTriggers: [],
+    reviewTriggerLabels: [],
+    ungroundedClaims: [],
     ...overrides,
   };
 }
@@ -179,6 +197,7 @@ describe('EditScreen', () => {
       params: {
         messageId: mockQueue.drafts[0].messageId,
         prefill: 'my version of the reply',
+        bucket: 'midThread',
       },
     });
     expect(mockQueue.restore).toHaveBeenCalledWith(mockQueue.drafts[0]);
@@ -268,6 +287,10 @@ describe('EditScreen', () => {
         },
       ],
       langfuseTraceId: null,
+      reviewReasonCode: '',
+      reviewTriggers: [],
+      reviewTriggerLabels: [],
+      ungroundedClaims: [],
     };
     const parsed = PendingDraftSchema.parse(newestFirstPayload);
     mockQueue.drafts = [parsed];
@@ -566,5 +589,121 @@ describe('EditScreen — decline handoff (TAC-364)', () => {
     const view = render(<EditScreen />);
     view.unmount();
     expect(peekDeclineHandoff(DECLINE_ID)).toBeNull();
+  });
+});
+
+// TAC-364. The takeover sits on the ground of the card that was swiped, passed
+// as a route param, and its header says what kind of decision it is and why, in
+// the same two registers as the card.
+describe('EditScreen — ground and header (TAC-364)', () => {
+  const DECLINE_ID = '88b1e6d8-9a0f-4bc2-8e4d-5a6b7c8d9e0f';
+  const BODY = "So sorry, we can't do the cortado today after all.";
+
+  beforeEach(() => {
+    mockGround.name = null;
+  });
+
+  afterEach(() => {
+    __resetDeclineHandoffForTests();
+  });
+
+  it('sits on the bucket the card passed in', async () => {
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId, bucket: 'obligation' };
+    await renderAndDrain();
+    expect(mockGround.name).toBe('obligation');
+  });
+
+  it("derives the ground from the draft's code when no bucket was passed", async () => {
+    mockQueue.drafts = [makeDraft({ reviewReasonCode: 'knowledge_gap' })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    await renderAndDrain();
+    expect(mockGround.name).toBe('outsideDraft');
+  });
+
+  // A route param is an untrusted string; the retired ground names are the
+  // likeliest thing to arrive in one.
+  it('ignores a bucket param it does not recognise', async () => {
+    mockQueue.drafts = [makeDraft({ reviewReasonCode: 'model_flagged' })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId, bucket: 'queueClay' };
+    await renderAndDrain();
+    expect(mockGround.name).toBe('draftWrong');
+  });
+
+  it('names the decision in caps and the reason in sentence case', async () => {
+    mockQueue.drafts = [
+      makeDraft({
+        reviewReasonCode: 'commitment_type_gated',
+        reviewReason: 'This offers something free. Your call.',
+      }),
+    ];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    await renderAndDrain();
+    expect(screen.getByText('OBLIGATION')).toBeTruthy();
+    expect(screen.getByText('This offers something free. Your call.')).toBeTruthy();
+    expect(screen.queryByText(/FLAGGED/)).toBeNull();
+  });
+
+  it('lists the other triggers and quotes a flagged claim', async () => {
+    const claim = 'the patio heaters run until close';
+    mockQueue.drafts = [
+      makeDraft({
+        reviewReasonCode: 'knowledge_gap_backstop',
+        reviewReason: "I wasn't sure this was true, so I didn't send it.",
+        reviewTriggers: ['knowledge_gap_backstop', 'hold_all_outbound'],
+        reviewTriggerLabels: [
+          "I wasn't sure this was true, so I didn't send it.",
+          "You're holding everything here right now.",
+        ],
+        ungroundedClaims: [claim],
+      }),
+    ];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    await renderAndDrain();
+    expect(screen.getByLabelText("Also: You're holding everything here right now.")).toBeTruthy();
+    expect(screen.getByLabelText(`Couldn't verify: “${claim}”`)).toBeTruthy();
+  });
+
+  // Frame D1: the operator is still dealing with the heads-up card, so the
+  // decline opens on Bay, although the decline draft's own code is mid-thread.
+  it('opens a decline on the heads-up ground, headed "Commitment"', () => {
+    mockQueue.drafts = [];
+    stageDeclineHandoff(
+      makeDraft({
+        messageId: DECLINE_ID,
+        draftBody: BODY,
+        reviewReasonCode: 'operator_decline_initiated',
+      }),
+    );
+    mockRouter.params = { messageId: DECLINE_ID, prefill: BODY, bucket: 'headsUp' };
+    render(<EditScreen />);
+    expect(mockGround.name).toBe('headsUp');
+    expect(screen.getByText('COMMITMENT')).toBeTruthy();
+    expect(screen.queryByText('MID-THREAD')).toBeNull();
+  });
+
+  it('keeps the bucket when a failed send reopens the takeover', async () => {
+    (editAndSend as jest.Mock).mockResolvedValue({
+      ok: false,
+      error: { kind: 'HTTP', status: 500, message: 'boom' },
+    });
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId, bucket: 'obligation' };
+    render(<EditScreen />);
+    fireEvent.changeText(screen.getByLabelText('Edit the draft before sending'), 'retry me');
+    fireEvent.press(screen.getByLabelText('Send my version'));
+    await waitFor(() => expect(mockRouter.push).toHaveBeenCalled());
+    expect(mockRouter.push).toHaveBeenCalledWith({
+      pathname: '/queue/edit',
+      params: {
+        messageId: mockQueue.drafts[0].messageId,
+        prefill: 'retry me',
+        bucket: 'obligation',
+      },
+    });
+  });
+
+  it('falls back to clay when the draft is gone', () => {
+    mockQueue.drafts = [];
+    render(<EditScreen />);
+    expect(mockGround.name).toBe('resting');
   });
 });
