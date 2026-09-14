@@ -24,6 +24,13 @@ import { type GroundName } from '@/lib/grounds';
 export type QueueTone = 'clay' | 'stone' | 'ink';
 
 /**
+ * A heads-up card has no review reason to derive a tone from, so it names one.
+ * Stone for now: the ground colour system (TAC-364's third PR) gives heads-up
+ * cards their own ground, Bay, and replaces this.
+ */
+export const HEADS_UP_TONE: QueueTone = 'stone';
+
+/**
  * Flag-strip fills. Deliberately NOT the `clay` / `inbound` / `ink` tailwind
  * tokens: the strip's clay is `clay-deep` (#A85638), not `clay` (#C66A4A).
  */

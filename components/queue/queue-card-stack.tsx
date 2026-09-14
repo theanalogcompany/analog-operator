@@ -9,11 +9,18 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useCommitmentThread } from '@/hooks/use-commitment-thread';
 import { useHaptics } from '@/hooks/use-haptics';
-import { useQueueSwipe } from '@/hooks/use-queue-swipe';
-import { type PendingDraft } from '@/lib/api/queue';
+import { type SwipeOutcome, useQueueSwipe } from '@/hooks/use-queue-swipe';
+import { type HeadsUpCommitment, type PendingDraft } from '@/lib/api/queue';
+import {
+  type QueueItem,
+  canCommitRightFor,
+  swipeActionFor,
+} from '@/lib/queue-items';
 import { card, layout, peek } from '@/lib/theme';
 
+import { HeadsUpCard } from './heads-up-card';
 import { QueueCard } from './queue-card';
 import { SwipeHints } from './swipe-hints';
 import { SwipeOverlay } from './swipe-overlay';
@@ -90,23 +97,33 @@ export function isComposerTap(tapY: number, composerTop: number): boolean {
   return composerTop >= 0 && tapY >= composerTop;
 }
 
-type FrontCardProps = {
-  draft: PendingDraft;
+type CardActions = {
+  onApprove: (draft: PendingDraft) => void;
+  onEdit: (draft: PendingDraft) => void;
+  onRefuseApprove: (draft: PendingDraft) => void;
+  /** Heads-up swipe-right. Sends nothing. */
+  onAcknowledge: (commitment: HeadsUpCommitment) => void;
+  /** Heads-up swipe-left. Starts a decline draft; sends nothing itself. */
+  onDecline: (commitment: HeadsUpCommitment) => void;
+  onPressHelp: () => void;
+};
+
+type FrontCardProps = CardActions & {
+  item: QueueItem;
   /** The card behind this one, shown in the near peek. */
-  next?: PendingDraft;
+  next?: QueueItem;
   cardHeight: number;
   hintReserve: number;
   hintBottom: number;
   position: number;
   total: number;
-  onApprove: (draft: PendingDraft) => void;
-  onEdit: (draft: PendingDraft) => void;
-  onRefuseApprove: (draft: PendingDraft) => void;
-  onPressHelp: () => void;
+  /** While this card's decline is being written the gesture is off, so a
+   *  second swipe can't start a second decline. */
+  busy: boolean;
 };
 
 /**
- * Owns the gesture for exactly one card. Keyed by `messageId` upstream, so the
+ * Owns the gesture for exactly one card. Keyed by the item's key upstream, so the
  * shared values are torn down and recreated when the deck advances — a card
  * that inherited the previous card's `translateX` would render already flown
  * off the screen. (TAC-312.)
@@ -117,16 +134,19 @@ type FrontCardProps = {
  * intends, not from the inside edge of the hint reserve.
  */
 function FrontCard({
-  draft,
+  item,
   next,
   cardHeight,
   hintReserve,
   hintBottom,
   position,
   total,
+  busy,
   onApprove,
   onEdit,
   onRefuseApprove,
+  onAcknowledge,
+  onDecline,
   onPressHelp,
 }: FrontCardProps) {
   const haptics = useHaptics();
@@ -134,32 +154,66 @@ function FrontCard({
   // A draft with nothing in it can't be sent, so the gesture must not complete.
   // Same predicate the card render uses to choose between the draft body and
   // the placeholder, so what the operator sees and what the swipe allows can't
-  // disagree. (TAC-312.)
-  const canCommitRight = draft.draftBody.trim().length > 0;
+  // disagree. (TAC-312.) A heads-up card can always be acknowledged.
+  const canCommitRight = canCommitRightFor(item);
 
   const composerTop = useSharedValue<number>(-1);
 
+  // Every finished swipe resolves through `swipeActionFor`, the one place that
+  // decides what a gesture does to each kind of card. There is deliberately no
+  // shortcut from a gesture callback straight to `onApprove`: a heads-up card
+  // shares this chassis, and a swipe-right routed like a draft's would send a
+  // real message to a guest. (TAC-364.)
+  const dispatch = (outcome: SwipeOutcome): void => {
+    const action = swipeActionFor(item, outcome);
+    switch (action.type) {
+      case 'approve':
+        haptics.swipeRightSuccess();
+        onApprove(action.draft);
+        return;
+      case 'edit':
+        haptics.swipeLeftEdit();
+        onEdit(action.draft);
+        return;
+      case 'refuse-approve':
+        haptics.swipeRefused();
+        onRefuseApprove(action.draft);
+        return;
+      case 'acknowledge':
+        haptics.swipeRightSuccess();
+        onAcknowledge(action.commitment);
+        return;
+      case 'decline':
+        haptics.swipeLeftEdit();
+        onDecline(action.commitment);
+        return;
+      case 'none':
+        return;
+    }
+  };
+
+  // Only a draft has a composer to tap. A heads-up card never reports a
+  // composer frame, so the hit-test below can't match, but the kind check means
+  // a stray tap can never reach `onDecline` either: a tap is not a decline.
   const openEditor = (): void => {
-    haptics.swipeLeftEdit();
-    onEdit(draft);
+    if (item.kind === 'draft') dispatch('left');
   };
 
   const { pan, translateX, rotation, direction, intensity } = useQueueSwipe({
-    onCommitRight: () => {
-      haptics.swipeRightSuccess();
-      onApprove(draft);
-    },
-    onCommitLeft: openEditor,
-    onRefuseRight: () => {
-      haptics.swipeRefused();
-      onRefuseApprove(draft);
-    },
+    onCommitRight: () => dispatch('right'),
+    onCommitLeft: () => dispatch('left'),
+    onRefuseRight: () => dispatch('refuse-right'),
     onCrossThreshold: () => {
       haptics.swipeThresholdCrossed();
     },
     canCommitRight,
-    enabled: true,
+    enabled: !busy,
   });
+
+  const thread = useCommitmentThread(
+    item.kind === 'headsUp' ? item.commitment.sourceMessageId : null,
+    item.kind === 'headsUp',
+  );
 
   const tap = Gesture.Tap()
     .maxDuration(300)
@@ -200,7 +254,7 @@ function FrontCard({
             depth="near"
             height={cardHeight}
             intensity={intensity}
-            draft={next}
+            item={next}
           />
           <GestureDetector gesture={gesture}>
             {/* collapsable={false} is mandatory: RN flattens views with no
@@ -214,18 +268,31 @@ function FrontCard({
                 cardStyle,
               ]}
             >
-              <QueueCard
-                draft={draft}
-                height={cardHeight}
-                position={position}
-                total={total}
-                onComposerLayout={(event: LayoutChangeEvent) => {
-                  composerTop.value = event.nativeEvent.layout.y;
-                }}
-                overlay={
-                  <SwipeOverlay direction={direction} intensity={intensity} />
-                }
-              />
+              {item.kind === 'draft' ? (
+                <QueueCard
+                  draft={item.draft}
+                  height={cardHeight}
+                  position={position}
+                  total={total}
+                  onComposerLayout={(event: LayoutChangeEvent) => {
+                    composerTop.value = event.nativeEvent.layout.y;
+                  }}
+                  overlay={
+                    <SwipeOverlay direction={direction} intensity={intensity} />
+                  }
+                />
+              ) : (
+                <HeadsUpCard
+                  commitment={item.commitment}
+                  height={cardHeight}
+                  thread={thread}
+                  position={position}
+                  total={total}
+                  overlay={
+                    <SwipeOverlay direction={direction} intensity={intensity} />
+                  }
+                />
+              )}
             </Animated.View>
           </GestureDetector>
         </View>
@@ -240,6 +307,7 @@ function FrontCard({
           intensity={intensity}
           canSend={canCommitRight}
           onPressHelp={onPressHelp}
+          kind={item.kind}
         />
       </View>
     </View>
@@ -266,10 +334,10 @@ type PeekSlabProps = {
    * which is what the brightening was always expressing. The far slab stays
    * blank — at 0.26 any text would be unreadable noise rather than depth.
    */
-  draft?: PendingDraft;
+  item?: QueueItem;
 };
 
-function PeekSlab({ depth, height, intensity, draft }: PeekSlabProps) {
+function PeekSlab({ depth, height, intensity, item }: PeekSlabProps) {
   const config = peek[depth];
   const base = config.baseOpacity;
   const gain = config.dragGain;
@@ -295,7 +363,7 @@ function PeekSlab({ depth, height, intensity, draft }: PeekSlabProps) {
           borderRadius: card.radiusPx,
           // The card paints its own white; a second layer underneath it only
           // shows at the scaled edges.
-          backgroundColor: draft ? 'transparent' : '#FFFFFF',
+          backgroundColor: item ? 'transparent' : '#FFFFFF',
           zIndex: depth === 'near' ? 2 : 1,
           transform: [
             { translateY: config.translateYPx },
@@ -305,35 +373,35 @@ function PeekSlab({ depth, height, intensity, draft }: PeekSlabProps) {
         style,
       ]}
     >
-      {draft ? <QueueCard draft={draft} height={height} /> : null}
+      {item?.kind === 'draft' ? (
+        <QueueCard draft={item.draft} height={height} />
+      ) : item?.kind === 'headsUp' ? (
+        <HeadsUpCard commitment={item.commitment} height={height} />
+      ) : null}
     </Animated.View>
   );
 }
 
-type Props = {
-  drafts: PendingDraft[];
+type Props = CardActions & {
+  items: QueueItem[];
   position: number;
   total: number;
-  onApprove: (draft: PendingDraft) => void;
-  onEdit: (draft: PendingDraft) => void;
-  onRefuseApprove: (draft: PendingDraft) => void;
-  onPressHelp: () => void;
+  /** Key of the card whose decline is being written, if any. */
+  busyKey?: string | null;
 };
 
 export function QueueCardStack({
-  drafts,
+  items,
   position,
   total,
-  onApprove,
-  onEdit,
-  onRefuseApprove,
-  onPressHelp,
+  busyKey = null,
+  ...actions
 }: Props) {
   const insets = useSafeAreaInsets();
   const [availableHeight, setAvailableHeight] = useState(0);
   const { cardHeight, hintReserve } = resolveCardLayout(availableHeight);
-  const top = drafts[0];
-  const next = drafts[1];
+  const top = items[0];
+  const next = items[1];
 
   return (
     <View
@@ -342,18 +410,16 @@ export function QueueCardStack({
     >
       {top ? (
         <FrontCard
-          key={top.messageId}
-          draft={top}
+          key={top.key}
+          item={top}
           next={next}
           cardHeight={cardHeight}
           hintReserve={hintReserve}
           hintBottom={insets.bottom + layout.hintRowGapPx}
           position={position}
           total={total}
-          onApprove={onApprove}
-          onEdit={onEdit}
-          onRefuseApprove={onRefuseApprove}
-          onPressHelp={onPressHelp}
+          busy={busyKey === top.key}
+          {...actions}
         />
       ) : null}
     </View>

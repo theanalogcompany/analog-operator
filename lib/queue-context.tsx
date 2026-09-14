@@ -8,7 +8,8 @@
 // rather than in each screen, is what makes "every venue-scoped view respects
 // the selection" true by construction instead of by vigilance: the queue
 // screen, the edit takeover, the top-nav count and the app-icon badge all read
-// `drafts` from this context, so none of them can be forgotten.
+// `drafts` and `commitments` from this context, so none of them can be
+// forgotten.
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
@@ -19,17 +20,18 @@ import { filterByVenue } from '@/lib/venue-filter';
 
 export type QueueContextValue = UseQueueResult & {
   /**
-   * The venue a guest's pending draft belongs to, looked up across ALL the
-   * operator's venues rather than just the selected one. Returns null when no
-   * pending draft matches.
+   * The venue a guest's pending card belongs to, looked up across ALL the
+   * operator's venues rather than just the selected one. A card is a pending
+   * draft or a heads-up card; returns null when neither matches.
    *
    * This is the one deliberate window onto unfiltered data, and it is shaped
    * to stay one: it answers "which venue?" with a venue id, and cannot be used
-   * to render a cross-venue draft. It exists for the notification tap, which
-   * arrives as a bare guestId — the APNs payload carries no venueId — so
-   * without this the app could not tell whether a tapped guest belongs to the
-   * venue on screen. Do NOT widen this into an `allDrafts` escape hatch; that
-   * re-creates the merged view this ticket removes.
+   * to render a cross-venue card. It exists for the notification tap, which
+   * arrives with a guestId and no venueId, so without this the app could not
+   * tell whether a tapped guest belongs to the venue on screen. Heads-up cards
+   * are consulted too, because an arrival push is a tap like any other.
+   * (TAC-364.) Do NOT widen this into an `allDrafts` escape hatch; that
+   * re-creates the merged view TAC-382 removed.
    */
   findVenueIdForGuest: (guestId: string) => string | null;
 };
@@ -55,6 +57,10 @@ function scopeQueueToVenue(
   venue: VenueScope,
 ): QueueContextValue {
   const drafts = filterByVenue(queue.drafts, venue.selectedVenueId);
+  // Heads-up cards go through the same filter. A commitment carries `venueId`
+  // for exactly this (TAC-364): without it the card would have to bypass the
+  // filter and show one venue's arrivals to an operator looking at another.
+  const commitments = filterByVenue(queue.commitments, venue.selectedVenueId);
 
   // Venue status leads. An unresolved selection means we genuinely don't know
   // what to show yet, and reporting 'ready' with an empty list would render
@@ -72,6 +78,7 @@ function scopeQueueToVenue(
   return {
     ...queue,
     drafts,
+    commitments,
     status,
     // `restore` is passed through DELIBERATELY UNFILTERED. It writes into the
     // full list, so undoing a send made in venue A while venue B is on screen
@@ -79,9 +86,12 @@ function scopeQueueToVenue(
     // injecting it into B's. That cross-venue write is the bug TAC-382 flagged
     // as highest priority, and this is the fix (option 1): the undo window
     // survives a venue switch and `POST /undo` is untouched. Wrapping
-    // `restore` to filter would break it.
+    // `restore` to filter would break it. `restoreCommitment` passes through
+    // unfiltered for the same reason.
     findVenueIdForGuest: (guestId: string) =>
-      queue.drafts.find((d) => d.guestId === guestId)?.venueId ?? null,
+      queue.drafts.find((d) => d.guestId === guestId)?.venueId ??
+      queue.commitments.find((c) => c.guestId === guestId)?.venueId ??
+      null,
   };
 }
 

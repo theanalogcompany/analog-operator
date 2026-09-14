@@ -14,7 +14,7 @@ import { Text } from 'react-native';
 
 import { QueueProvider, useQueueContext } from '@/lib/queue-context';
 import { VenueProvider, useVenueSelection } from '@/lib/venue-context';
-import { type PendingDraft, listQueue } from '@/lib/api/queue';
+import { type HeadsUpCommitment, type PendingDraft, listQueue } from '@/lib/api/queue';
 import { resolveOperatorVenues } from '@/lib/auth/operator';
 
 jest.mock('@/hooks/use-queue-realtime', () => ({ useQueueRealtime: jest.fn() }));
@@ -89,6 +89,7 @@ const B1 = makeDraft({
 // undo restore the way the app does.
 const handle: {
   ids: string[];
+  commitmentIds: string[];
   status: string;
   restore: (d: PendingDraft) => void;
   optimisticallyRemove: (messageId: string) => void;
@@ -96,6 +97,7 @@ const handle: {
   findVenueIdForGuest: (guestId: string) => string | null;
 } = {
   ids: [],
+  commitmentIds: [],
   status: 'loading',
   restore: () => {},
   optimisticallyRemove: () => {},
@@ -107,6 +109,7 @@ function Probe() {
   const queue = useQueueContext();
   const venue = useVenueSelection();
   handle.ids = queue.drafts.map((d) => d.messageId);
+  handle.commitmentIds = queue.commitments.map((c) => c.id);
   handle.status = queue.status;
   handle.restore = queue.restore;
   handle.optimisticallyRemove = queue.optimisticallyRemove;
@@ -135,7 +138,7 @@ beforeEach(async () => {
     operatorId: OPERATOR_ID,
     venues: [LE_MILS, CENTRAL_PERK],
   });
-  listQueueMock.mockResolvedValue({ ok: true, data: [A1, B1, A2] });
+  listQueueMock.mockResolvedValue({ ok: true, data: { drafts: [A1, B1, A2], commitments: [] } });
 });
 
 describe('QueueProvider venue filtering', () => {
@@ -281,5 +284,63 @@ describe('provider nesting', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('heads-up cards follow the venue selection (TAC-364)', () => {
+  const commitmentAt = (
+    venueId: string,
+    id: string,
+    guestId: string,
+  ): HeadsUpCommitment => ({
+    id,
+    venueId,
+    guestId,
+    type: 'comp',
+    guest: { name: 'Sam' },
+    description: 'A cortado on the house',
+    code: '7K2P',
+    expected_arrival: null,
+    created_at: '2026-09-14T08:00:00.000Z',
+    recognitionState: null,
+    sourceMessageId: null,
+  });
+  const C_A = commitmentAt(
+    VENUE_A,
+    'c1a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    'c0000000-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+  );
+  const C_B = commitmentAt(
+    VENUE_B,
+    'c2a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    'c1000000-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+  );
+
+  beforeEach(() => {
+    listQueueMock.mockResolvedValue({
+      ok: true,
+      data: { drafts: [A1, B1], commitments: [C_A, C_B] },
+    });
+  });
+
+  it('shows only the selected venue’s heads-up cards', async () => {
+    mount();
+    await waitFor(() => expect(handle.status).toBe('ready'));
+    expect(handle.commitmentIds).toEqual([C_A.id]);
+  });
+
+  it('swaps heads-up cards on a venue switch, and never merges them', async () => {
+    mount();
+    await waitFor(() => expect(handle.commitmentIds).toEqual([C_A.id]));
+    await act(async () => {
+      handle.select(VENUE_B);
+    });
+    await waitFor(() => expect(handle.commitmentIds).toEqual([C_B.id]));
+  });
+
+  it('resolves an arrival push’s venue from a heads-up card', async () => {
+    mount();
+    await waitFor(() => expect(handle.status).toBe('ready'));
+    expect(handle.findVenueIdForGuest(C_B.guestId)).toBe(VENUE_B);
   });
 });

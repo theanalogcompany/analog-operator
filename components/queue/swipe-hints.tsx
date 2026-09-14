@@ -38,6 +38,13 @@ type Props = {
    *  says so permanently rather than only while the finger is down. */
   canSend: boolean;
   onPressHelp: () => void;
+  /**
+   * The card the row sits under. A heads-up card reads "← DECLINE" and
+   * "ACKNOWLEDGE →" and drops the centre help link: "ACKNOWLEDGE →" needs
+   * about 130px, and the nowrap centre label starves the outer columns until
+   * the hint wraps into it. (TAC-364 design spec, card 05.)
+   */
+  kind?: 'draft' | 'headsUp';
 };
 
 export function SwipeHints({
@@ -45,6 +52,7 @@ export function SwipeHints({
   intensity,
   canSend,
   onPressHelp,
+  kind = 'draft',
 }: Props) {
   const leftStyle = useAnimatedStyle(() => {
     const { grow, dim } = hintState({
@@ -69,6 +77,41 @@ export function SwipeHints({
       color: interpolateColor(dim, [0, 1], [hint.restColor, hint.dimmedColor]),
     };
   });
+
+  if (kind === 'headsUp') {
+    return (
+      // No help link on this row, so nothing in it is tappable: the whole row
+      // is inert and can never steal a swipe.
+      <View
+        pointerEvents="none"
+        style={{
+          flexDirection: 'row',
+          alignItems: 'baseline',
+        }}
+      >
+        <View style={{ flex: 1, alignItems: 'flex-start' }}>
+          <Animated.Text
+            allowFontScaling={false}
+            className="font-inter-tight-medium"
+            accessibilityLabel="Swipe left to decline"
+            style={[{ letterSpacing: typePresets.hint.tracking }, leftStyle]}
+          >
+            ← DECLINE
+          </Animated.Text>
+        </View>
+        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+          <Animated.Text
+            allowFontScaling={false}
+            className="font-inter-tight-medium"
+            accessibilityLabel="Swipe right to acknowledge"
+            style={[{ letterSpacing: typePresets.hint.tracking }, rightStyle]}
+          >
+            ACKNOWLEDGE →
+          </Animated.Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     // box-none, not none. The design marks the whole row pointer-events:none so

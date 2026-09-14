@@ -78,6 +78,15 @@ export function createQueueChannel(opts: QueueChannelOptions): QueueChannel {
     opts.onEvent({ type: 'queue_changed' });
   };
 
+  // Heads-up cards (TAC-364). A commitment entering `pending_ack` adds a card
+  // and leaving it (acknowledged, cancelled) removes one, and neither shows up
+  // in `messages`. No post-filter: every change to a commitment in these
+  // venues can move a card, and they are rare enough that a reload each is
+  // cheap. The `venue_id` filter is the same security gate as above.
+  const handleCommitment = (): void => {
+    opts.onEvent({ type: 'queue_changed' });
+  };
+
   const channel: RealtimeChannel = supabase
     .channel(`operator-queue-${opts.operatorId}`)
     .on(
@@ -99,6 +108,26 @@ export function createQueueChannel(opts: QueueChannelOptions): QueueChannel {
         filter: venueFilter,
       },
       handle,
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'guest_commitments',
+        filter: venueFilter,
+      },
+      handleCommitment,
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'guest_commitments',
+        filter: venueFilter,
+      },
+      handleCommitment,
     )
     .subscribe((status) => {
       const reconnected =
