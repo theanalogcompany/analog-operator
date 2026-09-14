@@ -1,5 +1,5 @@
 import type { ThreadMessage } from '@/lib/api/queue';
-import { computeItems, formatClusterTimestamp } from '@/lib/thread-cluster';
+import { computeItems, formatClusterTimestamp, formatDayDivider } from '@/lib/thread-cluster';
 
 const UTC = 'UTC';
 
@@ -161,5 +161,59 @@ describe('formatClusterTimestamp', () => {
     // Some Node Intl builds insert ", " between weekday and month — accept
     // either with or without commas as long as the four tokens are present.
     expect(label).toMatch(/^[A-Z][a-z]{2}\W+[A-Z][a-z]{2}\W+\d{1,2}\W+·\W+(morning|afternoon|evening|night)$/);
+  });
+});
+
+describe('formatDayDivider', () => {
+  const TZ = 'America/Los_Angeles';
+  // 2026-09-13 19:14 Pacific.
+  const now = Date.parse('2026-09-14T02:14:00Z');
+
+  it('says "Today" with an exact clock time', () => {
+    expect(formatDayDivider('2026-09-14T02:14:00Z', TZ, now)).toBe(
+      'Today · 7:14 PM',
+    );
+  });
+
+  it('says "Yesterday" for the previous calendar day in that zone', () => {
+    expect(formatDayDivider('2026-09-13T02:14:00Z', TZ, now)).toBe(
+      'Yesterday · 7:14 PM',
+    );
+  });
+
+  it('names the day for anything older', () => {
+    expect(formatDayDivider('2026-09-10T02:14:00Z', TZ, now)).toBe(
+      'Wed Sep 9 · 7:14 PM',
+    );
+  });
+
+  it('is relative to the given zone, not the runner’s', () => {
+    // `now` is Sep 13 evening in Pacific but already Sep 14 in UTC. An instant
+    // from Sep 13 afternoon Pacific is therefore "Today" in Pacific and
+    // "Yesterday" in UTC — the same instant, two honest answers. A divider that
+    // read the runner's ambient zone would flip between CI and a laptop.
+    const instant = '2026-09-13T20:00:00Z';
+    expect(formatDayDivider(instant, TZ, now)).toBe('Today · 1:00 PM');
+    expect(formatDayDivider(instant, 'UTC', now)).toBe('Yesterday · 8:00 PM');
+  });
+
+  it('renders midnight as 12 AM, not 0 AM', () => {
+    // Midnight Pacific on the same calendar day as `now`.
+    expect(formatDayDivider('2026-09-13T07:00:00Z', TZ, now)).toBe(
+      'Today · 12:00 AM',
+    );
+  });
+
+  it('uses tomorrow’s date rather than claiming "Today"', () => {
+    // A clock-skewed server timestamp is not a reason to render a lie.
+    expect(formatDayDivider('2026-09-14T07:00:00Z', TZ, now)).toBe(
+      'Mon Sep 14 · 12:00 AM',
+    );
+  });
+
+  it('renders noon as 12 PM', () => {
+    expect(formatDayDivider('2026-09-13T19:00:00Z', TZ, now)).toBe(
+      'Today · 12:00 PM',
+    );
   });
 });

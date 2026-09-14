@@ -1,9 +1,12 @@
 import {
   clearOperatorCache,
   fetchOperatorVenueIds,
+  fetchOperatorVenues,
   getOperator,
+  resolveOperatorVenues,
   wireOperatorCacheClear,
 } from '@/lib/auth/operator';
+import { FIXTURE_VENUES } from '@/lib/fixtures/venues';
 import { supabase } from '@/lib/supabase/client';
 
 jest.mock('@/lib/supabase/client', () => {
@@ -217,6 +220,218 @@ describe('fetchOperatorVenueIds', () => {
 
     const result = await fetchOperatorVenueIds(OPERATOR_ID);
     expect(result).toEqual({ ok: false, error: 'invalid_response' });
+  });
+});
+
+describe('fetchOperatorVenues', () => {
+  // The embed is an object, not an array: `operator_venues.venue_id` is a
+  // to-one FK (`operator_venues_venue_id_fkey` -> `venues`), verified against
+  // the live schema.
+  function mockVenueJoinRows(rows: unknown[]) {
+    const eq = jest.fn().mockResolvedValue({ data: rows, error: null });
+    const select = jest.fn().mockReturnValue({ eq });
+    supabaseFrom.mockImplementation((table: string) => {
+      if (table === 'operator_venues') return { select };
+      throw new Error(`unexpected from(${table})`);
+    });
+    return { select, eq };
+  }
+
+  const LE_MILS = {
+    id: VENUE_A,
+    name: "Le Mil's Coffee",
+    slug: 'le-mils-coffee',
+    timezone: 'America/Los_Angeles',
+  };
+  const CENTRAL_PERK = {
+    id: VENUE_B,
+    name: 'Mock Central Perk',
+    slug: 'mock-central-perk',
+    timezone: 'America/New_York',
+  };
+
+  it('returns the joined venue rows with their real names', async () => {
+    const { select, eq } = mockVenueJoinRows([
+      { venues: LE_MILS },
+      { venues: CENTRAL_PERK },
+    ]);
+
+    const result = await fetchOperatorVenues(OPERATOR_ID);
+    expect(result).toEqual({ ok: true, venues: [LE_MILS, CENTRAL_PERK] });
+    expect(select).toHaveBeenCalledWith('venues(id, name, slug, timezone)');
+    expect(eq).toHaveBeenCalledWith('operator_id', OPERATOR_ID);
+  });
+
+  it("keeps punctuation a slug would have dropped", async () => {
+    mockVenueJoinRows([{ venues: LE_MILS }]);
+    const result = await fetchOperatorVenues(OPERATOR_ID);
+    // The whole reason this function exists rather than un-slugifying:
+    // `le-mils-coffee` cannot round-trip back to "Le Mil's Coffee".
+    expect(result.ok && result.venues[0].name).toBe("Le Mil's Coffee");
+  });
+
+  it('returns an empty list when the operator has no venues', async () => {
+    mockVenueJoinRows([]);
+    const result = await fetchOperatorVenues(OPERATOR_ID);
+    expect(result).toEqual({ ok: true, venues: [] });
+  });
+
+  it('caches by operatorId, and refetches for a different one', async () => {
+    mockVenueJoinRows([{ venues: LE_MILS }]);
+    await fetchOperatorVenues(OPERATOR_ID);
+
+    supabaseFrom.mockImplementation(() => {
+      throw new Error('should not requery on cache hit');
+    });
+    const cached = await fetchOperatorVenues(OPERATOR_ID);
+    expect(cached).toEqual({ ok: true, venues: [LE_MILS] });
+
+    mockVenueJoinRows([{ venues: CENTRAL_PERK }]);
+    const other = await fetchOperatorVenues(
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    );
+    expect(other).toEqual({ ok: true, venues: [CENTRAL_PERK] });
+  });
+
+  it('returns rpc_failed on a Supabase error', async () => {
+    const eq = jest
+      .fn()
+      .mockResolvedValue({ data: null, error: { message: 'boom' } });
+    const select = jest.fn().mockReturnValue({ eq });
+    supabaseFrom.mockReturnValue({ select });
+
+    const result = await fetchOperatorVenues(OPERATOR_ID);
+    expect(result).toEqual({ ok: false, error: 'rpc_failed' });
+  });
+
+  it('returns invalid_response when the embed is missing a column', async () => {
+    mockVenueJoinRows([{ venues: { id: VENUE_A, slug: 'x', timezone: 'UTC' } }]);
+    const result = await fetchOperatorVenues(OPERATOR_ID);
+    expect(result).toEqual({ ok: false, error: 'invalid_response' });
+  });
+
+  it('is cleared by clearOperatorCache along with the id list', async () => {
+    mockVenueJoinRows([{ venues: LE_MILS }]);
+    await fetchOperatorVenues(OPERATOR_ID);
+    clearOperatorCache();
+
+    mockVenueJoinRows([{ venues: CENTRAL_PERK }]);
+    const after = await fetchOperatorVenues(OPERATOR_ID);
+    expect(after).toEqual({ ok: true, venues: [CENTRAL_PERK] });
+  });
+});
+
+describe('resolveOperatorVenues', () => {
+  const ORIGINAL_FIXTURE_FLAG = process.env.EXPO_PUBLIC_USE_FIXTURES;
+
+  afterEach(() => {
+    process.env.EXPO_PUBLIC_USE_FIXTURES = ORIGINAL_FIXTURE_FLAG;
+  });
+
+  it('serves the fixture venues without touching Supabase in fixture mode', async () => {
+    // Offline dev is the whole point of fixture mode, so this path must not
+    // make a network call. It must also return the SAME venue ids the fixture
+    // drafts carry, or every list filters down to nothing.
+    process.env.EXPO_PUBLIC_USE_FIXTURES = 'true';
+    getSession.mockImplementation(() => {
+      throw new Error('fixture mode must not reach Supabase');
+    });
+    supabaseFrom.mockImplementation(() => {
+      throw new Error('fixture mode must not reach Supabase');
+    });
+
+    const result = await resolveOperatorVenues();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.venues.map((v) => v.id)).toEqual(
+        FIXTURE_VENUES.map((v) => v.id),
+      );
+      expect(result.operatorId).toBeTruthy();
+    }
+  });
+
+  it('resolves operator then venues in live mode', async () => {
+    process.env.EXPO_PUBLIC_USE_FIXTURES = 'false';
+    getSession.mockResolvedValue({
+      data: { session: { user: { id: SESSION_USER_ID } } },
+    });
+    const maybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        id: OPERATOR_ID,
+        phone_number: '+15551234567',
+        email: 'op@cafe.com',
+        auth_user_id_phone: SESSION_USER_ID,
+        auth_user_id_email: null,
+      },
+      error: null,
+    });
+    const or = jest.fn().mockReturnValue({ maybeSingle });
+    const operatorsSelect = jest.fn().mockReturnValue({ or });
+    const eq = jest.fn().mockResolvedValue({
+      data: [
+        {
+          venues: {
+            id: VENUE_A,
+            name: "Le Mil's Coffee",
+            slug: 'le-mils-coffee',
+            timezone: 'America/Los_Angeles',
+          },
+        },
+      ],
+      error: null,
+    });
+    const venuesSelect = jest.fn().mockReturnValue({ eq });
+    supabaseFrom.mockImplementation((table: string) => {
+      if (table === 'operators') return { select: operatorsSelect };
+      if (table === 'operator_venues') return { select: venuesSelect };
+      throw new Error(`unexpected from(${table})`);
+    });
+
+    const result = await resolveOperatorVenues();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.operatorId).toBe(OPERATOR_ID);
+      expect(result.venues).toHaveLength(1);
+      expect(result.venues[0].name).toBe("Le Mil's Coffee");
+    }
+  });
+
+  it('propagates the operator lookup failure', async () => {
+    process.env.EXPO_PUBLIC_USE_FIXTURES = 'false';
+    getSession.mockResolvedValue({ data: { session: null } });
+    const result = await resolveOperatorVenues();
+    expect(result).toEqual({ ok: false, error: 'no_session' });
+  });
+
+  it('propagates the venue lookup failure', async () => {
+    process.env.EXPO_PUBLIC_USE_FIXTURES = 'false';
+    getSession.mockResolvedValue({
+      data: { session: { user: { id: SESSION_USER_ID } } },
+    });
+    const maybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        id: OPERATOR_ID,
+        phone_number: '+15551234567',
+        email: 'op@cafe.com',
+        auth_user_id_phone: SESSION_USER_ID,
+        auth_user_id_email: null,
+      },
+      error: null,
+    });
+    const or = jest.fn().mockReturnValue({ maybeSingle });
+    const operatorsSelect = jest.fn().mockReturnValue({ or });
+    const eq = jest
+      .fn()
+      .mockResolvedValue({ data: null, error: { message: 'boom' } });
+    const venuesSelect = jest.fn().mockReturnValue({ eq });
+    supabaseFrom.mockImplementation((table: string) => {
+      if (table === 'operators') return { select: operatorsSelect };
+      if (table === 'operator_venues') return { select: venuesSelect };
+      throw new Error(`unexpected from(${table})`);
+    });
+
+    const result = await resolveOperatorVenues();
+    expect(result).toEqual({ ok: false, error: 'rpc_failed' });
   });
 });
 

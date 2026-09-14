@@ -1,11 +1,19 @@
-import { Feather } from '@expo/vector-icons';
 import { type ReactNode } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { type LayoutChangeEvent, Text, View } from 'react-native';
 
+import { MessageBubble } from '@/components/ui/message-bubble';
+import { SendGlyph } from '@/components/ui/send-glyph';
+import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type PendingDraft } from '@/lib/api/queue';
-import { queueCard } from '@/lib/theme';
+import {
+  formatProgress,
+  reasonLabelFor,
+  stripColorFor,
+  toneFor,
+} from '@/lib/queue-tone';
+import { body as bodyType, card, typePresets } from '@/lib/theme';
+import { deviceTimezone, formatDayDivider } from '@/lib/thread-cluster';
 
-import { FlaggedBanner } from './flagged-banner';
 import { RecognitionBadge } from './recognition-badge';
 
 function displayName(draft: PendingDraft): string {
@@ -26,43 +34,53 @@ function minutesPending(draft: PendingDraft): string {
 
 type Props = {
   draft: PendingDraft;
+  /** Resolved by `resolveCardLayout` — fixed, so every card in the deck is
+   *  the same size regardless of how many messages it holds. */
+  height: number;
+  /** Session progress, for the flag strip's "01 / 04". Omitted on peek/preview
+   *  renders, which show no counter. */
+  position?: number;
+  total?: number;
   /**
-   * Fires when the operator taps the draft bubble. Routes to the edit screen.
-   * Per CLAUDE.md `Pressable inside GestureDetector` gotcha: this Pressable is
-   * scoped to the bubble subtree only — swipes anywhere else on the card go
-   * straight to the pan gesture. Bubble-originated swipes are an open UAT item.
+   * Reports the composer's frame in card-local coordinates. The stack uses it
+   * to hit-test taps, because the composer cannot be a `Pressable`: a Pressable
+   * inside a GestureDetector wins the responder race and kills the pan
+   * outright (CLAUDE.md / TAC-37).
    */
-  onPressDraftBubble?: () => void;
-  elevated?: boolean;
-  /** Rendered absolutely over the card content, clipped to the card's rounded
-   *  corners (e.g. the swipe-direction gradient on the front card). */
+  onComposerLayout?: (event: LayoutChangeEvent) => void;
+  /** Rendered above the card content, clipped to its rounded corners — the
+   *  swipe washes. */
   overlay?: ReactNode;
 };
 
-const cardOuterClass =
-  'overflow-hidden rounded-[20px] border-[0.5px] border-hairline bg-white';
-
+/**
+ * `0 26px 64px rgba(20,17,14,0.42)` — a large, soft lift off the gradient.
+ *
+ * `boxShadow` rather than the `shadowColor`/`shadowRadius` quartet: those are
+ * iOS-only, and the Android fallback (`elevation`) renders a tight dark line
+ * that reads as a border, not a lift. RN has supported cross-platform
+ * `boxShadow` since 0.76 and this project is on 0.81, so the quartet has
+ * nothing left to offer. Keep it as one string — mixing the two APIs on the
+ * same view double-draws on iOS.
+ */
 const cardShadow = {
-  shadowColor: '#1C1814',
-  shadowOpacity: 0.1,
-  shadowOffset: { width: 0, height: 8 },
-  shadowRadius: 24,
-  elevation: 6,
+  boxShadow: '0px 26px 64px rgba(20,17,14,0.42)',
 } as const;
 
 export function QueueCard({
   draft,
-  onPressDraftBubble,
-  elevated = true,
+  height,
+  position,
+  total,
+  onComposerLayout,
   overlay,
 }: Props) {
-  const a11yLabel = `Pending draft for ${displayName(draft)}.`;
-  const thread = draft.recentContext;
+  const tone = toneFor(draft);
+  const name = displayName(draft);
+
   // A blank draftBody is a real server state (the agent declined to draft, or
-  // the row landed before generation finished). Rendering it as an ordinary
-  // empty clay bubble with a send affordance is what invited the swipe-right
-  // that could never succeed — so blank bodies get placeholder copy, a muted
-  // hairline border, and no send glyph.
+  // the row landed before generation finished). The design gives it its own
+  // card: dimmed send glyph, different caption, and swipe-right disabled.
   //
   // Placeholder wording is fixed by the TAC-309 Contract. It deliberately says
   // nothing about drafts: a draft is our machinery, not the operator's mental
@@ -71,140 +89,206 @@ export function QueueCard({
   // "improve" this into app-state language. (TAC-310.)
   const hasDraft = draft.draftBody.trim().length > 0;
 
+  const thread = draft.recentContext;
+  const firstMessage = thread[0];
+  const reasoning = draft.agentReasoning?.trim();
+
   return (
+    // Two views, deliberately. iOS cannot both cast a shadow and clip its
+    // children on the same layer — with `overflow: hidden` and a shadow on one
+    // view, the clip stops applying at the corners and the white card showed
+    // through as wedges either side of the flag strip. So the outer view owns
+    // the shadow and the inner one owns the clip.
     <View
-      accessibilityRole="button"
-      accessibilityLabel={a11yLabel}
-      className={cardOuterClass}
-      style={[elevated ? cardShadow : null, { maxHeight: queueCard.maxHeightPx }]}
+      accessibilityLabel={`Pending draft for ${name}.`}
+      style={[
+        { width: '100%', height, borderRadius: card.radiusPx },
+        cardShadow,
+      ]}
     >
-      <View className="flex-row items-center gap-[10px] px-[18px] pb-[14px] pt-[18px]">
-        <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
-          {displayName(draft)}
-        </Text>
-        <RecognitionBadge state={draft.recognitionState} />
-        <Text
-          className="ml-auto font-inter-tight text-ink-faint"
-          style={{ fontSize: 11, letterSpacing: 0.44 }}
+      <View
+        style={{
+          flex: 1,
+          borderRadius: card.radiusPx,
+          backgroundColor: '#FFFFFF',
+          overflow: 'hidden',
+          flexDirection: 'column',
+        }}
+      >
+      {/* a. Flag strip — why this card is in front of you. */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          paddingVertical: 11,
+          paddingHorizontal: card.regionInsetPx,
+          backgroundColor: stripColorFor(tone),
+          // Matches the card's own corners rather than relying solely on the
+          // parent's clip.
+          borderTopLeftRadius: card.radiusPx,
+          borderTopRightRadius: card.radiusPx,
+        }}
+      >
+        <TrackedCaps
+          {...typePresets.flagReason}
+          color="#FFFFFF"
+          numberOfLines={2}
+          style={{ flex: 1 }}
         >
-          {minutesPending(draft)}
-        </Text>
+          {reasonLabelFor(draft)}
+        </TrackedCaps>
+        {position !== undefined && total !== undefined ? (
+          <TrackedCaps
+            {...typePresets.flagCounter}
+            color="rgba(255,255,255,0.6)"
+            accessibilityLabel={`Card ${position} of ${total}`}
+          >
+            {formatProgress(position, total)}
+          </TrackedCaps>
+        ) : null}
       </View>
 
-      <FlaggedBanner
-        label={draft.reviewReason}
-        detail={draft.agentReasoning}
-      />
+      {/* b. Head — who, and what the agent made of it. No hairline beneath:
+          with a fixed-height card and a bottom-anchored thread, a rule here
+          would point at empty space. */}
+      <View
+        style={{ paddingHorizontal: card.regionInsetPx, paddingTop: 20 }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TrackedCaps {...typePresets.cardName} color="#1C1814">
+            {name}
+          </TrackedCaps>
+          <RecognitionBadge state={draft.recognitionState} variant="card" />
+          <TrackedCaps
+            {...typePresets.elapsed}
+            color="#6F6658"
+            style={{ marginLeft: 'auto' }}
+          >
+            {minutesPending(draft)}
+          </TrackedCaps>
+        </View>
+        {reasoning ? (
+          <Text
+        allowFontScaling={false}
+            accessibilityLabel="Agent reasoning"
+            className="font-inter-tight"
+            style={{
+              marginTop: 12,
+              fontSize: bodyType.reasoning.size,
+              lineHeight: bodyType.reasoning.lineHeight,
+              color: '#6F6658',
+            }}
+          >
+            {reasoning}
+          </Text>
+        ) : null}
+      </View>
 
-      <View className="h-[0.5px] bg-hairline" style={{ marginHorizontal: 18 }} />
-
-      <ScrollView style={{ flexShrink: 1 }}>
-        {thread.length > 0 ? (
-          <View className="flex-col gap-[6px] px-[18px] pb-[6px] pt-[14px]">
-            {thread.map((m) => (
-              <View
-                key={m.id}
-                className={
-                  m.direction === 'inbound'
-                    ? 'self-start rounded-[18px] bg-inbound'
-                    : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
-                }
-                style={{
-                  maxWidth: '86%',
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                  borderBottomLeftRadius: m.direction === 'inbound' ? 6 : 18,
-                  borderBottomRightRadius: m.direction === 'outbound' ? 6 : 18,
-                }}
-              >
-                <Text
-                  className="font-inter-tight"
-                  style={{
-                    color: m.direction === 'inbound' ? '#F0EDE7' : '#1C1814',
-                    fontSize: 14,
-                    lineHeight: 20,
-                  }}
-                >
-                  {m.body}
-                </Text>
-              </View>
-            ))}
+      {/* c. Conversation — bottom-anchored, so the last message always sits
+          directly above the composer and the slack collects as air under the
+          head. Overflow is clipped, not scrolled: the full thread lives in the
+          edit takeover. */}
+      <View
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden',
+          justifyContent: 'flex-end',
+          gap: card.bubbleGapPx,
+          paddingHorizontal: card.regionInsetPx,
+          paddingBottom: 4,
+        }}
+      >
+        {firstMessage ? (
+          <View style={{ alignItems: 'center', paddingTop: 14, paddingBottom: 10 }}>
+            <TrackedCaps {...typePresets.dateDivider} color="#6F6658">
+              {formatDayDivider(firstMessage.createdAt, deviceTimezone())}
+            </TrackedCaps>
           </View>
         ) : null}
+        {thread.map((message) => (
+          <MessageBubble
+            key={message.id}
+            direction={message.direction}
+            body={message.body}
+            surface="card"
+          />
+        ))}
+      </View>
 
+      {/* d. Composer — a preview of the draft, not an input. Tapping it opens
+          the edit takeover; the tap is hoisted into the stack's gesture. */}
+      <View
+        testID="queue-card-composer"
+        onLayout={onComposerLayout}
+        style={{ paddingHorizontal: card.regionInsetPx, paddingBottom: 20 }}
+      >
         <View
-          className="flex-row justify-end"
-          style={{ paddingHorizontal: 18, paddingBottom: 18, paddingTop: 14 }}
+          style={{
+            marginTop: 14,
+            paddingTop: 14,
+            borderTopWidth: 1,
+            borderTopColor: 'rgba(28,24,20,0.10)',
+          }}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={hasDraft ? 'Edit draft' : 'Write your answer'}
-            onPress={onPressDraftBubble}
-            disabled={!onPressDraftBubble}
-            style={({ pressed }) => ({
+          <View
+            style={{
               position: 'relative',
-              maxWidth: '86%',
-              alignSelf: 'flex-end',
-              opacity: pressed ? 0.7 : 1,
-            })}
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: 'rgba(28,24,20,0.18)',
+              borderRadius: 20,
+              minHeight: 42,
+              paddingTop: 11,
+              paddingBottom: 11,
+              paddingLeft: 15,
+              paddingRight: 48,
+            }}
           >
-            <View
-              className="bg-white"
+            <Text
+        allowFontScaling={false}
+              className="font-inter-tight"
               style={{
-                borderWidth: 1,
-                // clay reads as "ready to send"; blank drafts drop to the
-                // hairline token so the bubble stops advertising an action.
-                borderColor: hasDraft ? '#C66A4A' : 'rgba(28, 24, 20, 0.12)',
-                borderRadius: 20,
-                borderBottomRightRadius: 6,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                // Room for the send glyph only when there's a glyph to clear.
-                paddingRight: hasDraft ? 48 : 16,
+                fontSize: bodyType.bubble.size,
+                lineHeight: bodyType.bubble.lineHeight,
+                color: hasDraft ? '#1C1814' : '#6F6658',
               }}
             >
-              <Text
-                className={
-                  hasDraft ? 'font-inter-tight text-ink' : 'font-inter-tight text-ink-faint'
-                }
-                style={{ fontSize: 14.5, lineHeight: 22 }}
-              >
-                {hasDraft ? draft.draftBody : 'Type your answer to send to the guest'}
-              </Text>
+              {hasDraft
+                ? draft.draftBody
+                : 'Type your answer to send to the guest'}
+            </Text>
+            <View style={{ position: 'absolute', right: 6, bottom: 6 }}>
+              <SendGlyph size={30} opacity={hasDraft ? 1 : 0.3} />
             </View>
-            {hasDraft ? (
-              <View
-                pointerEvents="none"
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                style={{
-                  position: 'absolute',
-                  right: 8,
-                  bottom: 8,
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor: '#C66A4A',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Feather name="send" size={14} color="#FFFFFF" />
-              </View>
-            ) : null}
-          </Pressable>
+          </View>
+          <TrackedCaps
+            {...typePresets.composerCaption}
+            color={hasDraft ? '#A85638' : '#6F6658'}
+            style={{ marginTop: 9, textAlign: 'right' }}
+          >
+            {hasDraft
+              ? 'Draft — swipe right to send'
+              : 'Nothing drafted — swipe left to write'}
+          </TrackedCaps>
         </View>
-      </ScrollView>
-      {overlay ? (
-        <View
-          pointerEvents="none"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-        >
-          {overlay}
-        </View>
-      ) : null}
+      </View>
+
+        {overlay ? (
+          <View
+            pointerEvents="none"
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          >
+            {overlay}
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
 
-export { displayName as queueCardDisplayName, minutesPending as queueCardMinutesPending };
+export {
+  displayName as queueCardDisplayName,
+  minutesPending as queueCardMinutesPending,
+};

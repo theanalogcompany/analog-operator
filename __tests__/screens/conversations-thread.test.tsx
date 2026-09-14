@@ -1,4 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import type React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import ThreadScreen from '@/app/conversations/[guestId]';
 import { useThreadRealtime, type UseThreadRealtimeOptions } from '@/hooks/use-thread-realtime';
@@ -74,22 +76,31 @@ beforeEach(() => {
   });
 });
 
+// These screens sit on a GroundScreen, which supplies the safe area.
+const metrics = {
+  frame: { x: 0, y: 0, width: 402, height: 874 },
+  insets: { top: 62, left: 0, right: 0, bottom: 34 },
+};
+function withSafeArea(ui: React.ReactElement) {
+  return <SafeAreaProvider initialMetrics={metrics}>{ui}</SafeAreaProvider>;
+}
+
 describe('ConversationThreadScreen', () => {
   it('renders the guest name, badge, and meta line', async () => {
-    render(<ThreadScreen />);
-    expect(screen.getByText('Maya R.')).toBeTruthy();
-    expect(screen.getByText('Returning')).toBeTruthy();
+    render(withSafeArea(<ThreadScreen />));
+    expect(screen.getByText('MAYA R.')).toBeTruthy();
+    expect(screen.getByLabelText('Recognition: Returning')).toBeTruthy();
     await waitFor(() => expect(screen.getByText(/4 conversations since/)).toBeTruthy());
   });
 
   it('fetches and renders the thread', async () => {
-    render(<ThreadScreen />);
+    render(withSafeArea(<ThreadScreen />));
     await waitFor(() => expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy());
     expect(screen.getByText('Done — got you down for two at 7:30.')).toBeTruthy();
   });
 
   it('renders the agent-handling footer note with the real agent name', async () => {
-    render(<ThreadScreen />);
+    render(withSafeArea(<ThreadScreen />));
     // Note: the JSX footer text uses `&rsquo;` (renders as a curly ’), not a
     // plain ASCII apostrophe — match what actually renders, not what's easy
     // to type.
@@ -101,14 +112,14 @@ describe('ConversationThreadScreen', () => {
   });
 
   it('does not render any compose input or send button', async () => {
-    render(<ThreadScreen />);
+    render(withSafeArea(<ThreadScreen />));
     await waitFor(() => expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy());
     expect(screen.queryByLabelText(/send/i)).toBeNull();
     expect(screen.queryByPlaceholderText(/type/i)).toBeNull();
   });
 
   it('navigates back when the back chevron is pressed', () => {
-    render(<ThreadScreen />);
+    render(withSafeArea(<ThreadScreen />));
     fireEvent.press(screen.getByLabelText('Back to conversations'));
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
   });
@@ -128,7 +139,7 @@ describe('ConversationThreadScreen', () => {
       captured.push(opts);
     });
 
-    render(<ThreadScreen />);
+    render(withSafeArea(<ThreadScreen />));
     await waitFor(() => expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy());
 
     expect(captured.length).toBeGreaterThan(1);
@@ -154,7 +165,7 @@ describe('ConversationThreadScreen', () => {
       captured = opts;
     });
 
-    render(<ThreadScreen />);
+    render(withSafeArea(<ThreadScreen />));
     await waitFor(() => expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy());
 
     const live: ThreadMessage = {
@@ -191,7 +202,7 @@ describe('ConversationThreadScreen', () => {
       error: { kind: 'NETWORK', message: 'offline' },
     });
 
-    render(<ThreadScreen />);
+    render(withSafeArea(<ThreadScreen />));
 
     await waitFor(() =>
       expect(screen.getByText('Done — got you down for two at 7:30.')).toBeTruthy(),
@@ -212,7 +223,7 @@ describe('ConversationThreadScreen', () => {
       }),
     );
 
-    render(<ThreadScreen />);
+    render(withSafeArea(<ThreadScreen />));
 
     const live: ThreadMessage = {
       id: 'live-1',

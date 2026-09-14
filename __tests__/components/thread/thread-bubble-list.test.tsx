@@ -22,7 +22,10 @@ const ITEMS: ThreadItem[] = [
 describe('ThreadBubbleList', () => {
   it('renders the timestamp label', () => {
     render(<ThreadBubbleList items={ITEMS} />);
-    expect(screen.getByText('Fri Sep 5 · evening')).toBeTruthy();
+    // Dividers render as tracked caps; the un-uppercased string stays as the
+    // accessibility label so VoiceOver doesn't spell it out.
+    expect(screen.getByText('FRI SEP 5 · EVENING')).toBeTruthy();
+    expect(screen.getByLabelText('Fri Sep 5 · evening')).toBeTruthy();
   });
 
   it('renders both bubble bodies', () => {

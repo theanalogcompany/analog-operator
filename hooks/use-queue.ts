@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQueueRealtime } from '@/hooks/use-queue-realtime';
 import { type ApiError } from '@/lib/api/errors';
@@ -125,5 +125,12 @@ export function useQueue(options?: { enabled?: boolean }): UseQueueResult {
     });
   }, []);
 
-  return { drafts, status, error, reload, optimisticallyRemove, restore };
+  // Memoized so the object identity is stable across renders. lib/queue-context
+  // derives the venue-filtered view from this with useMemo; a fresh object
+  // every render would re-run that filter (and hand QueueCardStack a new
+  // `drafts` array) on every unrelated re-render.
+  return useMemo(
+    () => ({ drafts, status, error, reload, optimisticallyRemove, restore }),
+    [drafts, status, error, reload, optimisticallyRemove, restore],
+  );
 }

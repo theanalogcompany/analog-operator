@@ -1,61 +1,55 @@
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
+import { MessageBubble, type BubbleSurface } from '@/components/ui/message-bubble';
+import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type ThreadItem } from '@/lib/thread-cluster';
+import { typePresets } from '@/lib/theme';
 
 type Props = {
   items: ThreadItem[];
+  /**
+   * `card` — the edit takeover, where outgoing bubbles keep their hairline.
+   * `thread` — the read-only text thread, where they don't: there's no white
+   * surface behind them to separate from.
+   */
+  surface?: BubbleSurface;
+  /** Divider colour. Both surfaces sit on a ground, so this is white by
+   *  default; the queue card passes its own darker value. */
+  dividerColor?: string;
 };
 
-export function ThreadBubbleList({ items }: Props) {
+export function ThreadBubbleList({
+  items,
+  surface = 'thread',
+  dividerColor = 'rgba(255,255,255,0.92)',
+}: Props) {
   return (
     <>
       {items.map((item) => {
         if (item.kind === 'timestamp') {
           return (
-            <View key={item.key} style={{ alignItems: 'center', paddingVertical: 8 }}>
-              <Text
-                className="font-inter-tight uppercase text-ink-faint"
-                style={{ fontSize: 10, letterSpacing: 1.5 }}
-              >
+            <View
+              key={item.key}
+              style={{ alignItems: 'center', paddingVertical: 8 }}
+            >
+              <TrackedCaps {...typePresets.dateDivider} color={dividerColor}>
                 {item.label}
-              </Text>
+              </TrackedCaps>
             </View>
           );
         }
-        const { message: m, position } = item;
-        // Tail corner only on 'only' and 'last' — chained bubbles
-        // ('first', 'middle') get full 18px on both bottom corners so
-        // they read as a continuous chain.
-        const hasTail = position === 'only' || position === 'last';
-        const inbound = m.direction === 'inbound';
+        const { message, position } = item;
+        // Tail corner only on 'only' and 'last' — chained bubbles keep the
+        // full radius on both bottom corners so they read as one utterance.
+        const chained = !(position === 'only' || position === 'last');
         return (
-          <View
+          <MessageBubble
             key={item.key}
-            className={
-              inbound
-                ? 'self-start rounded-[18px] bg-inbound'
-                : 'self-end rounded-[18px] border-[0.5px] border-hairline bg-paper'
-            }
-            style={{
-              maxWidth: '80%',
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              marginTop: position === 'first' || position === 'only' ? 4 : 0,
-              borderBottomLeftRadius: inbound && hasTail ? 6 : 18,
-              borderBottomRightRadius: !inbound && hasTail ? 6 : 18,
-            }}
-          >
-            <Text
-              className="font-inter-tight"
-              style={{
-                color: inbound ? '#F0EDE7' : '#1C1814',
-                fontSize: 14,
-                lineHeight: 20,
-              }}
-            >
-              {m.body}
-            </Text>
-          </View>
+            direction={message.direction}
+            body={message.body}
+            surface={surface}
+            chained={chained}
+          />
         );
       })}
     </>

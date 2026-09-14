@@ -1,4 +1,3 @@
-import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -12,18 +11,25 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
-import { FlaggedBanner } from '@/components/queue/flagged-banner';
+import { GroundScreen } from '@/components/ground/ground-screen';
 import { queueCardDisplayName } from '@/components/queue/queue-card';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
 import { ThreadBubbleList } from '@/components/thread/thread-bubble-list';
+import { SendGlyph } from '@/components/ui/send-glyph';
+import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { clearUndoState, setUndoState } from '@/hooks/use-undo-state';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { type ThreadMessage, editAndSend, getThread, skipDraft } from '@/lib/api/queue';
+import { type QueueTone, groundForTone, reasonLabelFor, toneFor } from '@/lib/queue-tone';
 import { useQueueContext } from '@/lib/queue-context';
-import { thread as threadTheme } from '@/lib/theme';
+import {
+  body as bodyType,
+  thread as threadTheme,
+  typePresets,
+} from '@/lib/theme';
 import { computeItems } from '@/lib/thread-cluster';
 
 type ThreadState =
@@ -70,7 +76,13 @@ function reconcileFetchedThread(
 
 export default function EditScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ messageId?: string; prefill?: string }>();
+  const params = useLocalSearchParams<{
+    messageId?: string;
+    prefill?: string;
+    /** The card's tone, so the takeover's ground carries through from the card
+     *  you swiped rather than being re-derived after the draft is gone. */
+    tone?: QueueTone;
+  }>();
   const queue = useQueueContext();
   const insets = useSafeAreaInsets();
   const draft = useMemo(
@@ -198,26 +210,36 @@ export default function EditScreen() {
 
   if (!draft) {
     return (
-      <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-1 items-center justify-center px-8">
-          <Text className="font-fraunces text-ink" style={{ fontSize: 22, textAlign: 'center' }}>
+      <GroundScreen name="neutral">
+        <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 32 }}>
+          <Text
+        allowFontScaling={false}
+            className="font-fraunces"
+            style={{ fontSize: 26, lineHeight: 32, color: '#FFFFFF', textAlign: 'center' }}
+          >
             That draft is no longer pending.
           </Text>
           <Pressable
             onPress={() => router.back()}
             accessibilityRole="button"
             accessibilityLabel="Back to queue"
-            className="mt-6 rounded-lg border-[0.5px] border-hairline px-5 py-3"
+            // Object form: structural styles are dropped in the
+            // `({ pressed }) => ...` form on device.
+            style={{
+              marginTop: 24,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.4)',
+              borderRadius: 999,
+              paddingHorizontal: 20,
+              paddingVertical: 12,
+            }}
           >
-            <Text
-              className="font-inter-tight-medium uppercase text-ink"
-              style={{ fontSize: 10, letterSpacing: 1.8 }}
-            >
+            <TrackedCaps {...typePresets.link} color="#FFFFFF" decorative>
               Back
-            </Text>
+            </TrackedCaps>
           </Pressable>
         </View>
-      </SafeAreaView>
+      </GroundScreen>
     );
   }
 
@@ -269,122 +291,151 @@ export default function EditScreen() {
     setSubmitting(null);
   };
 
+  const tone: QueueTone = params.tone ?? toneFor(draft);
+  const reasoning = draft.agentReasoning?.trim();
+  const canSend = text.trim().length > 0;
+
   return (
     // KeyboardAvoidingView must own the full-screen frame for its keyboard
-    // offset math to be correct on iOS. Nesting it INSIDE SafeAreaView (the
-    // shape we shipped first) made KAV measure from the safe-area-adjusted
-    // origin and the pinned input never lifted above the keyboard. Inverting
-    // the wrap + dropping the bottom safe-area edge (KAV handles bottom
-    // padding when the keyboard is up; insets.bottom on the pinned input
-    // handles the home-indicator clearance when the keyboard is down) is the
-    // canonical fix for react-native-safe-area-context + RN KAV.
+    // offset math to be correct on iOS. Nesting it inside the safe-area view
+    // (the shape we shipped first) made it measure from the safe-area-adjusted
+    // origin and the pinned composer never lifted above the keyboard.
+    // GroundScreen supplies the safe area itself, minus the bottom edge, which
+    // the composer's own inset padding handles when the keyboard is down.
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#FFFFFF' }}
+      style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <SafeAreaView className="flex-1" edges={['top', 'left', 'right']}>
-        <View className="flex-row items-center justify-between px-[22px] pb-3 pt-4">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to queue"
-            onPress={() => router.back()}
-            className="flex-row items-center"
-            hitSlop={12}
-          >
-            <Feather name="chevron-left" size={20} color="#4A4339" />
-            <Text className="font-inter-tight text-ink-soft" style={{ fontSize: 14 }}>
-              Back
-            </Text>
-          </Pressable>
-          <View className="flex-row items-center" style={{ gap: 8 }}>
-            <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
-              {queueCardDisplayName(draft)}
-            </Text>
-            <RecognitionBadge state={draft.recognitionState} />
+      {/* The takeover's ground is the ground of the card you swiped, so the
+          colour carries through instead of cutting to a new screen. */}
+      <GroundScreen name={groundForTone(tone)}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 14 }}>
+          <View style={{ flex: 1, alignItems: 'flex-start' }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to queue"
+              onPress={() => router.back()}
+              hitSlop={12}
+              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+            >
+              <TrackedCaps size={10} tracking={2.2} color="#FFFFFF" decorative>
+                {'‹ Back'}
+              </TrackedCaps>
+            </Pressable>
           </View>
-          <View style={{ width: 60 }} />
+          <View style={{ flex: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TrackedCaps {...typePresets.cardName} color="#FFFFFF">
+              {queueCardDisplayName(draft)}
+            </TrackedCaps>
+            <RecognitionBadge state={draft.recognitionState} variant="ground" />
+          </View>
+          {/* Empty, and load-bearing: it balances the Back column so the name
+              sits centred on the screen rather than centred on what's left. */}
+          <View style={{ flex: 1 }} />
         </View>
 
-        <FlaggedBanner
-          label={draft.reviewReason}
-          detail={draft.agentReasoning}
-          variant="edit"
-        />
+        <View style={{ paddingHorizontal: 22, paddingVertical: 18 }}>
+          <TrackedCaps {...typePresets.flagReason} color="#FFFFFF">
+            {reasonLabelFor(draft)}
+          </TrackedCaps>
+          {reasoning ? (
+            <Text
+        allowFontScaling={false}
+              accessibilityLabel="Agent reasoning"
+              className="font-inter-tight"
+              style={{
+                marginTop: 10,
+                fontSize: bodyType.reasoning.size,
+                lineHeight: bodyType.reasoning.lineHeight,
+                color: '#FFFFFF',
+              }}
+            >
+              {reasoning}
+            </Text>
+          ) : null}
+        </View>
 
         <ScrollView
           ref={scrollViewRef}
-          className="flex-1"
-          contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 16, gap: 4 }}
+          style={{ flex: 1 }}
           onScroll={handleScroll}
           scrollEventThrottle={16}
-        >
-          <ThreadBubbleList items={items} />
-        </ScrollView>
-
-        <View
-          className="border-t-[0.5px] border-hairline bg-white"
-          style={{
-            paddingHorizontal: 16,
-            paddingTop: 12,
-            // Bottom safe-area inset lives on the pinned input rather than on
-            // SafeAreaView so the keyboard-up state doesn't double-pad.
-            paddingBottom: 12 + insets.bottom,
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'flex-end',
+            gap: 6,
+            paddingHorizontal: 22,
+            paddingVertical: 8,
           }}
         >
-          <View className="flex-row items-end" style={{ gap: 10 }}>
+          <ThreadBubbleList items={items} surface="card" />
+        </ScrollView>
+
+        <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: insets.bottom + 8 }}>
+          <View style={{ position: 'relative' }}>
             <TextInput
+              // Stable regardless of draft state, and deliberately unchanged
+              // from the pre-redesign screen: the visible placeholder follows
+              // the new design, but what a screen reader announces is an
+              // accessibility contract, not styling.
               accessibilityLabel="Edit the draft before sending"
-              className="flex-1 rounded-[18px] border border-clay font-inter-tight text-ink"
-              style={{
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                fontSize: 14.5,
-                lineHeight: 22,
-                minHeight: 44,
-                maxHeight: 140,
-              }}
-              multiline
+              className="font-inter-tight"
               value={text}
               onChangeText={setText}
+              multiline
+              editable={!submitting}
               placeholder={
                 hasDraft ? 'Edit the message…' : 'Type your answer to send to the guest'
               }
-              placeholderTextColor="#857A6A"
-              editable={submitting === null}
+              placeholderTextColor="#6F6658"
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderRadius: 20,
+                minHeight: 78,
+                paddingTop: 14,
+                paddingBottom: 14,
+                paddingLeft: 16,
+                paddingRight: 54,
+                fontSize: 13.5,
+                lineHeight: 20,
+                color: '#1C1814',
+                textAlignVertical: 'top',
+              }}
             />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Send my version"
-              onPress={handleSend}
-              disabled={submitting !== null}
-              className="items-center justify-center rounded-full bg-clay"
-              style={{
-                width: 38,
-                height: 38,
-                opacity: submitting !== null ? 0.5 : 1,
-              }}
+              accessibilityState={{ disabled: !canSend || submitting !== null }}
+              disabled={!canSend || submitting !== null}
+              onPress={() => void handleSend()}
+              hitSlop={8}
+              style={{ position: 'absolute', right: 9, bottom: 13 }}
             >
-              <Feather name="send" size={16} color="#FFFFFF" />
+              <SendGlyph size={32} opacity={canSend ? 1 : 0.4} />
             </Pressable>
           </View>
+
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Don't send anything"
-            onPress={handleSkip}
+            onPress={() => void handleSkip()}
             disabled={submitting !== null}
-            className="self-center"
-            style={{ marginTop: 12, opacity: submitting !== null ? 0.5 : 1 }}
-            hitSlop={8}
+            // Object form — the function form is dropped on device and this
+            // rendered left-aligned and crammed under the textarea. Cause
+            // unknown; see the CLAUDE.md gotcha before changing it back.
+            style={{ marginTop: 16, paddingBottom: 28, alignSelf: 'center' }}
           >
-            <Text
-              className="font-inter-tight uppercase text-ink-faint"
-              style={{ fontSize: 11, letterSpacing: 1.65 }}
+            <TrackedCaps
+              size={9.5}
+              tracking={2.2}
+              color="rgba(255,255,255,0.85)"
+              decorative
             >
-              Don&rsquo;t send anything
-            </Text>
+              Don&apos;t send anything
+            </TrackedCaps>
           </Pressable>
         </View>
-      </SafeAreaView>
+      </GroundScreen>
     </KeyboardAvoidingView>
   );
 }

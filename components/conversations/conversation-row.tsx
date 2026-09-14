@@ -1,23 +1,37 @@
 import { Pressable, Text, View } from 'react-native';
 
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
+import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type ConversationSummary } from '@/lib/api/conversations';
-import { formatConversationTime, isConversationActive } from '@/lib/conversations-format';
-import { conversations as conversationsTheme } from '@/lib/theme';
+import {
+  formatConversationTime,
+  isConversationActive,
+} from '@/lib/conversations-format';
+import {
+  body as bodyType,
+  conversations as conversationsTheme,
+  groundText,
+  typePresets,
+} from '@/lib/theme';
 
 type Props = {
   conversation: ConversationSummary;
   onPress: () => void;
-  isFirst: boolean;
+  /** Even rows carry a translucent band, odd rows none. The alternation
+   *  replaces the old white card frame and the section headers the redesign
+   *  drops — the filters do that job now. */
+  banded: boolean;
 };
 
-export function ConversationRow({ conversation, onPress, isFirst }: Props) {
+export function ConversationRow({ conversation, onPress, banded }: Props) {
   const active = isConversationActive(
     conversation.lastMessageAt,
     conversationsTheme.activeWindowMins,
   );
   const speaker =
-    conversation.lastMessageDirection === 'inbound' ? 'Guest' : conversation.agentName;
+    conversation.lastMessageDirection === 'inbound'
+      ? 'Guest'
+      : conversation.agentName;
   const displayName = conversation.name ?? conversation.phoneFallback;
 
   return (
@@ -25,47 +39,57 @@ export function ConversationRow({ conversation, onPress, isFirst }: Props) {
       accessibilityRole="button"
       accessibilityLabel={`Open conversation with ${displayName}`}
       onPress={onPress}
-      style={({ pressed }) => ({
+      // Object form, NOT `({ pressed }) => ...`. The function form is dropped
+      // on device, which took the band, the 13px padding and the row's whole
+      // rhythm with it — rows merged into one column and the activity dot sat
+      // flush against the screen edge. Cause unknown, does not reproduce in
+      // Jest. See the CLAUDE.md gotcha before changing this back.
+      style={{
+        borderRadius: 12,
         paddingHorizontal: 16,
-        paddingVertical: 18,
-        gap: 8,
-        borderTopWidth: isFirst ? 0 : 0.5,
-        borderTopColor: 'rgba(28, 24, 20, 0.06)',
-        opacity: pressed ? 0.7 : active ? 1 : 0.62,
-      })}
+        paddingVertical: 13,
+        backgroundColor: banded ? 'rgba(255,255,255,0.12)' : 'transparent',
+      }}
     >
-      <View className="flex-row items-center" style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
         <View
           style={{
-            width: 6,
-            height: 6,
-            borderRadius: 6,
-            backgroundColor: active ? '#C66A4A' : 'transparent',
-            borderWidth: active ? 0 : 1,
-            borderColor: 'rgba(28, 24, 20, 0.2)',
+            width: 5,
+            height: 5,
+            borderRadius: 5,
+            backgroundColor: active ? '#E5B19C' : 'rgba(255,255,255,0.32)',
           }}
         />
-        <Text
-          className="font-inter-tight-medium text-ink"
-          style={{ fontSize: 15, lineHeight: 20 }}
-        >
+        <TrackedCaps {...typePresets.rowName} color="#FFFFFF" decorative>
           {displayName}
-        </Text>
-        <RecognitionBadge state={conversation.recognitionState} />
-        <Text
-          className="ml-auto font-inter-tight text-ink-faint"
-          style={{ fontSize: 11, letterSpacing: 0.44 }}
+        </TrackedCaps>
+        <RecognitionBadge
+          state={conversation.recognitionState}
+          variant="ground"
+        />
+        <TrackedCaps
+          {...typePresets.rowTime}
+          color="rgba(255,255,255,0.78)"
+          decorative
+          style={{ marginLeft: 'auto' }}
         >
           {formatConversationTime(conversation.lastMessageAt)}
-        </Text>
+        </TrackedCaps>
       </View>
       <Text
-        className="font-inter-tight text-ink-soft"
+        allowFontScaling={false}
         numberOfLines={1}
-        style={{ fontSize: 13, lineHeight: 21 }}
+        className="font-inter-tight"
+        style={{
+          // Aligns under the name rather than under the activity dot.
+          marginTop: 6,
+          paddingLeft: 14,
+          fontSize: bodyType.preview.size,
+          lineHeight: bodyType.preview.lineHeight,
+          color: groundText.body,
+        }}
       >
-        <Text className="text-ink-faint">{speaker} · </Text>
-        {conversation.lastMessagePreview}
+        {`${speaker} — ${conversation.lastMessagePreview}`}
       </Text>
     </Pressable>
   );

@@ -5,6 +5,7 @@
 // consistent between the two fixture modules.
 
 import { fixtureUuid } from './queue';
+import { FIXTURE_CENTRAL_PERK_ID, FIXTURE_SEXTANT_ID } from './venues';
 
 export type ConversationRecognitionState = 'new' | 'returning' | 'regular' | 'raving_fan';
 
@@ -45,12 +46,34 @@ interface SeedGuest {
   conversationCount: number;
   firstConversationDaysAgo: number;
   messages: SeedMessage[]; // oldest first
+  /** Defaults to SEXTANT, so the pre-existing seed rows are unchanged. */
+  venue?: FixtureVenue;
 }
 
-const VENUE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const VENUE_SLUG = 'mock-sextant-coffee-roasters';
-const VENUE_TIMEZONE = 'America/Los_Angeles';
-const AGENT_NAME = 'Sana';
+interface FixtureVenue {
+  id: string;
+  slug: string;
+  timezone: string;
+  agentName: string;
+}
+
+// Two venues, matching the ids lib/fixtures/queue.ts already uses, so fixture
+// mode can exercise venue filtering end to end. Before TAC-382 every row here
+// carried the same venue, which meant a filter bug on the conversations side
+// was invisible offline — the list looked identical filtered or not.
+const SEXTANT: FixtureVenue = {
+  id: FIXTURE_SEXTANT_ID,
+  slug: 'mock-sextant-coffee-roasters',
+  timezone: 'America/Los_Angeles',
+  agentName: 'Sana',
+};
+
+const CENTRAL_PERK: FixtureVenue = {
+  id: FIXTURE_CENTRAL_PERK_ID,
+  slug: 'mock-central-perk',
+  timezone: 'America/New_York',
+  agentName: 'Gunther',
+};
 
 function seedGuests(): SeedGuest[] {
   return [
@@ -212,6 +235,36 @@ function seedGuests(): SeedGuest[] {
         { direction: 'outbound', body: "Six on the 20th is in the book. I'll ask the kitchen about a candle.", minsAgo: 4300 },
       ],
     },
+    // Central Perk. Deliberately interleaved in recency with the Sextant rows
+    // above rather than appended after them, so a filter that quietly does
+    // nothing shows up as foreign names in the list instead of hiding at the
+    // bottom where nobody scrolls.
+    {
+      guestId: 'c0dddddd-dddd-4ddd-8ddd-dddddddddddd',
+      name: 'Ross G.',
+      phoneFallback: '+15551110051',
+      recognitionState: 'raving_fan',
+      conversationCount: 31,
+      firstConversationDaysAgo: 540,
+      venue: CENTRAL_PERK,
+      messages: [
+        { direction: 'inbound', body: 'is the big orange couch free around 4?', minsAgo: 38 },
+        { direction: 'outbound', body: "It's open right now and nobody's booked it. Come by.", minsAgo: 31 },
+      ],
+    },
+    {
+      guestId: 'c0eeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      name: 'Phoebe B.',
+      phoneFallback: '+15551110052',
+      recognitionState: 'returning',
+      conversationCount: 4,
+      firstConversationDaysAgo: 61,
+      venue: CENTRAL_PERK,
+      messages: [
+        { direction: 'inbound', body: 'do you have oat milk now?', minsAgo: 2100 },
+        { direction: 'outbound', body: 'We do — oat and soy both, since last month.', minsAgo: 2090 },
+      ],
+    },
   ];
 }
 
@@ -227,12 +280,13 @@ function buildRecord(seed: SeedGuest, now: number): ConversationRecord {
     createdAt: new Date(now - m.minsAgo * 60_000).toISOString(),
   }));
   const last = messages[messages.length - 1];
+  const venue = seed.venue ?? SEXTANT;
   return {
     guestId: seed.guestId,
-    venueId: VENUE_ID,
-    venueSlug: VENUE_SLUG,
-    venueTimezone: VENUE_TIMEZONE,
-    agentName: AGENT_NAME,
+    venueId: venue.id,
+    venueSlug: venue.slug,
+    venueTimezone: venue.timezone,
+    agentName: venue.agentName,
     name: seed.name,
     phoneFallback: seed.phoneFallback,
     recognitionState: seed.recognitionState,

@@ -7,16 +7,22 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GroundScreen } from '@/components/ground/ground-screen';
 import { ThreadBubbleList } from '@/components/thread/thread-bubble-list';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
+import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { getGuestThread } from '@/lib/api/conversations';
 import { type ThreadMessage } from '@/lib/api/queue';
 import { useConversationsContext } from '@/lib/conversations-context';
 import { formatConversationsSince, isConversationActive } from '@/lib/conversations-format';
-import { conversations as conversationsTheme } from '@/lib/theme';
+import {
+  body as bodyType,
+  conversations as conversationsTheme,
+  typePresets,
+} from '@/lib/theme';
 import { computeItems } from '@/lib/thread-cluster';
 
 type ThreadState =
@@ -63,6 +69,7 @@ function reconcileFetchedThread(
 
 export default function ConversationThreadScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ guestId: string }>();
   const conversationsResult = useConversationsContext();
   const guest = useMemo(
@@ -154,73 +161,103 @@ export default function ConversationThreadScreen() {
 
   if (!guest) {
     return (
-      <SafeAreaView className="flex-1 bg-sand">
-        <View className="flex-1 items-center justify-center px-8">
-          <Text className="font-fraunces text-ink" style={{ fontSize: 22, textAlign: 'center' }}>
+      <GroundScreen name="neutral">
+        <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 32 }}>
+          <Text
+        allowFontScaling={false}
+            className="font-fraunces"
+            style={{ fontSize: 26, lineHeight: 32, color: '#FFFFFF', textAlign: 'center' }}
+          >
             That conversation isn&rsquo;t available.
           </Text>
           <Pressable
             onPress={() => router.back()}
             accessibilityRole="button"
             accessibilityLabel="Back to conversations"
-            className="mt-6 rounded-lg border-[0.5px] border-hairline px-5 py-3"
+            // Object form: structural styles are dropped in the
+            // `({ pressed }) => ...` form on device.
+            // Cause unknown; see the CLAUDE.md gotcha before changing it back.
+            style={{
+              marginTop: 24,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.4)',
+              borderRadius: 999,
+              paddingHorizontal: 20,
+              paddingVertical: 12,
+            }}
           >
-            <Text className="font-inter-tight-medium uppercase text-ink" style={{ fontSize: 10, letterSpacing: 1.8 }}>
+            <TrackedCaps {...typePresets.link} color="#FFFFFF" decorative>
               Back
-            </Text>
+            </TrackedCaps>
           </Pressable>
         </View>
-      </SafeAreaView>
+      </GroundScreen>
     );
   }
 
   const active = isConversationActive(guest.lastMessageAt, conversationsTheme.activeWindowMins);
   const displayName = guest.name ?? guest.phoneFallback;
-  const lastMessage = threadState.messages[threadState.messages.length - 1];
-  const lastLine = lastMessage
-    ? lastMessage.direction === 'inbound'
-      ? `From the guest · ${new Date(lastMessage.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-      : `Sent by ${guest.agentName} · ${new Date(lastMessage.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-    : null;
+  // The old "Sent by Sana · 7:14 PM" trailer is gone: the redesign carries
+  // that information in the cluster dividers and the Live/Quiet pill, and a
+  // third timestamp treatment on one screen was noise.
 
   return (
-    <SafeAreaView className="flex-1 bg-sand" edges={['top', 'left', 'right']}>
+    <GroundScreen name="neutral">
       <View
-        className="flex-row items-center border-b-[0.5px] border-hairline bg-sand"
-        style={{ gap: 12, paddingHorizontal: 20, paddingVertical: 12 }}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 14,
+          paddingHorizontal: 22,
+          paddingVertical: 16,
+        }}
       >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back to conversations"
           onPress={() => router.back()}
           hitSlop={12}
+          style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
         >
-          <Text style={{ fontSize: 22, lineHeight: 22, color: '#1C1814' }}>‹</Text>
+          <Text allowFontScaling={false} style={{ fontSize: 20, lineHeight: 22, color: '#FFFFFF' }}>‹</Text>
         </Pressable>
-        <View style={{ flex: 1, gap: 3 }}>
-          <View className="flex-row items-center" style={{ gap: 8 }}>
-            <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 15 }}>
+
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TrackedCaps {...typePresets.cardName} color="#FFFFFF">
               {displayName}
-            </Text>
-            <RecognitionBadge state={guest.recognitionState} />
+            </TrackedCaps>
+            <RecognitionBadge state={guest.recognitionState} variant="ground" />
           </View>
           <Text
-            className="font-inter-tight text-ink-faint"
+        allowFontScaling={false}
+            className="font-inter-tight"
             numberOfLines={1}
-            style={{ fontSize: 11, letterSpacing: 0.3 }}
+            style={{
+              fontSize: 10.5,
+              letterSpacing: 0.3,
+              color: 'rgba(255,255,255,0.92)',
+            }}
           >
-            {guest.phoneFallback} · {formatConversationsSince(guest.conversationCount, guest.firstConversationAt, timezone)}
+            {guest.phoneFallback} ·{' '}
+            {formatConversationsSince(
+              guest.conversationCount,
+              guest.firstConversationAt,
+              timezone,
+            )}
           </Text>
         </View>
+
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             gap: 6,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.4)',
             paddingHorizontal: 10,
             paddingVertical: 5,
-            borderRadius: 20,
-            backgroundColor: 'rgba(28, 24, 20, 0.05)',
           }}
         >
           <View
@@ -228,42 +265,64 @@ export default function ConversationThreadScreen() {
               width: 5,
               height: 5,
               borderRadius: 5,
-              backgroundColor: active ? '#C66A4A' : '#857A6A',
+              backgroundColor: active ? '#E5B19C' : 'rgba(255,255,255,0.6)',
             }}
           />
-          <Text
-            className="font-inter-tight-medium uppercase text-ink-soft"
-            style={{ fontSize: 10, letterSpacing: 1.1 }}
-          >
+          <TrackedCaps {...typePresets.statePill} color="#FFFFFF" decorative>
             {active ? 'Live' : 'Quiet'}
-          </Text>
+          </TrackedCaps>
         </View>
       </View>
 
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 8, gap: 4 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'flex-end',
+          gap: 6,
+          paddingHorizontal: 22,
+          paddingTop: 14,
+          paddingBottom: 10,
+        }}
       >
-        <ThreadBubbleList items={items} />
-        {lastLine ? (
-          <Text
-            className="self-end font-inter-tight text-ink-faint"
-            style={{ fontSize: 10.5, letterSpacing: 0.6, paddingTop: 6 }}
-          >
-            {lastLine}
-          </Text>
-        ) : null}
+        <ThreadBubbleList items={items} surface="thread" />
       </ScrollView>
 
+      {/* No composer. This screen is read-only by design — replying happens in
+          the queue, where the agent's draft and the flag reason are in front of
+          you. A send box here would invite answering without that context. */}
       <View
-        className="flex-row border-t-[0.5px] border-hairline bg-paper"
-        style={{ gap: 10, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 24 }}
+        style={{
+          flexDirection: 'row',
+          gap: 10,
+          paddingHorizontal: 22,
+          paddingTop: 14,
+          paddingBottom: insets.bottom + 12,
+        }}
       >
-        <View style={{ width: 6, height: 6, borderRadius: 6, backgroundColor: '#C66A4A', marginTop: 6 }} />
-        <Text className="font-inter-tight text-ink-soft" style={{ fontSize: 12.5, lineHeight: 18, flex: 1 }}>
-          {guest.agentName} is handling this one. You&rsquo;ll see it in the queue if it needs your input.
+        <View
+          style={{
+            width: 5,
+            height: 5,
+            borderRadius: 5,
+            backgroundColor: '#E5B19C',
+            marginTop: 7,
+          }}
+        />
+        <Text
+        allowFontScaling={false}
+          className="font-inter-tight"
+          style={{
+            flex: 1,
+            fontSize: bodyType.reasoning.size,
+            lineHeight: bodyType.reasoning.lineHeight,
+            color: 'rgba(255,255,255,0.94)',
+          }}
+        >
+          {guest.agentName} is handling this one. You&rsquo;ll see it in the
+          queue if it needs your input.
         </Text>
       </View>
-    </SafeAreaView>
+    </GroundScreen>
   );
 }

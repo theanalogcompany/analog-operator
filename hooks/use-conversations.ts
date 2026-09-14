@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useConversationsRealtime } from '@/hooks/use-conversations-realtime';
 import { type ConversationSummary, listConversations } from '@/lib/api/conversations';
@@ -56,5 +56,9 @@ export function useConversations(): UseConversationsResult {
   );
   useConversationsRealtime(onRealtimeEvent);
 
-  return { conversations, status, error, reload };
+  // Memoized for the same reason as useQueue's return — see the note there.
+  return useMemo(
+    () => ({ conversations, status, error, reload }),
+    [conversations, status, error, reload],
+  );
 }

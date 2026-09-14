@@ -4,41 +4,83 @@ import Animated, {
   useAnimatedStyle,
 } from 'react-native-reanimated';
 
-const OVERLAY_WIDTH_FRACTION = 0.55;
+import { type SwipeDirection } from '@/hooks/use-queue-swipe';
 
-// CSS `linear-gradient(to left, A, B)` puts A at the gradient origin (right
-// edge) and B at the destination (left edge); RN LinearGradient maps that via
-// start/end normalized coords.
-//
-// Four stops with front-loaded `locations` (instead of a 2-stop opaque→clear
-// ramp) give a perceptually smoother falloff — a plain 2-stop alpha gradient
-// bands visibly on-device, especially fading to fully transparent. `dither`
-// further suppresses the banding.
-const RIGHT_GRADIENT_COLORS: readonly [string, string, string, string] = [
-  'rgba(198,106,74,0.9)',
-  'rgba(198,106,74,0.55)',
-  'rgba(198,106,74,0.22)',
-  'rgba(198,106,74,0)',
+/**
+ * The two swipe washes, overlaid on the card and clipped to its corners.
+ *
+ * Values transcribed from the handoff README ("Swipe mechanics"), not from what
+ * the previous implementation happened to render — it had drifted to 55% width
+ * with a 0.9/0.75 peak alpha against the spec's 64% and 0.94/0.92.
+ *
+ * Each wash covers 64% of the card from its own edge and fades to nothing
+ * inward. `dither` is on because multi-stop alpha ramps band visibly on-device,
+ * especially where they fade to fully transparent.
+ */
+export const OVERLAY_WIDTH_FRACTION = 0.64;
+
+// CSS `linear-gradient(to left, A, …)` places A at the gradient's origin — the
+// RIGHT edge — and runs leftward. `start`/`end` below encode that direction;
+// the colors stay in CSS source order.
+/**
+ * The two washes are SEPARATE maps on purpose, and not only because the hues
+ * differ. Their alpha ramps differ too — the send wash peaks at 0.94 and the
+ * edit wash at 0.92, with 0.52/0.18 against 0.5/0.16 below that. The gap is
+ * invisible in a screenshot, which is exactly why a later edit is tempted to
+ * unify them into one ramp parameterised by hue. Don't: the next person to
+ * touch it would have to pick one, and the design picked both.
+ */
+export const RIGHT_WASH: readonly [string, string, string, string] = [
+  'rgba(168,86,56,0.94)',
+  'rgba(168,86,56,0.52)',
+  'rgba(168,86,56,0.18)',
+  'rgba(168,86,56,0)',
 ];
-const LEFT_GRADIENT_COLORS: readonly [string, string, string, string] = [
-  'rgba(58,53,48,0.75)',
-  'rgba(58,53,48,0.45)',
-  'rgba(58,53,48,0.18)',
+export const LEFT_WASH: readonly [string, string, string, string] = [
+  'rgba(58,53,48,0.92)',
+  'rgba(58,53,48,0.5)',
+  'rgba(58,53,48,0.16)',
   'rgba(58,53,48,0)',
 ];
-const GRADIENT_LOCATIONS: readonly [number, number, number, number] = [0, 0.45, 0.75, 1];
+export const WASH_LOCATIONS: readonly [number, number, number, number] = [
+  0, 0.44, 0.74, 1,
+];
+
+/**
+ * Wash opacity for a given drag. Pure and exported so the mapping is testable
+ * without driving a real gesture — per CLAUDE.md/TAC-312, a claim about what
+ * the swipe renders cannot be made by a test that mocks the swipe away.
+ *
+ * A wash is visible only while the drag is heading its way, so each one reads
+ * the direction as well as the intensity.
+ *
+ * The `'worklet'` directive is NOT optional and NOT decoration. This function is
+ * called from inside `useAnimatedStyle`, whose body runs on the UI thread;
+ * without the directive it stays an ordinary JS function and the call throws
+ * there. Jest runs it as plain JS, so its unit tests pass either way — they
+ * exercise the function but not the thread it has to run on.
+ */
+export function washOpacity(
+  side: 'left' | 'right',
+  direction: SwipeDirection,
+  intensity: number,
+): number {
+  'worklet';
+  const wants: SwipeDirection = side === 'right' ? 1 : -1;
+  return direction === wants ? intensity : 0;
+}
 
 type Props = {
-  direction: SharedValue<-1 | 0 | 1>;
+  direction: SharedValue<SwipeDirection>;
   intensity: SharedValue<number>;
 };
 
 export function SwipeOverlay({ direction, intensity }: Props) {
-  const rightOverlayStyle = useAnimatedStyle(() => ({
-    opacity: direction.value === 1 ? intensity.value : 0,
+  const rightStyle = useAnimatedStyle(() => ({
+    opacity: washOpacity('right', direction.value, intensity.value),
   }));
-  const leftOverlayStyle = useAnimatedStyle(() => ({
-    opacity: direction.value === -1 ? intensity.value : 0,
+  const leftStyle = useAnimatedStyle(() => ({
+    opacity: washOpacity('left', direction.value, intensity.value),
   }));
 
   return (
@@ -53,12 +95,12 @@ export function SwipeOverlay({ direction, intensity }: Props) {
             right: 0,
             width: `${OVERLAY_WIDTH_FRACTION * 100}%`,
           },
-          rightOverlayStyle,
+          rightStyle,
         ]}
       >
         <LinearGradient
-          colors={RIGHT_GRADIENT_COLORS}
-          locations={GRADIENT_LOCATIONS}
+          colors={RIGHT_WASH}
+          locations={WASH_LOCATIONS}
           dither
           start={{ x: 1, y: 0.5 }}
           end={{ x: 0, y: 0.5 }}
@@ -75,12 +117,12 @@ export function SwipeOverlay({ direction, intensity }: Props) {
             left: 0,
             width: `${OVERLAY_WIDTH_FRACTION * 100}%`,
           },
-          leftOverlayStyle,
+          leftStyle,
         ]}
       >
         <LinearGradient
-          colors={LEFT_GRADIENT_COLORS}
-          locations={GRADIENT_LOCATIONS}
+          colors={LEFT_WASH}
+          locations={WASH_LOCATIONS}
           dither
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}

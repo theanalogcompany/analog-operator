@@ -1,4 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import type React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import ConversationsScreen from '@/app/conversations/index';
 import { type UseConversationsResult } from '@/hooks/use-conversations';
@@ -67,23 +69,34 @@ beforeEach(() => {
   };
 });
 
+// These screens sit on a GroundScreen, which supplies the safe area.
+const metrics = {
+  frame: { x: 0, y: 0, width: 402, height: 874 },
+  insets: { top: 62, left: 0, right: 0, bottom: 34 },
+};
+function withSafeArea(ui: React.ReactElement) {
+  return <SafeAreaProvider initialMetrics={metrics}>{ui}</SafeAreaProvider>;
+}
+
 describe('ConversationsScreen', () => {
   it('renders the headline and both rows', () => {
-    render(<ConversationsScreen />);
+    render(withSafeArea(<ConversationsScreen />));
     expect(screen.getByText('Everything happening.')).toBeTruthy();
-    expect(screen.getByText('Maya R.')).toBeTruthy();
-    expect(screen.getByText('Ben A.')).toBeTruthy();
+    expect(screen.getByText('MAYA R.')).toBeTruthy();
+    expect(screen.getByText('BEN A.')).toBeTruthy();
   });
 
   it('shows the active/total counts', () => {
-    render(<ConversationsScreen />);
-    // 1 active (within 60 min), 2 total.
-    expect(screen.getByText('1')).toBeTruthy();
-    expect(screen.getByText('2')).toBeTruthy();
+    render(withSafeArea(<ConversationsScreen />));
+    // 1 active (within 60 min), 2 total. The redesign renders this as one
+    // tracked-caps meta line rather than five separate Text nodes, so the
+    // assertion is the whole line — which also pins the design's format.
+    expect(screen.getByText('1 ACTIVE NOW · 2 OPEN')).toBeTruthy();
+    expect(screen.getByLabelText('1 active now · 2 open')).toBeTruthy();
   });
 
   it('navigates to the guest thread when a row is pressed', () => {
-    render(<ConversationsScreen />);
+    render(withSafeArea(<ConversationsScreen />));
     fireEvent.press(screen.getByLabelText('Open conversation with Maya R.'));
     expect(mockRouter.push).toHaveBeenCalledWith({
       pathname: '/conversations/[guestId]',
@@ -92,22 +105,22 @@ describe('ConversationsScreen', () => {
   });
 
   it('filters to only active conversations when the Active pill is pressed', () => {
-    render(<ConversationsScreen />);
+    render(withSafeArea(<ConversationsScreen />));
     fireEvent.press(screen.getByLabelText('Active'));
-    expect(screen.getByText('Maya R.')).toBeTruthy();
-    expect(screen.queryByText('Ben A.')).toBeNull();
+    expect(screen.getByText('MAYA R.')).toBeTruthy();
+    expect(screen.queryByText('BEN A.')).toBeNull();
   });
 
   it('filters by guest type via the dropdown', () => {
-    render(<ConversationsScreen />);
+    render(withSafeArea(<ConversationsScreen />));
     fireEvent.press(screen.getByLabelText(/All guests/));
     fireEvent.press(screen.getByLabelText('New'));
-    expect(screen.queryByText('Maya R.')).toBeNull();
-    expect(screen.getByText('Ben A.')).toBeTruthy();
+    expect(screen.queryByText('MAYA R.')).toBeNull();
+    expect(screen.getByText('BEN A.')).toBeTruthy();
   });
 
   it('shows the conversations empty state when the filter matches nothing', () => {
-    render(<ConversationsScreen />);
+    render(withSafeArea(<ConversationsScreen />));
     fireEvent.press(screen.getByLabelText(/All guests/));
     fireEvent.press(screen.getByLabelText('Raving Fan'));
     expect(screen.getByText('Nothing here right now.')).toBeTruthy();
@@ -115,13 +128,13 @@ describe('ConversationsScreen', () => {
 
   it('shows a loading indicator while status is loading', () => {
     mockConversations = { ...mockConversations, status: 'loading' };
-    render(<ConversationsScreen />);
+    render(withSafeArea(<ConversationsScreen />));
     expect(screen.queryByText('Everything happening.')).toBeNull();
   });
 
   it('shows a retry affordance on error', () => {
     mockConversations = { ...mockConversations, status: 'error', error: { kind: 'NETWORK' } as any };
-    render(<ConversationsScreen />);
+    render(withSafeArea(<ConversationsScreen />));
     expect(screen.getByLabelText('Retry loading conversations')).toBeTruthy();
   });
 });

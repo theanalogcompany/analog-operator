@@ -1,92 +1,32 @@
-import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
-import { HamburgerMenu } from '@/components/menu/hamburger-menu';
+import { GroundScreen } from '@/components/ground/ground-screen';
 import { EmptyState } from '@/components/queue/empty-state';
-import { PermissionDeniedBanner } from '@/components/queue/permission-denied-banner';
 import { QueueCardStack } from '@/components/queue/queue-card-stack';
 import { UndoToast } from '@/components/queue/undo-toast';
-import { QueueTabsHeader } from '@/components/shell/queue-tabs-header';
+import { TopNav } from '@/components/shell/top-nav';
+import { TrackedCaps } from '@/components/ui/tracked-caps';
 import {
   type UndoRecord,
   clearUndoState,
   setUndoState,
 } from '@/hooks/use-undo-state';
-import { useSession } from '@/lib/auth/use-session';
+import { useSessionProgress } from '@/hooks/use-session-progress';
 import { type PendingDraft, approveDraft, undoAction } from '@/lib/api/queue';
+import { openHelpSms } from '@/lib/help';
 import { setBadgeCount } from '@/lib/notifications/badge';
 import {
   consumePendingTap,
   subscribeToTaps,
 } from '@/lib/notifications/tap-handler';
+import { groundForTone, toneFor } from '@/lib/queue-tone';
 import { useQueueContext } from '@/lib/queue-context';
-import { supabase } from '@/lib/supabase/client';
-
-// Title-case the email local-part for the greeting. Real first-name field on
-// the operator row is a follow-up; deriving from email is a pilot stop-gap.
-function firstNameFromEmail(email: string | null | undefined): string | null {
-  if (!email) return null;
-  const local = email.split('@')[0];
-  if (!local) return null;
-  // Split on common separators so `jp.silla` → `Jp` (first segment only).
-  const first = local.split(/[._-]/)[0];
-  if (!first) return null;
-  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
-}
-
-function timeOfDayGreeting(now: Date = new Date()): string {
-  const h = now.getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
-}
-
-function Greeting({ name }: { name: string | null }) {
-  const phrase = timeOfDayGreeting();
-  return (
-    <Text
-      className="font-fraunces text-ink"
-      style={{ fontSize: 28, lineHeight: 34, letterSpacing: -0.4 }}
-    >
-      {name ? `${phrase}, ${name}.` : `${phrase}.`}
-    </Text>
-  );
-}
-
-function MetaRow({
-  draftCount,
-  needsInputCount,
-}: {
-  draftCount: number;
-  needsInputCount: number;
-}) {
-  return (
-    // testID scopes queries in tests — QueueTabsHeader also renders a live
-    // queue count above this row, and the two numbers coincide whenever the
-    // queue and the meta row's draftCount happen to match (e.g. both are 2).
-    <View testID="queue-meta-row" className="flex-row items-baseline" style={{ marginTop: 8, gap: 8 }}>
-      <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 13 }}>
-        {draftCount}
-      </Text>
-      <Text className="font-inter-tight text-ink-faint" style={{ fontSize: 13 }}>
-        drafts
-      </Text>
-      <Text className="font-inter-tight text-ink-faint" style={{ fontSize: 13 }}>
-        ·
-      </Text>
-      <Text className="font-inter-tight-medium text-ink" style={{ fontSize: 13 }}>
-        {needsInputCount}
-      </Text>
-      <Text className="font-inter-tight text-ink-faint" style={{ fontSize: 13 }}>
-        need your input
-      </Text>
-    </View>
-  );
-}
+import { useVenueSelection } from '@/lib/venue-context';
+import { display, layout, typePresets } from '@/lib/theme';
 
 // One string for both refusal paths — the gesture refusal (TAC-312) and the
 // defense-in-depth guard in `handleApprove` (TAC-310). They fire on the same
@@ -94,48 +34,18 @@ function MetaRow({
 const NOTHING_TO_SEND_MESSAGE =
   'Nothing to send yet — swipe left to write your answer';
 
-const HELP_SMS_URL = 'sms:+17869530853';
-
-async function openHelpSms(): Promise<void> {
-  try {
-    await Linking.openURL(HELP_SMS_URL);
-  } catch {
-    showToast("Couldn't open Messages");
-  }
-}
-
-function Footer() {
-  return (
-    <View className="items-center" style={{ paddingTop: 8, paddingBottom: 16 }}>
-      <Text className="font-inter-tight text-ink-faint" style={{ fontSize: 12 }}>
-        Need help?{' '}
-        <Text
-          accessibilityRole="link"
-          accessibilityLabel="Chat with Jaipal via SMS"
-          className="font-inter-tight-medium text-clay"
-          onPress={() => {
-            void openHelpSms();
-          }}
-        >
-          Chat with Jaipal
-        </Text>
-      </Text>
-    </View>
-  );
+function handleHelp(): void {
+  void openHelpSms().then((result) => {
+    if (!result.ok) showToast("Couldn't open Messages");
+  });
 }
 
 export default function QueueScreen() {
   const queue = useQueueContext();
+  const venue = useVenueSelection();
   const router = useRouter();
-  const session = useSession();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const [surfacedGuestId, setSurfacedGuestId] = useState<string | null>(null);
-
-  const operatorEmail =
-    session.status === 'signed-in' ? session.session.user.email ?? null : null;
-  const operatorFirstName = firstNameFromEmail(operatorEmail);
-  const draftCount = queue.drafts.length;
-  const needsInputCount = queue.drafts.filter((d) => !!d.reviewReason).length;
 
   // Drain any pending notification-tap on mount (cold-launch case) and subscribe
   // for warm-launch taps that land while the queue is mounted. Surfacing reorders
@@ -164,6 +74,48 @@ export default function QueueScreen() {
       ...queue.drafts.slice(idx + 1),
     ];
   }, [queue.drafts, surfacedGuestId]);
+
+  const visibleIds = useMemo(
+    () => displayDrafts.map((d) => d.messageId),
+    [displayDrafts],
+  );
+  // Scoped to the venue: cards seen at one venue must not inflate another's
+  // denominator after a switch. (TAC-382.)
+  const progress = useSessionProgress(visibleIds, venue.selectedVenueId);
+
+  const top = displayDrafts[0];
+  // The ground encodes why the top card was flagged, so the operator knows what
+  // kind of decision is in front of them before reading a word. With an empty
+  // deck there is no decision, so it settles to neutral.
+  const groundName = top ? groundForTone(toneFor(top)) : 'neutral';
+
+  // A tapped notification may be for a guest at a venue that isn't the one on
+  // screen. The APNs payload carries no venueId (see lib/notifications/
+  // tap-handler.ts), so the venue is resolved here, from the queue, once the
+  // draft is actually in hand — which is why this is its own effect rather
+  // than part of the subscribe effect above: on a cold launch the tap lands
+  // before the first listQueue() resolves, and this re-runs when it does.
+  //
+  // Switching is the right failure mode. Doing nothing would leave the
+  // operator staring at a queue that doesn't contain the guest they just
+  // tapped, with no explanation — and a guest is waiting either way. The
+  // toast is what makes the switch visible rather than mysterious.
+  const { findVenueIdForGuest } = queue;
+  const { selectedVenueId, select: selectVenue, venues } = venue;
+  useEffect(() => {
+    if (!surfacedGuestId) return;
+    const venueId = findVenueIdForGuest(surfacedGuestId);
+    if (!venueId || venueId === selectedVenueId) return;
+    // Resolve the venue BEFORE announcing anything. `select` ignores a venue
+    // the operator isn't mapped to, so announcing first would claim a switch
+    // that never happened — and, because `selectedVenueId` would stay put, the
+    // guard above would never trip and the toast would repeat on every
+    // realtime-driven reload.
+    const target = venues.find((v) => v.id === venueId);
+    if (!target) return;
+    selectVenue(target.id);
+    showToast(`Switched to ${target.name}`);
+  }, [surfacedGuestId, findVenueIdForGuest, selectedVenueId, selectVenue, venues]);
 
   // Badge mirrors the visible queue. Sync on every drafts change (covers swipe
   // approve + restore + realtime updates + reload) and on foreground transitions
@@ -200,11 +152,13 @@ export default function QueueScreen() {
       return;
     }
     queue.optimisticallyRemove(draft.messageId);
+    progress.markCleared(draft.messageId);
     if (draft.guestId === surfacedGuestId) setSurfacedGuestId(null);
     void setUndoState({ action: 'approve', draft });
     const result = await approveDraft(draft.messageId);
     if (!result.ok) {
       queue.restore(draft);
+      progress.markRestored(draft.messageId);
       void clearUndoState();
       showToast("Couldn't send — tap to retry");
     }
@@ -220,72 +174,121 @@ export default function QueueScreen() {
 
   const handleEdit = (draft: PendingDraft): void => {
     if (draft.guestId === surfacedGuestId) setSurfacedGuestId(null);
-    router.push({ pathname: '/queue/edit', params: { messageId: draft.messageId } });
+    router.push({
+      pathname: '/queue/edit',
+      params: {
+        messageId: draft.messageId,
+        // The takeover's ground is the card's ground, so the color carries
+        // through from the card you swiped.
+        tone: toneFor(draft),
+      },
+    });
   };
 
+  // `queue.restore` writes into the FULL draft list, not the venue-filtered
+  // view, so undoing a send made at another venue puts that draft back into
+  // ITS venue's list rather than injecting it into the one on screen. That
+  // cross-venue write was TAC-382's highest-priority bug; this is the fix
+  // (option 1). `undoAction` is untouched — the stored `message_id` is correct
+  // regardless of which venue is selected, and the undo window stays live
+  // across a switch rather than being cancelled by one.
   const handleUndo = (record: UndoRecord): void => {
     queue.restore(record.draft);
+    progress.markRestored(record.message_id);
     void undoAction(record.message_id);
   };
 
-  const handleSignOut = (): void => {
-    void supabase.auth.signOut();
-  };
+  const crossVenueName = useCallback(
+    (venueId: string): string | null =>
+      venueId === selectedVenueId
+        ? null
+        : (venues.find((v) => v.id === venueId)?.name ?? null),
+    [selectedVenueId, venues],
+  );
 
   return (
-    <SafeAreaView className="flex-1 bg-sand">
-      <PermissionDeniedBanner />
-      <QueueTabsHeader onMenuPress={() => setMenuOpen(true)} />
+    <GroundScreen name={groundName}>
+      <TopNav />
 
       {queue.status === 'loading' ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#C66A4A" />
+          <ActivityIndicator color="#FFFFFF" />
         </View>
       ) : queue.status === 'error' ? (
-        <View className="flex-1 items-center justify-center px-8">
-          <Text className="font-fraunces text-ink" style={{ fontSize: 24, textAlign: 'center' }}>
+        <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 32 }}>
+          <Text
+        allowFontScaling={false}
+            className="font-fraunces"
+            style={{
+              fontSize: display.emptyTitle.size,
+              lineHeight: display.emptyTitle.lineHeight,
+              color: '#FFFFFF',
+              textAlign: 'center',
+            }}
+          >
             We couldn&rsquo;t load the queue.
           </Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retry loading the queue"
             onPress={() => void queue.reload()}
-            className="mt-6 rounded-lg border-[0.5px] border-hairline px-5 py-3"
+            // Object form: structural styles are dropped in the
+            // `({ pressed }) => ...` form on device.
+            // Cause unknown; see the CLAUDE.md gotcha before changing it back.
+            style={{
+              marginTop: 24,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.4)',
+              borderRadius: 999,
+              paddingHorizontal: 20,
+              paddingVertical: 12,
+            }}
           >
-            <Text
-              className="font-inter-tight-medium uppercase text-ink"
-              style={{ fontSize: 10, letterSpacing: 1.8 }}
-            >
+            <TrackedCaps {...typePresets.link} color="#FFFFFF" decorative>
               Try again
-            </Text>
+            </TrackedCaps>
           </Pressable>
         </View>
-      ) : (
+      ) : displayDrafts.length === 0 ? (
         <>
-          <View style={{ paddingHorizontal: 22, paddingTop: 12, paddingBottom: 4 }}>
-            <Greeting name={operatorFirstName} />
-            <MetaRow draftCount={draftCount} needsInputCount={needsInputCount} />
+          <EmptyState />
+          <View
+            pointerEvents="box-none"
+            style={{
+              alignItems: 'center',
+              paddingBottom: insets.bottom + layout.hintRowGapPx,
+            }}
+          >
+            <Text
+        allowFontScaling={false}
+              accessibilityRole="link"
+              accessibilityLabel="Chat with Jaipal via SMS"
+              onPress={handleHelp}
+              className="font-inter-tight-medium"
+              style={{
+                fontSize: typePresets.footer.size,
+                letterSpacing: typePresets.footer.tracking,
+                color: 'rgba(255,255,255,0.85)',
+              }}
+            >
+              {'NEED HELP? '}
+              <Text allowFontScaling={false} style={{ color: '#FFFFFF' }}>CHAT WITH JAIPAL</Text>
+            </Text>
           </View>
-          {displayDrafts.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <QueueCardStack
-              drafts={displayDrafts}
-              onApprove={handleApprove}
-              onEdit={handleEdit}
-              onRefuseApprove={handleRefuseApprove}
-            />
-          )}
-          <Footer />
         </>
+      ) : (
+        <QueueCardStack
+          drafts={displayDrafts}
+          position={progress.position}
+          total={progress.total}
+          onApprove={handleApprove}
+          onEdit={handleEdit}
+          onRefuseApprove={handleRefuseApprove}
+          onPressHelp={handleHelp}
+        />
       )}
 
-      <UndoToast onUndo={handleUndo} />
-      <HamburgerMenu
-        visible={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        onSignOut={handleSignOut}
-      />
-    </SafeAreaView>
+      <UndoToast onUndo={handleUndo} crossVenueName={crossVenueName} />
+    </GroundScreen>
   );
 }

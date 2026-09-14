@@ -119,3 +119,65 @@ export function computeItems(
   }
   return items;
 }
+
+/**
+ * The redesign's date divider: `"Today · 7:14 PM"`.
+ *
+ * Distinct from `formatClusterTimestamp` above, which renders
+ * `"Wed Sep 10 · evening"` for the mid-thread cluster headers. This one heads
+ * the queue card's short bottom-anchored excerpt, where a relative day and an
+ * exact clock time is what the operator needs — they are deciding whether a
+ * four-minute-old question is still warm.
+ *
+ * `nowMs` is explicit so "Today" is deterministic in tests. Timezone follows
+ * the same v1 caveat as the rest of this module: the device's zone stands in
+ * for the venue's until `venueTimezone` is plumbed through the queue payload.
+ */
+export function formatDayDivider(
+  iso: string,
+  timezone: string,
+  nowMs: number = Date.now(),
+): string {
+  const date = new Date(iso);
+  const dayKey = (d: Date): string =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+
+  const now = new Date(nowMs);
+  const yesterday = new Date(nowMs - 24 * 60 * 60_000);
+
+  let dayLabel: string;
+  if (dayKey(date) === dayKey(now)) {
+    dayLabel = 'Today';
+  } else if (dayKey(date) === dayKey(yesterday)) {
+    dayLabel = 'Yesterday';
+  } else {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }).formatToParts(date);
+    const get = (type: string): string =>
+      parts.find((p) => p.type === type)?.value ?? '';
+    dayLabel = `${get('weekday')} ${get('month')} ${get('day')}`;
+  }
+
+  const time = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+
+  return `${dayLabel} · ${time}`;
+}
+
+/** The device's IANA zone — the v1 stand-in for the venue's. */
+export function deviceTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}

@@ -79,12 +79,16 @@ export async function setUndoState(args: {
 export async function clearUndoState(): Promise<void> {
   clearTimer();
   current = null;
+  // Notify BEFORE awaiting storage. Subscribers render from `current`, so
+  // deferring the notification until after an AsyncStorage round-trip leaves
+  // the toast on screen for a cleared record — visible as a flash of an
+  // already-expired undo when a remount re-arms expiry below.
+  notify();
   try {
     await AsyncStorage.removeItem(STORAGE_KEY);
   } catch {
     // ignore
   }
-  notify();
 }
 
 export async function rehydrateUndoState(): Promise<void> {
@@ -119,6 +123,20 @@ export function useUndoState(): UndoRecord | null {
   const [state, setState] = useState<UndoRecord | null>(current);
   useEffect(() => {
     subscribers.add(setState);
+    // Re-arm expiry on mount. The cleanup below disposes the module-level
+    // timer when the last subscriber unmounts while deliberately leaving
+    // `current` set, so without this a record that outlived its window while
+    // nothing was mounted would come back on the next mount with a full drain
+    // bar and an undo that is no longer live. `scheduleExpiry` clears
+    // immediately when the window has already closed, so the stale record
+    // resolves instead of lingering.
+    //
+    // TAC-382 made this path routine rather than theoretical: the venue picker
+    // lives on the You screen, so every venue switch unmounts the queue screen
+    // — and with it the only UndoToast — mid-window. The ruling on that ticket
+    // requires the undo window to SURVIVE a venue switch, which means it has to
+    // survive accurately: still live if time remains, gone if it does not.
+    if (current) scheduleExpiry();
     return () => {
       subscribers.delete(setState);
       // When the last subscriber unmounts, dispose the module-level expiry

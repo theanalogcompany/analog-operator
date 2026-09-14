@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, render } from '@testing-library/react-native';
+import { Text } from 'react-native';
 
 import {
   clearUndoState,
@@ -121,6 +122,58 @@ describe('use-undo-state', () => {
     await rehydrateUndoState();
     expect(getUndoState()).toBeNull();
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  // TAC-382 made the unmount-mid-window path routine: the venue picker lives
+  // on the You screen, so switching venues unmounts the queue screen — and the
+  // only UndoToast — while the window is open. The ruling requires the window
+  // to survive that, which means surviving ACCURATELY: still live if time
+  // remains, gone if it does not.
+  describe('re-arming across a remount (the venue-switch path)', () => {
+    function Probe() {
+      const record = useUndoState();
+      return record ? <Text>{record.message_id}</Text> : null;
+    }
+
+    it('keeps a still-live undo across an unmount and remount', async () => {
+      const draft = makeDraft();
+      const first = render(<Probe />);
+      await act(async () => {
+        await setUndoState({ action: 'approve', draft });
+      });
+      first.unmount();
+
+      const second = render(<Probe />);
+      // The window has not elapsed, so the toast is rightly still offered.
+      expect(second.getByText(draft.messageId)).toBeTruthy();
+      expect(getUndoState()).not.toBeNull();
+      second.unmount();
+    });
+
+    it('drops an undo whose window closed while nothing was mounted', async () => {
+      jest.useFakeTimers();
+      try {
+        const draft = makeDraft();
+        const first = render(<Probe />);
+        await act(async () => {
+          await setUndoState({ action: 'approve', draft });
+        });
+        first.unmount();
+
+        // Unmounted, so the expiry timer is disposed and cannot fire. Without
+        // the re-arm on mount, this record would come back offering an undo
+        // long after the window shut.
+        jest.advanceTimersByTime(undoToast.windowMs + 1_000);
+
+        const second = render(<Probe />);
+        await act(async () => {});
+        expect(getUndoState()).toBeNull();
+        expect(second.queryByText(draft.messageId)).toBeNull();
+        second.unmount();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   it('clears the expiry timer when the last subscriber unmounts (state preserved because timer was cleared)', async () => {

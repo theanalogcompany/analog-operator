@@ -43,6 +43,17 @@ jest.mock('@/lib/queue-context', () => {
     QueueProvider: ({ children }: { children?: React.ReactNode }) => <View>{children}</View>,
   };
 });
+// Same treatment as QueueProvider: a passthrough, so this suite keeps observing
+// only the permission-request behavior. VenueProvider's own resolution is
+// covered in __tests__/lib/venue-context.test.tsx, and the requirement that it
+// wrap QueueProvider by the "provider nesting" test in
+// __tests__/lib/queue-context.test.tsx.
+jest.mock('@/lib/venue-context', () => {
+  const { View } = jest.requireActual('react-native');
+  return {
+    VenueProvider: ({ children }: { children?: React.ReactNode }) => <View>{children}</View>,
+  };
+});
 
 // expo-router's Stack is a screen registry that bails outside a navigation
 // context. Replace with a passthrough so layout effects run cleanly.

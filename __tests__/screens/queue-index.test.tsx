@@ -1,8 +1,11 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
+import { type ReactNode } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import QueueScreen from '@/app/queue/index';
-import { type UseQueueResult } from '@/hooks/use-queue';
+import { type GroundName } from '@/lib/grounds';
+import { type QueueContextValue } from '@/lib/queue-context';
 import { clearUndoState } from '@/hooks/use-undo-state';
 import { type PendingDraft, approveDraft } from '@/lib/api/queue';
 import {
@@ -12,21 +15,47 @@ import {
 
 type CardStackProps = {
   drafts: PendingDraft[];
+  position: number;
+  total: number;
   onApprove: (draft: PendingDraft) => void;
   onEdit: (draft: PendingDraft) => void;
   onRefuseApprove: (draft: PendingDraft) => void;
+  onPressHelp: () => void;
 };
 let lastCardStackProps: CardStackProps | null = null;
+let lastGroundName: GroundName | null = null;
 
 type SessionStub = { status: 'signed-in'; session: { user: { email: string | null } } };
 
-const mockQueue: UseQueueResult = {
+const mockQueue: QueueContextValue = {
   drafts: [],
   status: 'ready',
   error: null,
   reload: jest.fn().mockResolvedValue(undefined),
   optimisticallyRemove: jest.fn(),
   restore: jest.fn(),
+  findVenueIdForGuest: jest.fn().mockReturnValue(null),
+};
+
+const VENUE_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+// A single-venue operator, which is the shape every pre-existing test in this
+// file assumes. The venue-switching behavior itself is covered in
+// __tests__/screens/queue-index-venue.test.tsx.
+const mockSelect = jest.fn();
+let mockVenue = {
+  venues: [
+    { id: VENUE_A, name: "Le Mil's Coffee", slug: 'le-mils-coffee', timezone: 'America/Los_Angeles' },
+  ],
+  selectedVenueId: VENUE_A as string | null,
+  selectedVenue: {
+    id: VENUE_A,
+    name: "Le Mil's Coffee",
+    slug: 'le-mils-coffee',
+    timezone: 'America/Los_Angeles',
+  } as { id: string; name: string; slug: string; timezone: string } | null,
+  status: 'ready' as 'loading' | 'ready' | 'error',
+  select: mockSelect,
 };
 
 let mockSession: SessionStub = {
@@ -43,6 +72,7 @@ jest.mock('expo-router', () => ({
   usePathname: () => '/queue',
 }));
 jest.mock('@/lib/queue-context', () => ({ useQueueContext: () => mockQueue }));
+jest.mock('@/lib/venue-context', () => ({ useVenueSelection: () => mockVenue }));
 jest.mock('@/lib/auth/use-session', () => ({ useSession: () => mockSession }));
 jest.mock('@/lib/supabase/client', () => ({ supabase: { auth: { signOut: jest.fn() } } }));
 jest.mock('@/components/queue/queue-card-stack', () => ({
@@ -51,9 +81,18 @@ jest.mock('@/components/queue/queue-card-stack', () => ({
     return null;
   },
 }));
-jest.mock('@/components/queue/permission-denied-banner', () => ({
-  PermissionDeniedBanner: () => null,
-}));
+// Captures the screen's ground DECISION. The claim under test is "this screen
+// picks ground X for a card of tone Y", which is the screen's job; how a ground
+// paints belongs to lib/grounds.ts and its own test.
+jest.mock('@/components/ground/ground-screen', () => {
+  const { View } = jest.requireActual('react-native');
+  return {
+    GroundScreen: ({ name, children }: { name: string; children: ReactNode }) => {
+      lastGroundName = name as GroundName;
+      return <View>{children}</View>;
+    },
+  };
+});
 jest.mock('@/components/queue/undo-toast', () => ({ UndoToast: () => null }));
 jest.mock('@/lib/api/queue', () => {
   const actual = jest.requireActual('@/lib/api/queue');
@@ -93,84 +132,125 @@ afterEach(async () => {
   await clearUndoState();
 });
 
-describe('QueueScreen header surface', () => {
-  it('renders the logo and hides the legacy header', () => {
-    render(<QueueScreen />);
-    expect(screen.getByLabelText('Analog')).toBeTruthy();
-    expect(screen.queryByText(/PENDING/)).toBeNull();
+const metrics = {
+  frame: { x: 0, y: 0, width: 402, height: 874 },
+  insets: { top: 62, left: 0, right: 0, bottom: 34 },
+};
+
+function renderScreen() {
+  return render(
+    <SafeAreaProvider initialMetrics={metrics}>
+      <QueueScreen />
+    </SafeAreaProvider>,
+  );
+}
+
+const draftWithTone = (
+  overrides: Partial<PendingDraft> = {},
+): PendingDraft => ({
+  messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+  venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+  venueSlug: 'mock',
+  venueTimezone: null,
+  guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+  guestDisplayName: 'A',
+  guestPhoneFallback: '+15550001',
+  draftBody: 'x',
+  category: null,
+  voiceFidelity: null,
+  reviewReason: null,
+  recognitionState: null,
+  agentReasoning: null,
+  pendingSinceMs: 1,
+  recentContext: [],
+  langfuseTraceId: null,
+  ...overrides,
+});
+
+// The ground encodes WHY the top card was flagged, so the operator knows what
+// kind of decision is in front of them before reading a word. That makes the
+// mapping a behavior of this screen, not decoration.
+describe('QueueScreen — the ground follows the top card', () => {
+  it('goes clay for a low-fidelity flag', () => {
+    mockQueue.drafts = [draftWithTone({ reviewReason: 'low fidelity score' })];
+    renderScreen();
+    expect(lastGroundName).toBe('queueClay');
   });
 
-  it('renders the greeting with the operator first name derived from email', () => {
-    render(<QueueScreen />);
-    expect(screen.getByText(/Good (morning|afternoon|evening), Jaipal\./)).toBeTruthy();
-  });
-
-  it('falls back to a nameless greeting when email is null', () => {
-    mockSession = {
-      status: 'signed-in',
-      session: { user: { email: null } },
-    };
-    render(<QueueScreen />);
-    expect(screen.getByText(/Good (morning|afternoon|evening)\./)).toBeTruthy();
-  });
-
-  it('renders the drafts + need-your-input meta row (no sent-today segment)', () => {
+  it('goes stone for a new-guest flag', () => {
     mockQueue.drafts = [
-      {
-        messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-        venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-        venueSlug: 'mock',
-        guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-        guestDisplayName: 'A',
-        guestPhoneFallback: '+15550001',
-        draftBody: 'x',
-        category: null,
-        voiceFidelity: null,
-        reviewReason: 'low fidelity',
-        recognitionState: null,
-        agentReasoning: null,
-        pendingSinceMs: 1,
-        recentContext: [],
-        langfuseTraceId: null,
-      },
-      {
-        messageId: '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-        venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-        venueSlug: 'mock',
-        guestId: 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
-        guestDisplayName: 'B',
-        guestPhoneFallback: '+15550002',
-        draftBody: 'y',
-        category: null,
-        voiceFidelity: null,
-        reviewReason: null,
-        recognitionState: null,
-        agentReasoning: null,
-        pendingSinceMs: 1,
-        recentContext: [],
-        langfuseTraceId: null,
-      },
+      draftWithTone({ reviewReason: 'first message from new guest' }),
     ];
-    render(<QueueScreen />);
-    // Scoped to the meta row: QueueTabsHeader (rendered above it) also shows
-    // a live queue count, and with 2 drafts here that count coincides with
-    // this row's draftCount — an unscoped getByText('2') would be ambiguous.
-    const metaRow = within(screen.getByTestId('queue-meta-row'));
-    expect(metaRow.getByText('2')).toBeTruthy();
-    expect(metaRow.getByText('drafts')).toBeTruthy();
-    expect(metaRow.getByText('1')).toBeTruthy();
-    expect(metaRow.getByText('need your input')).toBeTruthy();
-    expect(screen.queryByText(/sent today/)).toBeNull();
+    renderScreen();
+    expect(lastGroundName).toBe('queueStone');
   });
 
-  it('renders the footer copy', () => {
-    render(<QueueScreen />);
-    expect(screen.getByText(/Need help\?/)).toBeTruthy();
-    expect(screen.getByText('Chat with Jaipal')).toBeTruthy();
+  it('goes ink when no draft was generated', () => {
+    mockQueue.drafts = [
+      draftWithTone({ reviewReason: 'no draft generated', draftBody: '' }),
+    ];
+    renderScreen();
+    expect(lastGroundName).toBe('queueInk');
   });
 
-  it('opens the help SMS link when "Chat with Jaipal" is pressed', () => {
-    render(<QueueScreen />);
+  it('settles to neutral with an empty deck — no decision, no color', () => {
+    mockQueue.drafts = [];
+    renderScreen();
+    expect(lastGroundName).toBe('neutral');
+  });
+
+  it('reads the top card, not the deck', () => {
+    mockQueue.drafts = [
+      draftWithTone({ reviewReason: 'no draft generated', draftBody: '' }),
+      draftWithTone({
+        messageId: '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        reviewReason: 'low fidelity score',
+      }),
+    ];
+    renderScreen();
+    expect(lastGroundName).toBe('queueInk');
+  });
+});
+
+describe('QueueScreen — the retired chrome', () => {
+  it('renders the three-tab nav', () => {
+    renderScreen();
+    expect(screen.getByLabelText('Queue')).toBeTruthy();
+    expect(screen.getByLabelText('Texts')).toBeTruthy();
+    expect(screen.getByLabelText('You')).toBeTruthy();
+  });
+
+  it('no longer renders a hamburger — sign-out lives on You', () => {
+    renderScreen();
+    expect(screen.queryByLabelText('Open menu')).toBeNull();
+  });
+
+  it('no longer renders the greeting or the meta row', () => {
+    // The nav carries the count now; the greeting was a second, redundant
+    // header competing with the card for the operator's attention.
+    renderScreen();
+    expect(screen.queryByTestId('queue-meta-row')).toBeNull();
+    expect(screen.queryByText(/Good (morning|afternoon|evening)/)).toBeNull();
+  });
+});
+
+describe('QueueScreen — session progress', () => {
+  it('starts the counter at the first of however many loaded', () => {
+    mockQueue.drafts = [
+      draftWithTone(),
+      draftWithTone({ messageId: '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d' }),
+      draftWithTone({ messageId: '33a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d' }),
+    ];
+    renderScreen();
+    expect(lastCardStackProps!.position).toBe(1);
+    expect(lastCardStackProps!.total).toBe(3);
+  });
+});
+
+describe('QueueScreen — the empty deck', () => {
+  it('offers the help link, which is otherwise in the hint row', () => {
+    mockQueue.drafts = [];
+    renderScreen();
     fireEvent.press(screen.getByLabelText('Chat with Jaipal via SMS'));
     expect(Linking.openURL).toHaveBeenCalledWith('sms:+17869530853');
   });
@@ -207,7 +287,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(TARGET_GUEST_ID, '33a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
     setPendingTap(TARGET_GUEST_ID);
-    render(<QueueScreen />);
+    renderScreen();
     expect(lastCardStackProps).not.toBeNull();
     expect(lastCardStackProps!.drafts[0].guestId).toBe(TARGET_GUEST_ID);
     expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
@@ -223,7 +303,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(THIRD_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
     setPendingTap(TARGET_GUEST_ID); // not in drafts
-    render(<QueueScreen />);
+    renderScreen();
     expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
       OTHER_GUEST_ID,
       THIRD_GUEST_ID,
@@ -236,7 +316,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(TARGET_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
     setPendingTap(TARGET_GUEST_ID);
-    render(<QueueScreen />);
+    renderScreen();
     expect(lastCardStackProps!.drafts[0].guestId).toBe(TARGET_GUEST_ID);
 
     // Simulate the operator approving the surfaced card. The screen calls
@@ -253,7 +333,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
     mockQueue.drafts = [
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
-    render(<QueueScreen />);
+    renderScreen();
     expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
       OTHER_GUEST_ID,
     ]);
@@ -265,7 +345,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
 // so the server ships whatever draft body it has stored — and for a card whose
 // draft was never generated, that's `""`. The card looked sendable, the swipe
 // looked like it worked, and nothing shipped. These lock the local block.
-describe('QueueScreen swipe-right send path', () => {
+describe('QueueScreen — handleApprove, the screen’s approve entry', () => {
   const GUEST_ID = 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
   const MESSAGE_ID = '5f364358-db56-4f8e-9eba-661544855cd1';
 
@@ -288,27 +368,33 @@ describe('QueueScreen swipe-right send path', () => {
     langfuseTraceId: null,
   });
 
-  async function swipeRight(draft: PendingDraft): Promise<void> {
+  // NOT a swipe. `QueueCardStack` is mocked to null here, so nothing in this
+  // block observes the gesture — it drives the screen's approve handler
+  // directly. The swipe's own refusal lives in `use-queue-swipe.ts` and is
+  // tested against `resolveSwipeOutcome`; conflating the two is what let
+  // TAC-312 ship green. (CLAUDE.md, "Never mock the layer whose behavior you
+  // are claiming.")
+  async function approveDirectly(draft: PendingDraft): Promise<void> {
     mockQueue.drafts = [draft];
-    render(<QueueScreen />);
+    renderScreen();
     await act(async () => {
       await lastCardStackProps!.onApprove(draft);
     });
   }
 
   it('sends when the draft body is present', async () => {
-    await swipeRight(draftWithBody('Patio is open until 9 — come by.'));
+    await approveDirectly(draftWithBody('Patio is open until 9 — come by.'));
     expect(approveDraft).toHaveBeenCalledWith(MESSAGE_ID);
     expect(mockQueue.optimisticallyRemove).toHaveBeenCalledWith(MESSAGE_ID);
   });
 
   it('blocks locally on a genuinely-empty draft — no network call', async () => {
-    await swipeRight(draftWithBody(''));
+    await approveDirectly(draftWithBody(''));
     expect(approveDraft).not.toHaveBeenCalled();
   });
 
   it('blocks locally on a whitespace-only draft — no network call', async () => {
-    await swipeRight(draftWithBody('   \n  '));
+    await approveDirectly(draftWithBody('   \n  '));
     expect(approveDraft).not.toHaveBeenCalled();
   });
 
@@ -316,7 +402,7 @@ describe('QueueScreen swipe-right send path', () => {
     // The failure mode this replaces: optimistically remove the card, fire the
     // doomed request, then restore it on the error — the operator watches a
     // card vanish and reappear and can't tell whether the guest got the reply.
-    await swipeRight(draftWithBody(''));
+    await approveDirectly(draftWithBody(''));
     expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
     expect(mockQueue.restore).not.toHaveBeenCalled();
   });
@@ -352,14 +438,14 @@ describe('QueueScreen refusal path', () => {
 
   it('hands the card stack a refusal handler', () => {
     mockQueue.drafts = [blankDraft()];
-    render(<QueueScreen />);
+    renderScreen();
     expect(typeof lastCardStackProps!.onRefuseApprove).toBe('function');
   });
 
   it('leaves the card in local state — no removal, no restore, no request', async () => {
     const draft = blankDraft();
     mockQueue.drafts = [draft];
-    render(<QueueScreen />);
+    renderScreen();
     await act(async () => {
       lastCardStackProps!.onRefuseApprove(draft);
     });
@@ -372,7 +458,7 @@ describe('QueueScreen refusal path', () => {
   it('keeps the card visible in the stack after a refusal', async () => {
     const draft = blankDraft();
     mockQueue.drafts = [draft];
-    render(<QueueScreen />);
+    renderScreen();
     await act(async () => {
       lastCardStackProps!.onRefuseApprove(draft);
     });

@@ -21,20 +21,22 @@ const BASE: ConversationSummary = {
 
 describe('ConversationRow', () => {
   it('renders the guest name, badge label, and preview', () => {
-    render(<ConversationRow conversation={BASE} onPress={() => {}} isFirst />);
-    expect(screen.getByText('Maya R.')).toBeTruthy();
-    expect(screen.getByText('Returning')).toBeTruthy();
+    render(<ConversationRow conversation={BASE} onPress={() => {}} banded />);
+    // Row names render as tracked caps on the ground.
+    expect(screen.getByText('MAYA R.')).toBeTruthy();
+    expect(screen.getByLabelText('Recognition: Returning')).toBeTruthy();
     expect(screen.getByText(/Done — got you down for two at 7:30\./)).toBeTruthy();
   });
 
   it('falls back to the phone number when name is null', () => {
-    render(<ConversationRow conversation={{ ...BASE, name: null }} onPress={() => {}} isFirst />);
+    render(<ConversationRow conversation={{ ...BASE, name: null }} onPress={() => {}} banded />);
     expect(screen.getByText('+15551110001')).toBeTruthy();
   });
 
   it('labels the speaker as the agent name for an outbound last message', () => {
-    render(<ConversationRow conversation={BASE} onPress={() => {}} isFirst />);
-    expect(screen.getByText(/Sana ·/)).toBeTruthy();
+    render(<ConversationRow conversation={BASE} onPress={() => {}} banded />);
+    // The design's preview format is "Sana — Done — got you down…".
+    expect(screen.getByText(/Sana —/)).toBeTruthy();
   });
 
   it('labels the speaker as "Guest" for an inbound last message', () => {
@@ -42,15 +44,15 @@ describe('ConversationRow', () => {
       <ConversationRow
         conversation={{ ...BASE, lastMessageDirection: 'inbound', lastMessagePreview: 'hi!' }}
         onPress={() => {}}
-        isFirst
+        banded
       />,
     );
-    expect(screen.getByText(/Guest ·/)).toBeTruthy();
+    expect(screen.getByText(/Guest —/)).toBeTruthy();
   });
 
   it('fires onPress when tapped', () => {
     const onPress = jest.fn();
-    render(<ConversationRow conversation={BASE} onPress={onPress} isFirst />);
+    render(<ConversationRow conversation={BASE} onPress={onPress} banded />);
     fireEvent.press(screen.getByLabelText('Open conversation with Maya R.'));
     expect(onPress).toHaveBeenCalledTimes(1);
   });

@@ -1,6 +1,8 @@
 import * as Haptics from 'expo-haptics';
 
 type Haptic = {
+  /** The drag crossed the 80px commit threshold. */
+  swipeThresholdCrossed: () => void;
   swipeRightSuccess: () => void;
   swipeRefused: () => void;
   swipeLeftEdit: () => void;
@@ -9,6 +11,12 @@ type Haptic = {
 
 export function useHaptics(): Haptic {
   return {
+    // Light, because it is a preview of a decision rather than the decision.
+    // It fires mid-gesture, potentially several times if the operator
+    // hesitates across the line, so anything heavier would nag.
+    swipeThresholdCrossed: () => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
     swipeRightSuccess: () => {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },

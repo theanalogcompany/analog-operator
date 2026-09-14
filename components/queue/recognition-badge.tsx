@@ -1,52 +1,51 @@
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
+import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type RecognitionState } from '@/lib/api/queue';
-import { recognition } from '@/lib/theme';
+import { recognition, typePresets } from '@/lib/theme';
 
-type Palette = {
-  bg: string;
-  text: string;
-  dot: string;
-};
+/**
+ * `card` — on a white surface (the queue card's head, the texts list menu).
+ * `ground` — on a gradient ground (the thread header, the edit takeover).
+ *
+ * The redesign drops the filled pill and the state-colored dot in favour of one
+ * outlined, square-cornered badge in both places. Recognition is context, not a
+ * status light; four fill colors competing with the flag strip was noise.
+ */
+type Variant = 'card' | 'ground';
 
-const PALETTES: Record<RecognitionState, Palette> = {
-  new: { bg: '#EDE4D2', text: '#4A4339', dot: '#857A6A' },
-  returning: { bg: '#EDE4D2', text: '#4A4339', dot: '#4A4339' },
-  regular: { bg: '#E5B19C', text: '#6B3220', dot: '#A85638' },
-  raving_fan: { bg: '#C66A4A', text: '#FFFFFF', dot: '#FFFFFF' },
+const VARIANTS: Record<Variant, { border: string; color: string }> = {
+  card: { border: 'rgba(28,24,20,0.25)', color: '#4A4339' },
+  ground: { border: 'rgba(255,255,255,0.5)', color: '#FFFFFF' },
 };
 
 type Props = {
   /** `null` = "we don't have recognition data yet"; renders no badge. */
   state: RecognitionState | null;
+  variant?: Variant;
 };
 
-export function RecognitionBadge({ state }: Props) {
+export function RecognitionBadge({ state, variant = 'card' }: Props) {
   if (state === null) return null;
 
-  const palette = PALETTES[state];
+  const { border, color } = VARIANTS[variant];
   const label = recognition.stateLabels[state];
   return (
     <View
       accessibilityLabel={`Recognition: ${label}`}
-      className="flex-row items-center self-start rounded-full px-2 py-[3px]"
-      style={{ backgroundColor: palette.bg, gap: 5 }}
+      style={{
+        alignSelf: 'center',
+        borderWidth: 1,
+        borderColor: border,
+        // Square corners are the point — the old pill read as a chip.
+        borderRadius: 0,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+      }}
     >
-      <View
-        style={{ width: 5, height: 5, borderRadius: 5, backgroundColor: palette.dot }}
-      />
-      <Text
-        className="font-inter-tight-medium uppercase"
-        style={{
-          color: palette.text,
-          fontSize: 9.5,
-          letterSpacing: 1.33,
-          fontWeight: '600',
-          lineHeight: 11,
-        }}
-      >
+      <TrackedCaps {...typePresets.badge} color={color} decorative>
         {label}
-      </Text>
+      </TrackedCaps>
     </View>
   );
 }
