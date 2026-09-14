@@ -26,6 +26,8 @@
  * that layer, and it cannot be a test that mocks the animation away.
  */
 
+import { easing } from '@/lib/theme';
+
 /* -------------------------------------------------------------------------- */
 /* Cold-launch detection                                                       */
 /* -------------------------------------------------------------------------- */
@@ -102,11 +104,10 @@ export function resolveEntranceMode(args: {
 /**
  * A CSS cubic-bezier timing function, solved on the UI thread.
  *
- * Hand-rolled rather than `Easing.bezier(...)` for two reasons: the layers are
- * driven from one clock, so easing has to be applied INSIDE a pure function of
- * that clock rather than handed to `withTiming`; and a plain function is
- * directly testable in Jest as ordinary JS, which is how every other pure
- * helper in this codebase is verified.
+ * Easing has to be applied INSIDE a pure function of the clock rather than
+ * handed to `withTiming`. Reanimated's `Easing.bezierFn` could do that too; this
+ * stays hand-rolled because it is a plain worklet, directly testable in Jest as
+ * ordinary JS, with no worklet-returning-a-worklet on the UI thread.
  *
  * `x` is elapsed progress 0..1; the return is eased progress 0..1. Newton-
  * Raphson against the x-polynomial, then evaluate y at the solved t — the
@@ -145,17 +146,21 @@ export function cubicBezierAt(
   return ((ay * t + by) * t + cy) * t;
 }
 
+// Destructured at module scope so the worklets below capture four numbers each,
+// not the theme object.
+const [EASE_X1, EASE_Y1, EASE_X2, EASE_Y2] = easing.ease;
+const [DECEL_X1, DECEL_Y1, DECEL_X2, DECEL_Y2] = easing.emphasizedDecelerate;
+
 /** CSS `ease` — every opacity ramp in the entrance. */
 export function easeAt(x: number): number {
   'worklet';
-  return cubicBezierAt(0.25, 0.1, 0.25, 1, x);
+  return cubicBezierAt(EASE_X1, EASE_Y1, EASE_X2, EASE_Y2, x);
 }
 
-/** `cubic-bezier(.2,.8,.2,1)` — the card's rise. Same curve as the swipe
- *  spring-back, and the first consumer of `easing.emphasizedDecelerate`. */
+/** `cubic-bezier(.2,.8,.2,1)` — the card's rise; the swipe spring-back's curve. */
 export function easeDecelerateAt(x: number): number {
   'worklet';
-  return cubicBezierAt(0.2, 0.8, 0.2, 1, x);
+  return cubicBezierAt(DECEL_X1, DECEL_Y1, DECEL_X2, DECEL_Y2, x);
 }
 
 /* -------------------------------------------------------------------------- */

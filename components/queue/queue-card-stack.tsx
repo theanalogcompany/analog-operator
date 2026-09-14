@@ -180,15 +180,9 @@ function FrontCard({
   // double-fires as both.
   const gesture = Gesture.Exclusive(pan, tap);
 
-  // The card's rise, and the only non-opacity animation in the entrance. Both
-  // the opacity and the offset come from ONE ramp so they can never disagree
-  // about how far through the rise they are.
-  //
-  // This is a function of the boot clock, not of this component's mount: the
-  // deck only mounts once the queue resolves, which can be after the card's
-  // 940ms slot, and a mount-driven rise would then start late on a slow network
-  // and replay on every swipe (`FrontCard` is keyed on `messageId`). Read from
-  // the clock, a late mount renders resolved and a remount is a no-op.
+  // The card's rise: opacity and offset from ONE ramp on the boot clock, never
+  // this mount, so a late mount renders resolved and a swipe's remount is a
+  // no-op. See lib/entrance.ts. (TAC-384.)
   const cardStyle = useAnimatedStyle(() => {
     const rise = cardRiseAt({
       elapsedMs: entranceClock.value,

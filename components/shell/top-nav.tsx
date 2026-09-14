@@ -35,10 +35,8 @@ export function TopNav() {
       ? 'texts'
       : 'queue';
 
-  // The nav arrives just after the card, on the boot clock. Outside a cold
-  // launch the clock is pinned past the end of the entrance and this is a
-  // constant 1 — including on a tab switch, which remounts this component and
-  // must not re-run anything. (TAC-384.)
+  // The nav arrives just after the card, on the boot clock; a constant 1
+  // outside a cold launch. (TAC-384.)
   const entranceStyle = useAnimatedStyle(() => ({
     opacity: fadeInAt({
       elapsedMs: clock.value,

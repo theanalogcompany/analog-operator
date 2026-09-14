@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 import { __resetEntranceStateForTests, fadeInAt } from '@/lib/entrance';
@@ -7,10 +7,12 @@ import { entrance } from '@/lib/theme';
 
 let seenMode: string | null = null;
 let seenClock: number | null = null;
+let seenRunning: boolean | null = null;
 
 function Probe() {
-  const { mode, clock } = useEntrance();
+  const { mode, running, clock } = useEntrance();
   seenMode = mode;
+  seenRunning = running;
   seenClock = clock.value;
   return <Text>probe</Text>;
 }
@@ -19,6 +21,7 @@ beforeEach(() => {
   __resetEntranceStateForTests();
   seenMode = null;
   seenClock = null;
+  seenRunning = null;
 });
 
 describe('useEntrance without a provider', () => {
@@ -36,6 +39,7 @@ describe('useEntrance without a provider', () => {
     render(<Probe />);
     expect(seenMode).toBe('off');
     expect(seenClock).toBe(entrance.totalMs);
+    expect(seenRunning).toBe(false);
   });
 
   it('resolves every ramp, so a lone component renders finished', () => {
@@ -82,6 +86,7 @@ describe('EntranceProvider', () => {
       </EntranceProvider>,
     );
     expect(seenMode).toBe('off');
+    expect(seenRunning).toBe(false);
   });
 
   it('starts its clock at zero, so the mark begins from nothing', () => {
@@ -93,5 +98,36 @@ describe('EntranceProvider', () => {
     // Sampled on the provider's first render, before the timing animation is
     // scheduled — the frame the veil is opaque and the mark has not begun.
     expect(seenClock).toBe(0);
+  });
+
+  /**
+   * `mode` stays 'full' for the whole process, so it cannot answer "is the
+   * entrance on screen right now?" — a GroundScreen mounted on a tab return used
+   * to believe it was, and hard-cut its ground changes for 1.7s. `running` is
+   * the one answer, and it goes false exactly once.
+   */
+  it('reports running until the clock runs out, then stops for good', () => {
+    jest.useFakeTimers();
+    try {
+      render(
+        <EntranceProvider>
+          <Probe />
+        </EntranceProvider>,
+      );
+      expect(seenRunning).toBe(true);
+
+      act(() => {
+        jest.advanceTimersByTime(entrance.totalMs - 1);
+      });
+      expect(seenRunning).toBe(true);
+
+      act(() => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(seenRunning).toBe(false);
+      expect(seenMode).toBe('full');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

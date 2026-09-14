@@ -38,6 +38,13 @@ export type EntranceValue = {
   /** 0 -> 1 across `reducedMotionFadeMs`. Pinned at 1 unless `mode` is
    *  `reduced`. */
   readonly reduced: SharedValue<number>;
+  /**
+   * True from the provider's first frame until the entrance clock runs out, on
+   * a cold launch only. Anything asking "does the entrance own this layer right
+   * now?" reads this, never `mode` — `mode` stays `'full'` for the whole
+   * process, so a screen that mounts later would think it was still inside it.
+   */
+  readonly running: boolean;
 };
 
 const EntranceContext = createContext<EntranceValue | null>(null);
@@ -63,6 +70,7 @@ export function useEntrance(): EntranceValue {
     () =>
       ({
         mode: 'off',
+        running: false,
         clock: fallbackClock,
         reduced: fallbackReduced,
       }) as const,
@@ -102,6 +110,7 @@ export function EntranceProvider({ children }: { children: ReactNode }) {
 
   const clock = useSharedValue<number>(mode === 'full' ? 0 : entrance.totalMs);
   const reduced = useSharedValue<number>(mode === 'reduced' ? 0 : 1);
+  const [running, setRunning] = useState(mode === 'full');
 
   useEffect(() => {
     // Linear, because the easing belongs to each layer's own ramp. A single
@@ -112,7 +121,10 @@ export function EntranceProvider({ children }: { children: ReactNode }) {
         duration: entrance.totalMs,
         easing: Easing.linear,
       });
-      return;
+      // One timer for the whole app, so "is the entrance still playing?" has
+      // one answer rather than one per mounted consumer.
+      const timer = setTimeout(() => setRunning(false), entrance.totalMs);
+      return () => clearTimeout(timer);
     }
     if (mode === 'reduced') {
       reduced.value = withTiming(1, {
@@ -123,8 +135,8 @@ export function EntranceProvider({ children }: { children: ReactNode }) {
   }, [mode, clock, reduced]);
 
   const value = useMemo<EntranceValue>(
-    () => ({ mode, clock, reduced }),
-    [mode, clock, reduced],
+    () => ({ mode, running, clock, reduced }),
+    [mode, running, clock, reduced],
   );
 
   return (

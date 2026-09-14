@@ -23,9 +23,10 @@ const OVERLAY_LIFETIME_MS = entrance.markDelayMs + entrance.markDurationMs;
  * and the mark that fades up through it.
  *
  * Rendered at the root, above everything, and `pointerEvents="none"` for its
- * whole life — the queue underneath is swipeable from the first frame. The
- * entrance never gates interaction; the 1.5s in the ticket is a floor on when
- * the card is *in place*, not a lock. (TAC-384.)
+ * whole life, so it never takes a touch. The layers beneath it only receive
+ * touches once they are visible — iOS does not hit-test a view below 0.01
+ * alpha — so the card becomes swipeable as it rises, inside the ticket's 1.5s.
+ * (TAC-384.)
  */
 export function EntranceOverlay() {
   const { mode, clock } = useEntrance();

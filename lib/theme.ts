@@ -56,17 +56,11 @@ export const ground = {
  * The cold-launch entrance — "Wick" (TAC-384).
  *
  * Every value is an ABSOLUTE offset from one clock started at boot, not a
- * per-layer delay. That distinction is the design: the five layers live in five
- * components that mount at different times, and `QueueCardStack` only mounts
- * once the queue resolves — which can be after 940ms. Per-layer clocks would
- * let a slow fetch start the card's rise late, which is exactly what the
- * ticket's "the animation must not gate on the fetch" forbids. Driven from one
- * clock, a layer that mounts after its window has passed simply reads the clock
- * and renders resolved.
+ * per-layer delay — see lib/entrance.ts for why.
  *
- * The numbers are exact. They were tuned against seven rejected entrances and
- * the relationship between the mark's hold and the ground's arrival IS the
- * effect — shifting either by 100ms changes what it feels like. Do not round.
+ * The numbers are exact: the relationship between the mark's hold and the
+ * ground's arrival IS the effect, and shifting either by 100ms changes what it
+ * feels like. Do not round.
  */
 export const entrance = {
   totalMs: 1_700,
@@ -269,6 +263,8 @@ export const body = {
 export const easing = {
   /** cubic-bezier(.2,.8,.2,1) — used for all major transitions in the design */
   emphasizedDecelerate: [0.2, 0.8, 0.2, 1] as const,
+  /** cubic-bezier(.25,.1,.25,1) — CSS `ease`; every opacity ramp in the cold-launch entrance */
+  ease: [0.25, 0.1, 0.25, 1] as const,
 };
 
 export const recognition = {

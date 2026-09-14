@@ -27,8 +27,8 @@ type Props = {
    * The ground the cold-launch entrance resolves into, when it differs from
    * `name`.
    *
-   * Must be CONSTANT across the fetch — that is the whole point. The queue
-   * screen passes clay unconditionally, so the opening is identical whether the
+   * Must be CONSTANT across the fetch. The queue screen passes clay
+   * unconditionally, so the clay phase of the entrance is the same whether the
    * queue returns in 300ms or 2s. Pass nothing on a screen whose `name` is
    * already the ground the entrance should settle on (the sign-in flow), and
    * the entrance simply fades that in with no second layer. (TAC-384.)
@@ -61,22 +61,18 @@ export function GroundScreen({
   edges = DEFAULT_EDGES,
   entranceGround,
 }: Props) {
-  const { mode, clock, reduced } = useEntrance();
+  const { running: entranceRunning, clock, reduced } = useEntrance();
 
   const [current, setCurrent] = useState<GroundName>(name);
   const [previous, setPrevious] = useState<GroundName | null>(null);
   const progress = useSharedValue(1);
 
-  // The entrance owns the ground only while it is actually playing. Once the
-  // clock runs out this reverts to false and the deck crossfade takes over, by
-  // which point `current` is already `name` and the bucket layer is fully
-  // opaque — so the handoff paints the same pixels and nothing transitions.
-  const [entranceRunning, setEntranceRunning] = useState(mode === 'full');
-  useEffect(() => {
-    if (mode !== 'full') return;
-    const timer = setTimeout(() => setEntranceRunning(false), entrance.totalMs);
-    return () => clearTimeout(timer);
-  }, [mode]);
+  // The entrance owns the ground only while the PROVIDER says it is playing —
+  // never while `mode === 'full'`, which stays true for the whole process. A
+  // GroundScreen that mounts after the entrance (a tab return, a venue switch,
+  // the queue reached by signing in) takes the ordinary crossfade from its first
+  // frame. When `running` flips, `current` is already `name` and the bucket
+  // layer is fully opaque, so the handoff paints the same pixels.
 
   // Guards the fade callback against a ground change that lands mid-animation:
   // only the most recent transition is allowed to clear `previous`.
