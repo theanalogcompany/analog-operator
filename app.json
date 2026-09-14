@@ -31,7 +31,13 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#2B1409"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

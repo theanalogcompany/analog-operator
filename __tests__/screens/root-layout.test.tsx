@@ -16,6 +16,10 @@ let mockSession: SessionState = { status: 'loading', session: null };
 
 // All the boot-time side effects from app/_layout.tsx are mocked to no-ops so
 // the test only observes the permission-request behavior.
+jest.mock('@/lib/entrance', () => {
+  const actual = jest.requireActual('@/lib/entrance');
+  return { ...actual, consumeColdLaunch: jest.fn(actual.consumeColdLaunch) };
+});
 jest.mock('@/lib/auth/use-session', () => ({
   useSession: () => mockSession,
 }));
@@ -97,6 +101,13 @@ jest.mock('@expo-google-fonts/inter-tight', () => ({
   useFonts: () => [true],
 }));
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const entranceModule = require('@/lib/entrance') as {
+  consumeColdLaunch: jest.Mock;
+  __resetEntranceStateForTests: () => void;
+};
+const consumeColdLaunchMock = entranceModule.consumeColdLaunch;
+
 const getPermissionsAsyncMock = Notifications.getPermissionsAsync as jest.Mock;
 const requestPermissionsAsyncMock = Notifications.requestPermissionsAsync as jest.Mock;
 
@@ -106,6 +117,8 @@ const RootLayout = require('@/app/_layout').default as () => React.ReactNode;
 
 beforeEach(() => {
   mockSession = { status: 'loading', session: null };
+  entranceModule.__resetEntranceStateForTests();
+  consumeColdLaunchMock.mockClear();
   getPermissionsAsyncMock.mockReset();
   requestPermissionsAsyncMock.mockReset();
   getPermissionsAsyncMock.mockResolvedValue({ status: 'undetermined' });
@@ -196,5 +209,60 @@ describe('RootLayout — first-authenticated-render permission prompt (TAC-288)'
     await Promise.resolve();
     await Promise.resolve();
     expect(requestPermissionsAsyncMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The entrance is armed at BOOT, not at auth — and that single choice is what
+ * makes the ticket's three "never" rules true at once.
+ *
+ * Rule 1 as originally written said "never after sign-in", which read literally
+ * would mean a first-time operator never sees the entrance that introduces the
+ * app: their first launch is the sign-in screen, so the entrance would be spent
+ * on nobody and their second launch would show it. The reworded rule is "cold
+ * launch only, INCLUDING the first launch at sign-in" — so the sign-in screen
+ * gets it, and the queue reached by authenticating does not, because by then
+ * the flag is already spent. (TAC-384.)
+ */
+describe('RootLayout — cold-launch entrance arming (TAC-384)', () => {
+  it('arms the entrance on a signed-out cold launch, so sign-in gets it', () => {
+    mockSession = { status: 'signed-out', session: null };
+    render(<RootLayout />);
+    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('arms the entrance on a signed-in cold launch', () => {
+    mockSession = {
+      status: 'signed-in',
+      session: { user: { email: 'jaipal@theanalog.company' } },
+    };
+    render(<RootLayout />);
+    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT re-arm on the queue after authenticating', () => {
+    // The SMS-OTP path: signed-out first, then signed-in. The entrance belongs
+    // to the sign-in screen that already played it; crossing the auth gate must
+    // not start a second one.
+    mockSession = { status: 'signed-out', session: null };
+    const { rerender } = render(<RootLayout />);
+    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+    expect(consumeColdLaunchMock).toHaveLastReturnedWith(true);
+
+    mockSession = {
+      status: 'signed-in',
+      session: { user: { email: 'jaipal@theanalog.company' } },
+    };
+    rerender(<RootLayout />);
+    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not arm anything while the gate is still closed', () => {
+    // The tree below the gate is unmounted until fonts and the session resolve,
+    // so the provider has not mounted and the flag is still unspent — which is
+    // what leaves it available for the first screen that actually paints.
+    mockSession = { status: 'loading', session: null };
+    render(<RootLayout />);
+    expect(consumeColdLaunchMock).not.toHaveBeenCalled();
   });
 });

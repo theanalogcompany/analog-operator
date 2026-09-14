@@ -12,7 +12,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHaptics } from '@/hooks/use-haptics';
 import { useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type PendingDraft } from '@/lib/api/queue';
-import { card, layout, peek } from '@/lib/theme';
+import { cardRiseAt, fadeInAt } from '@/lib/entrance';
+import { useEntrance } from '@/lib/entrance-context';
+import { card, entrance, layout, peek } from '@/lib/theme';
 
 import { QueueCard } from './queue-card';
 import { SwipeHints } from './swipe-hints';
@@ -161,6 +163,8 @@ function FrontCard({
     enabled: true,
   });
 
+  const { clock: entranceClock } = useEntrance();
+
   const tap = Gesture.Tap()
     .maxDuration(300)
     .onEnd((event, success) => {
@@ -176,12 +180,31 @@ function FrontCard({
   // double-fires as both.
   const gesture = Gesture.Exclusive(pan, tap);
 
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { rotate: `${rotation.value}deg` },
-    ],
-  }));
+  // The card's rise, and the only non-opacity animation in the entrance. Both
+  // the opacity and the offset come from ONE ramp so they can never disagree
+  // about how far through the rise they are.
+  //
+  // This is a function of the boot clock, not of this component's mount: the
+  // deck only mounts once the queue resolves, which can be after the card's
+  // 940ms slot, and a mount-driven rise would then start late on a slow network
+  // and replay on every swipe (`FrontCard` is keyed on `messageId`). Read from
+  // the clock, a late mount renders resolved and a remount is a no-op.
+  const cardStyle = useAnimatedStyle(() => {
+    const rise = cardRiseAt({
+      elapsedMs: entranceClock.value,
+      delayMs: entrance.cardDelayMs,
+      durationMs: entrance.cardDurationMs,
+      fromPx: entrance.cardRiseFromPx,
+    });
+    return {
+      opacity: rise.opacity,
+      transform: [
+        { translateX: translateX.value },
+        { translateY: rise.translateY },
+        { rotate: `${rotation.value}deg` },
+      ],
+    };
+  });
 
   return (
     <View style={{ flex: 1 }}>
@@ -274,8 +297,26 @@ function PeekSlab({ depth, height, intensity, draft }: PeekSlabProps) {
   const base = config.baseOpacity;
   const gain = config.dragGain;
 
+  const { clock: entranceClock } = useEntrance();
+  // The slabs arrive behind the card, near first. Two separate offsets rather
+  // than one shared delay: the 60ms between them is what makes the deck read as
+  // having depth instead of appearing as a single block.
+  const entranceDelayMs =
+    depth === 'near' ? entrance.peekNearDelayMs : entrance.peekFarDelayMs;
+  const entranceDurationMs =
+    depth === 'near' ? entrance.peekNearDurationMs : entrance.peekFarDurationMs;
+
+  // The drag opacity and the entrance opacity multiply: the slab's alpha curve
+  // through a swipe is unchanged, it is simply scaled by how far the entrance
+  // has brought the slab in. Outside a cold launch the second factor is 1.
   const style = useAnimatedStyle(() => ({
-    opacity: peekOpacity(base, gain, intensity.value),
+    opacity:
+      peekOpacity(base, gain, intensity.value) *
+      fadeInAt({
+        elapsedMs: entranceClock.value,
+        delayMs: entranceDelayMs,
+        durationMs: entranceDurationMs,
+      }),
   }));
 
   return (

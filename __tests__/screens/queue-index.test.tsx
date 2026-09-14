@@ -24,6 +24,7 @@ type CardStackProps = {
 };
 let lastCardStackProps: CardStackProps | null = null;
 let lastGroundName: GroundName | null = null;
+let lastEntranceGround: GroundName | null = null;
 
 type SessionStub = { status: 'signed-in'; session: { user: { email: string | null } } };
 
@@ -87,8 +88,17 @@ jest.mock('@/components/queue/queue-card-stack', () => ({
 jest.mock('@/components/ground/ground-screen', () => {
   const { View } = jest.requireActual('react-native');
   return {
-    GroundScreen: ({ name, children }: { name: string; children: ReactNode }) => {
+    GroundScreen: ({
+      name,
+      entranceGround,
+      children,
+    }: {
+      name: string;
+      entranceGround?: string;
+      children: ReactNode;
+    }) => {
       lastGroundName = name as GroundName;
+      lastEntranceGround = (entranceGround ?? null) as GroundName | null;
       return <View>{children}</View>;
     },
   };
@@ -193,10 +203,42 @@ describe('QueueScreen — the ground follows the top card', () => {
     expect(lastGroundName).toBe('queueInk');
   });
 
-  it('settles to neutral with an empty deck — no decision, no color', () => {
+  /**
+   * Was `neutral` (stone) until TAC-384. The empty deck now settles on
+   * `resting` (clay), and it has to: `resting` is also the ground the
+   * cold-launch entrance resolves into, and TAC-384's third case requires an
+   * empty queue to produce NO crossfade at all. If the empty deck settled on a
+   * different ground than the entrance's, the entrance would finish by
+   * transitioning into the empty state — the exact transition that case
+   * forbids. TAC-364 specifies the same thing independently: clay is the
+   * resting state for any screen with nothing pending.
+   */
+  it('settles to clay with an empty deck — no decision, no color', () => {
     mockQueue.drafts = [];
     renderScreen();
-    expect(lastGroundName).toBe('neutral');
+    expect(lastGroundName).toBe('resting');
+  });
+
+  /**
+   * The entrance's base ground is a constant, never derived from the queue.
+   * That is what makes a 300ms fetch and a 2s fetch open identically — if this
+   * were computed from `drafts`, the opening would differ by network speed,
+   * which is the thing TAC-384's determinism argument exists to prevent.
+   */
+  it('hands the entrance a clay base that does not depend on the queue', () => {
+    mockQueue.drafts = [];
+    renderScreen();
+    expect(lastEntranceGround).toBe('resting');
+
+    mockQueue.drafts = [draftWithTone({ reviewReason: 'low fidelity score' })];
+    renderScreen();
+    expect(lastEntranceGround).toBe('resting');
+
+    mockQueue.drafts = [
+      draftWithTone({ reviewReason: 'no draft generated', draftBody: '' }),
+    ];
+    renderScreen();
+    expect(lastEntranceGround).toBe('resting');
   });
 
   it('reads the top card, not the deck', () => {

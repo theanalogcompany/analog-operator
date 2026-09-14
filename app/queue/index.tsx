@@ -86,8 +86,17 @@ export default function QueueScreen() {
   const top = displayDrafts[0];
   // The ground encodes why the top card was flagged, so the operator knows what
   // kind of decision is in front of them before reading a word. With an empty
-  // deck there is no decision, so it settles to neutral.
-  const groundName = top ? groundForTone(toneFor(top)) : 'neutral';
+  // deck there is no decision, so it settles to clay.
+  //
+  // `resting` (clay) rather than `neutral` (stone) because clay is also the
+  // ground the cold-launch entrance resolves into, and the two have to be the
+  // same value for TAC-384's third case to hold: an empty queue must produce no
+  // bucket crossfade at all. If the empty deck settled on a different ground
+  // than the entrance's, the entrance would end by transitioning to it — which
+  // is the transition that case explicitly forbids. It is also what TAC-364
+  // specifies independently: clay is the resting state for any screen with
+  // nothing pending.
+  const groundName = top ? groundForTone(toneFor(top)) : 'resting';
 
   // A tapped notification may be for a guest at a venue that isn't the one on
   // screen. The APNs payload carries no venueId (see lib/notifications/
@@ -207,7 +216,12 @@ export default function QueueScreen() {
   );
 
   return (
-    <GroundScreen name={groundName}>
+    // The entrance always resolves into clay, whatever the queue returns and
+    // however fast — constant here on purpose. The card's bucket ground then
+    // crossfades over it on the boot clock, bound to the card's entrance rather
+    // than to the response, so a queue that resolves in 300ms and one that
+    // takes 2s open identically. (TAC-384.)
+    <GroundScreen name={groundName} entranceGround="resting">
       <TopNav />
 
       {queue.status === 'loading' ? (

@@ -27,7 +27,9 @@ import { useSession } from '@/lib/auth/use-session';
 import { requestPermissionIfUndetermined } from '@/lib/notifications/permissions';
 import { subscribeToTaps } from '@/lib/notifications/tap-handler';
 import { wireNotifications } from '@/lib/notifications/wire';
+import { EntranceOverlay } from '@/components/shell/entrance-overlay';
 import { RootErrorBoundary } from '@/components/shell/root-error-boundary';
+import { EntranceProvider } from '@/lib/entrance-context';
 import { QueueProvider } from '@/lib/queue-context';
 import { VenueProvider } from '@/lib/venue-context';
 
@@ -100,23 +102,37 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <RootErrorBoundary>
-          <VenueProvider>
-            <QueueProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Protected guard={isSignedIn}>
-                  <Stack.Screen name="index" />
-                  <Stack.Screen name="queue" />
-                  <Stack.Screen name="conversations" />
-                  <Stack.Screen name="you" />
-                </Stack.Protected>
-                <Stack.Protected guard={!isSignedIn}>
-                  <Stack.Screen name="sign-in" />
-                </Stack.Protected>
-                <Stack.Screen name="auth/callback" />
-              </Stack>
-              <Toast />
-            </QueueProvider>
-          </VenueProvider>
+          {/*
+            The entrance provider sits immediately inside the gate above, which
+            is the app's only true cold-launch seam: the tree is unmounted until
+            fonts and the session resolve, then mounts in one frame. Mounting
+            here — rather than inside the signed-in branch — is what makes the
+            entrance play once for whichever screen comes first, and what stops
+            it playing again on the queue after the operator signs in. By then
+            the sign-in screen has already spent the flag. (TAC-384.)
+          */}
+          <EntranceProvider>
+            <VenueProvider>
+              <QueueProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Protected guard={isSignedIn}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="queue" />
+                    <Stack.Screen name="conversations" />
+                    <Stack.Screen name="you" />
+                  </Stack.Protected>
+                  <Stack.Protected guard={!isSignedIn}>
+                    <Stack.Screen name="sign-in" />
+                  </Stack.Protected>
+                  <Stack.Screen name="auth/callback" />
+                </Stack>
+                <Toast />
+                {/* Above every screen and above the toast, pointer-events none
+                    throughout — it covers the app, it never blocks it. */}
+                <EntranceOverlay />
+              </QueueProvider>
+            </VenueProvider>
+          </EntranceProvider>
         </RootErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
