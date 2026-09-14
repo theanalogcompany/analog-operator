@@ -84,6 +84,53 @@ describe('UndoToast', () => {
     expect(screen.getByText(/Dismissed to Maya R\./)).toBeTruthy();
   });
 
+  // TAC-382: the undo window survives a venue switch, so the toast can outlive
+  // the venue it belongs to. When it does, it has to say so — otherwise it
+  // reads "Sent to Maya R." over a different venue's queue and, on undo,
+  // restores a card the operator never sees come back.
+  describe('cross-venue label', () => {
+    it('names the venue when the record belongs to another one', async () => {
+      const draft = makeDraft();
+      render(
+        withSafeArea(
+          <UndoToast onUndo={() => {}} crossVenueName={() => 'Mock Central Perk'} />,
+        ),
+      );
+      await act(async () => {
+        await setUndoState({ action: 'approve', draft });
+      });
+      expect(
+        screen.getByText(/to Maya R\. at Mock Central Perk/),
+      ).toBeTruthy();
+    });
+
+    it('adds nothing when the record is for the venue on screen', async () => {
+      const draft = makeDraft();
+      render(
+        withSafeArea(<UndoToast onUndo={() => {}} crossVenueName={() => null} />),
+      );
+      await act(async () => {
+        await setUndoState({ action: 'approve', draft });
+      });
+      expect(screen.getByText(/to Maya R\./)).toBeTruthy();
+      expect(screen.queryByText(/ at /)).toBeNull();
+    });
+
+    it('is asked about the record’s own venue, not the selected one', async () => {
+      const draft = makeDraft();
+      const crossVenueName = jest.fn().mockReturnValue(null);
+      render(
+        withSafeArea(
+          <UndoToast onUndo={() => {}} crossVenueName={crossVenueName} />,
+        ),
+      );
+      await act(async () => {
+        await setUndoState({ action: 'approve', draft });
+      });
+      expect(crossVenueName).toHaveBeenCalledWith(draft.venueId);
+    });
+  });
+
   it('fires onUndo with the active record when UNDO is tapped', async () => {
     const draft = makeDraft();
     const onUndo = jest.fn();

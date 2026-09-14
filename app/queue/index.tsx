@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -25,7 +25,7 @@ import {
 } from '@/lib/notifications/tap-handler';
 import { groundForTone, toneFor } from '@/lib/queue-tone';
 import { useQueueContext } from '@/lib/queue-context';
-import { rememberVenueSlug } from '@/lib/venue';
+import { useVenueSelection } from '@/lib/venue-context';
 import { display, layout, typePresets } from '@/lib/theme';
 
 // One string for both refusal paths — the gesture refusal (TAC-312) and the
@@ -42,6 +42,7 @@ function handleHelp(): void {
 
 export default function QueueScreen() {
   const queue = useQueueContext();
+  const venue = useVenueSelection();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [surfacedGuestId, setSurfacedGuestId] = useState<string | null>(null);
@@ -78,7 +79,9 @@ export default function QueueScreen() {
     () => displayDrafts.map((d) => d.messageId),
     [displayDrafts],
   );
-  const progress = useSessionProgress(visibleIds);
+  // Scoped to the venue: cards seen at one venue must not inflate another's
+  // denominator after a switch. (TAC-382.)
+  const progress = useSessionProgress(visibleIds, venue.selectedVenueId);
 
   const top = displayDrafts[0];
   // The ground encodes why the top card was flagged, so the operator knows what
@@ -86,12 +89,33 @@ export default function QueueScreen() {
   // deck there is no decision, so it settles to neutral.
   const groundName = top ? groundForTone(toneFor(top)) : 'neutral';
 
-  // The queue is the only payload carrying a venue slug, so record it while
-  // we have one — the You screen still needs a venue name when the queue is
-  // empty, which in live mode is most of the time.
+  // A tapped notification may be for a guest at a venue that isn't the one on
+  // screen. The APNs payload carries no venueId (see lib/notifications/
+  // tap-handler.ts), so the venue is resolved here, from the queue, once the
+  // draft is actually in hand — which is why this is its own effect rather
+  // than part of the subscribe effect above: on a cold launch the tap lands
+  // before the first listQueue() resolves, and this re-runs when it does.
+  //
+  // Switching is the right failure mode. Doing nothing would leave the
+  // operator staring at a queue that doesn't contain the guest they just
+  // tapped, with no explanation — and a guest is waiting either way. The
+  // toast is what makes the switch visible rather than mysterious.
+  const { findVenueIdForGuest } = queue;
+  const { selectedVenueId, select: selectVenue, venues } = venue;
   useEffect(() => {
-    rememberVenueSlug(queue.drafts[0]?.venueSlug);
-  }, [queue.drafts]);
+    if (!surfacedGuestId) return;
+    const venueId = findVenueIdForGuest(surfacedGuestId);
+    if (!venueId || venueId === selectedVenueId) return;
+    // Resolve the venue BEFORE announcing anything. `select` ignores a venue
+    // the operator isn't mapped to, so announcing first would claim a switch
+    // that never happened — and, because `selectedVenueId` would stay put, the
+    // guard above would never trip and the toast would repeat on every
+    // realtime-driven reload.
+    const target = venues.find((v) => v.id === venueId);
+    if (!target) return;
+    selectVenue(target.id);
+    showToast(`Switched to ${target.name}`);
+  }, [surfacedGuestId, findVenueIdForGuest, selectedVenueId, selectVenue, venues]);
 
   // Badge mirrors the visible queue. Sync on every drafts change (covers swipe
   // approve + restore + realtime updates + reload) and on foreground transitions
@@ -161,11 +185,26 @@ export default function QueueScreen() {
     });
   };
 
+  // `queue.restore` writes into the FULL draft list, not the venue-filtered
+  // view, so undoing a send made at another venue puts that draft back into
+  // ITS venue's list rather than injecting it into the one on screen. That
+  // cross-venue write was TAC-382's highest-priority bug; this is the fix
+  // (option 1). `undoAction` is untouched — the stored `message_id` is correct
+  // regardless of which venue is selected, and the undo window stays live
+  // across a switch rather than being cancelled by one.
   const handleUndo = (record: UndoRecord): void => {
     queue.restore(record.draft);
     progress.markRestored(record.message_id);
     void undoAction(record.message_id);
   };
+
+  const crossVenueName = useCallback(
+    (venueId: string): string | null =>
+      venueId === selectedVenueId
+        ? null
+        : (venues.find((v) => v.id === venueId)?.name ?? null),
+    [selectedVenueId, venues],
+  );
 
   return (
     <GroundScreen name={groundName}>
@@ -249,7 +288,7 @@ export default function QueueScreen() {
         />
       )}
 
-      <UndoToast onUndo={handleUndo} />
+      <UndoToast onUndo={handleUndo} crossVenueName={crossVenueName} />
     </GroundScreen>
   );
 }

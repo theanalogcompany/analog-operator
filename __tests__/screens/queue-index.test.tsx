@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import QueueScreen from '@/app/queue/index';
 import { type GroundName } from '@/lib/grounds';
-import { type UseQueueResult } from '@/hooks/use-queue';
+import { type QueueContextValue } from '@/lib/queue-context';
 import { clearUndoState } from '@/hooks/use-undo-state';
 import { type PendingDraft, approveDraft } from '@/lib/api/queue';
 import {
@@ -27,13 +27,35 @@ let lastGroundName: GroundName | null = null;
 
 type SessionStub = { status: 'signed-in'; session: { user: { email: string | null } } };
 
-const mockQueue: UseQueueResult = {
+const mockQueue: QueueContextValue = {
   drafts: [],
   status: 'ready',
   error: null,
   reload: jest.fn().mockResolvedValue(undefined),
   optimisticallyRemove: jest.fn(),
   restore: jest.fn(),
+  findVenueIdForGuest: jest.fn().mockReturnValue(null),
+};
+
+const VENUE_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+// A single-venue operator, which is the shape every pre-existing test in this
+// file assumes. The venue-switching behavior itself is covered in
+// __tests__/screens/queue-index-venue.test.tsx.
+const mockSelect = jest.fn();
+let mockVenue = {
+  venues: [
+    { id: VENUE_A, name: "Le Mil's Coffee", slug: 'le-mils-coffee', timezone: 'America/Los_Angeles' },
+  ],
+  selectedVenueId: VENUE_A as string | null,
+  selectedVenue: {
+    id: VENUE_A,
+    name: "Le Mil's Coffee",
+    slug: 'le-mils-coffee',
+    timezone: 'America/Los_Angeles',
+  } as { id: string; name: string; slug: string; timezone: string } | null,
+  status: 'ready' as 'loading' | 'ready' | 'error',
+  select: mockSelect,
 };
 
 let mockSession: SessionStub = {
@@ -50,6 +72,7 @@ jest.mock('expo-router', () => ({
   usePathname: () => '/queue',
 }));
 jest.mock('@/lib/queue-context', () => ({ useQueueContext: () => mockQueue }));
+jest.mock('@/lib/venue-context', () => ({ useVenueSelection: () => mockVenue }));
 jest.mock('@/lib/auth/use-session', () => ({ useSession: () => mockSession }));
 jest.mock('@/lib/supabase/client', () => ({ supabase: { auth: { signOut: jest.fn() } } }));
 jest.mock('@/components/queue/queue-card-stack', () => ({

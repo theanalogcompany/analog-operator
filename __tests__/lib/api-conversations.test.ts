@@ -15,10 +15,10 @@ beforeEach(() => {
 });
 
 describe('lib/api/conversations in fixture mode', () => {
-  it('listConversations returns the 12-guest fixture seed', async () => {
+  it('listConversations returns the 14-guest fixture seed', async () => {
     const result = await listConversations();
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.data).toHaveLength(12);
+    if (result.ok) expect(result.data).toHaveLength(14);
   });
 
   it('getGuestThread returns that guest\'s messages', async () => {

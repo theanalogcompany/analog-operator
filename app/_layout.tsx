@@ -29,6 +29,7 @@ import { subscribeToTaps } from '@/lib/notifications/tap-handler';
 import { wireNotifications } from '@/lib/notifications/wire';
 import { RootErrorBoundary } from '@/components/shell/root-error-boundary';
 import { QueueProvider } from '@/lib/queue-context';
+import { VenueProvider } from '@/lib/venue-context';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -99,21 +100,23 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <RootErrorBoundary>
-          <QueueProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Protected guard={isSignedIn}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="queue" />
-              <Stack.Screen name="conversations" />
-              <Stack.Screen name="you" />
-            </Stack.Protected>
-            <Stack.Protected guard={!isSignedIn}>
-              <Stack.Screen name="sign-in" />
-            </Stack.Protected>
-            <Stack.Screen name="auth/callback" />
-          </Stack>
-            <Toast />
-          </QueueProvider>
+          <VenueProvider>
+            <QueueProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Protected guard={isSignedIn}>
+                  <Stack.Screen name="index" />
+                  <Stack.Screen name="queue" />
+                  <Stack.Screen name="conversations" />
+                  <Stack.Screen name="you" />
+                </Stack.Protected>
+                <Stack.Protected guard={!isSignedIn}>
+                  <Stack.Screen name="sign-in" />
+                </Stack.Protected>
+                <Stack.Screen name="auth/callback" />
+              </Stack>
+              <Toast />
+            </QueueProvider>
+          </VenueProvider>
         </RootErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>

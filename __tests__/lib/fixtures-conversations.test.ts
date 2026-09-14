@@ -11,8 +11,8 @@ beforeEach(() => {
 });
 
 describe('lib/fixtures/conversations', () => {
-  it('seeds 12 conversations', () => {
-    expect(listConversationsFixture()).toHaveLength(12);
+  it('seeds 14 conversations across two venues', () => {
+    expect(listConversationsFixture()).toHaveLength(14);
   });
 
   it('every seeded row has real-shaped UUIDs and a non-empty preview', () => {
@@ -60,11 +60,11 @@ describe('lib/fixtures/conversations', () => {
     unsubscribe();
   });
 
-  it('resetConversationsFixture restores the original 12-guest seed', () => {
+  it('resetConversationsFixture restores the original 14-guest seed', () => {
     const [target] = listConversationsFixture();
     triggerConversationActivityFixture(target.guestId, 'a new message');
     resetConversationsFixture();
-    expect(listConversationsFixture()).toHaveLength(12);
+    expect(listConversationsFixture()).toHaveLength(14);
     expect(getGuestThreadFixture(target.guestId).at(-1)?.body).not.toBe('a new message');
   });
 });

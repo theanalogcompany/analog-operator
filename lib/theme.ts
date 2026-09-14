@@ -39,9 +39,12 @@ export const editTakeover = {
 export const undoToast = {
   windowMs: 3_000,
   fadeOutDurationMs: 180,
-  /** The drain bar animates scaleX 1 -> 0 over exactly the dismiss window. If
-   *  these ever disagree the bar lies about how much time is left. */
-  drainDurationMs: 3_000,
+  /** The drain bar animates scaleX to 0 over whatever is LEFT of the dismiss
+   *  window, measured from the record's `expires_at` rather than from a
+   *  duration of its own — the toast can mount partway through its window when
+   *  a venue switch remounts the queue screen (TAC-382), and a bar with its own
+   *  fixed duration would restart full and lie about the time remaining.
+   *  `windowMs` above is the full window and the bar's denominator. */
   drainHeightPx: 2,
 } as const;
 

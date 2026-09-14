@@ -1,22 +1,20 @@
 import { Feather } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { type ReactNode } from 'react';
-import { Image, Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
 import { GroundScreen } from '@/components/ground/ground-screen';
 import { TopNav } from '@/components/shell/top-nav';
+import { VenuePicker } from '@/components/shell/venue-picker';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { useNotificationPermission } from '@/hooks/use-notification-permission';
 import { useSession } from '@/lib/auth/use-session';
 import { openHelpSms } from '@/lib/help';
 import { requestPermission } from '@/lib/notifications/permissions';
-import { useQueueContext } from '@/lib/queue-context';
 import { supabase } from '@/lib/supabase/client';
-import { display, layout, typePresets } from '@/lib/theme';
-import { venueNameFromSlug } from '@/lib/venue-name';
-import { useVenueSlug } from '@/lib/venue';
+import { layout, typePresets } from '@/lib/theme';
 
 /**
  * The full wordmark, 480x92 (aspect 5.217), drawn in the brand cream
@@ -46,7 +44,6 @@ const cardShadow = {
  */
 export default function YouScreen() {
   const session = useSession();
-  const queue = useQueueContext();
   const permission = useNotificationPermission();
   const insets = useSafeAreaInsets();
 
@@ -56,13 +53,6 @@ export default function YouScreen() {
   // one of the two.
   const user = session.status === 'signed-in' ? session.session.user : null;
   const signedInAs = user?.email ?? user?.phone ?? null;
-
-  // Prefer whatever the queue is showing right now, then the remembered slug
-  // for when the queue is empty — which in live mode is the normal case.
-  const rememberedSlug = useVenueSlug();
-  const venueName =
-    venueNameFromSlug(queue.drafts[0]?.venueSlug ?? rememberedSlug) ??
-    'Your venue';
 
   const pushValue =
     permission === 'granted' ? 'On' : permission === 'loading' ? '—' : 'Off';
@@ -84,18 +74,11 @@ export default function YouScreen() {
       <TopNav />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ paddingHorizontal: 22, paddingTop: 22, paddingBottom: 18 }}>
-          <Text
-        allowFontScaling={false}
-            className="font-fraunces"
-            style={{
-              fontSize: display.screenTitle.size,
-              lineHeight: display.screenTitle.lineHeight,
-              letterSpacing: display.screenTitle.tracking,
-              color: '#FFFFFF',
-            }}
-          >
-            {venueName}
-          </Text>
+          {/* The title IS the venue selector for a multi-venue operator.
+              The name now comes from `venues.name` rather than being
+              un-slugified from a queue draft, which is what kept printing
+              "Le Mils Coffee" for a venue called "Le Mil's Coffee". */}
+          <VenuePicker />
           {signedInAs ? (
             <TrackedCaps
               {...typePresets.screenMeta}

@@ -27,14 +27,28 @@ const VERBS: Record<UndoRecord['action'], string> = {
 
 type Props = {
   onUndo: (record: UndoRecord) => void;
+  /**
+   * Given the record's venue, the venue's NAME when it isn't the one on
+   * screen, and null when it is.
+   *
+   * The undo window deliberately survives a venue switch (TAC-382), so the
+   * toast can outlive the venue it belongs to. Without this it would read
+   * "Sent to Maya" over a different venue's queue and, on undo, restore a card
+   * the operator never sees come back — correct behavior that looks broken.
+   * Passed in rather than read from context so the toast stays mountable on
+   * its own.
+   */
+  crossVenueName?: (venueId: string) => string | null;
 };
 
-export function UndoToast({ onUndo }: Props) {
+export function UndoToast({ onUndo, crossVenueName }: Props) {
   const record = useUndoState();
   const haptics = useHaptics();
   const insets = useSafeAreaInsets();
 
   if (!record) return null;
+
+  const elsewhere = crossVenueName?.(record.draft.venueId) ?? null;
 
   const handleUndo = (): void => {
     haptics.undoTriggered();
@@ -78,6 +92,7 @@ export function UndoToast({ onUndo }: Props) {
             {VERBS[record.action]}
             <Text allowFontScaling={false} style={{ color: '#6F6658' }}>
               {` to ${queueCardDisplayName(record.draft)}`}
+              {elsewhere ? ` at ${elsewhere}` : ''}
             </Text>
           </Text>
           <Pressable
@@ -93,25 +108,41 @@ export function UndoToast({ onUndo }: Props) {
         </View>
         {/* Keyed by messageId so a second action restarts the bar from full
             rather than resuming a partly-drained one from the last card. */}
-        <DrainBar key={record.message_id} />
+        <DrainBar
+          key={record.message_id}
+          remainingMs={Math.max(0, record.expires_at - Date.now())}
+        />
       </View>
     </View>
   );
 }
 
 /**
- * The 2px bar under the row, draining left-to-right over exactly the dismiss
- * window. It is a clock, not decoration — if its duration and
- * `undoToast.windowMs` ever disagree, the bar lies about how much time is left.
+ * The 2px bar under the row, draining left-to-right over exactly what is left
+ * of the dismiss window. It is a clock, not decoration — if it and
+ * `record.expires_at` ever disagree, the bar lies about how much time is left.
+ *
+ * It starts from `remainingMs`, not from full, because the toast can now mount
+ * partway through its window: the venue picker lives on the You screen, so
+ * switching venues unmounts the queue screen and remounts it with the undo
+ * still live (TAC-382). Animating a fresh 3s there would promise runway that
+ * does not exist, on the one affordance that takes back a sent message.
  */
-function DrainBar() {
-  const progress = useSharedValue(1);
+function DrainBar({ remainingMs }: { remainingMs: number }) {
+  const startFraction = Math.min(
+    1,
+    Math.max(0, remainingMs / undoToast.windowMs),
+  );
+  const progress = useSharedValue(startFraction);
 
   useEffect(() => {
     progress.value = withTiming(0, {
-      duration: undoToast.drainDurationMs,
+      duration: Math.max(0, remainingMs),
       easing: Easing.linear,
     });
+    // `remainingMs` is read once per mount (the component is keyed by
+    // messageId); re-running on every render would restart the animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress]);
 
   const fillStyle = useAnimatedStyle(() => ({
