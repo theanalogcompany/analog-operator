@@ -27,7 +27,13 @@ export const swipe = {
    */
   flyOffDurationMs: 250,
   springBackDurationMs: 220,
-  residualRotationDeg: 0.3,
+  /**
+   * Where rotation rests, before any swipe and after every spring-back. Zero:
+   * cards sit square. The prototype's 0.3° resting tilt read as a crooked card
+   * on device, and because a drag replaces it with `translationX × rotationFactor`,
+   * nudging the card left seemed to straighten it. (TAC-388.)
+   */
+  residualRotationDeg: 0,
 } as const;
 
 export const editTakeover = {
@@ -211,6 +217,12 @@ export const dividerBacking = {
   radiusPx: 999,
 } as const;
 
+/** The "Chat with Jaipal" pill around its label. (TAC-388.) */
+export const helpPill = {
+  paddingHorizontalPx: 10,
+  paddingVerticalPx: 5,
+} as const;
+
 export const nav = {
   hairlineColor: 'rgba(255,255,255,0.16)',
   activeColor: '#FFFFFF',
@@ -335,8 +347,16 @@ export const reviewDetail = {
   lineHeightPx: body.reasoning.lineHeight,
   /** Between the parts, and above the first one. */
   gapPx: 8,
-  card: { reasonLines: 2, alsoLines: 2, claimLines: 3 },
-  takeover: { reasonLines: 2, alsoLines: 1, claimLines: 2, reasoningLines: 1 },
+  /** Between the "ALSO" caps and the column of reasons beside it. */
+  alsoPrefixGapPx: 8,
+  /**
+   * The Also block lists one reason per row: at most `alsoItems` rows, each
+   * reason up to `alsoItemLines` lines. A reason that needs more is withheld,
+   * not cut, and counted in a "+N more" row that takes the last slot, so the
+   * block never runs past `alsoItems × alsoItemLines` lines. (TAC-388.)
+   */
+  card: { reasonLines: 2, alsoItems: 3, alsoItemLines: 2, claimLines: 3 },
+  takeover: { reasonLines: 2, alsoItems: 2, alsoItemLines: 1, claimLines: 1, reasoningLines: 1 },
 } as const;
 
 /**

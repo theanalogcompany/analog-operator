@@ -30,6 +30,8 @@ export const CARD_COPY = {
   detail: {
     also: 'Also',
     couldntVerify: "Couldn't verify",
+    /** "+2 more": the reasons the Also block held back. (TAC-388.) */
+    more: 'more',
   },
   composer: {
     hasDraft: 'Draft · swipe right to send',

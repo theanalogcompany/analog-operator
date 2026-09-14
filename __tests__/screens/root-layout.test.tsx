@@ -2,8 +2,10 @@
 // jest can't parse as JS. Stub it before any layout-pulling import.
 jest.mock('@/global.css', () => ({}), { virtual: true });
 
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import * as Notifications from 'expo-notifications';
+
+import { entrance } from '@/lib/theme';
 
 // useSession is mocked to start at 'loading', then flip to 'signed-in' before
 // re-render so the auth-gated effect can be observed firing on the transition.
@@ -13,6 +15,9 @@ type SessionState =
   | { status: 'signed-out'; session: null };
 
 let mockSession: SessionState = { status: 'loading', session: null };
+
+// The options each root screen was registered with, keyed by name. (TAC-388.)
+const mockScreenOptions: Record<string, Record<string, unknown> | undefined> = {};
 
 // All the boot-time side effects from app/_layout.tsx are mocked to no-ops so
 // the test only observes the permission-request behavior.
@@ -64,10 +69,13 @@ jest.mock('@/lib/venue-context', () => {
 jest.mock('expo-router', () => {
   const { View } = jest.requireActual('react-native');
   const Stack: React.FC<{ children?: React.ReactNode }> & {
-    Screen: React.FC<{ name: string }>;
+    Screen: React.FC<{ name: string; options?: Record<string, unknown> }>;
     Protected: React.FC<{ guard: boolean; children?: React.ReactNode }>;
   } = ({ children }) => <View>{children}</View>;
-  Stack.Screen = () => null;
+  Stack.Screen = ({ name, options }) => {
+    mockScreenOptions[name] = options;
+    return null;
+  };
   Stack.Protected = ({ guard, children }) => (guard ? <View>{children}</View> : null);
   return {
     Stack,
@@ -213,52 +221,58 @@ describe('RootLayout — first-authenticated-render permission prompt (TAC-288)'
 });
 
 /**
- * The cold-launch flag is spent at BOOT, whatever the session — but the entrance
- * only plays when that launch is signed in.
+ * The cold-launch flag is spent at BOOT, whatever the session, and the entrance
+ * plays on that launch whether it is signed in or signed out. (TAC-388, which
+ * reversed TAC-384's call not to play it signed out. The sign-in screens hide
+ * their own mark instead: see `__tests__/components/auth/auth-frame.test.tsx`.)
  *
- * A signed-out launch plays nothing because the sign-in screen draws its own
- * mark, and the entrance's mark over it reads as two logos (decided 2026-09-14,
- * reversing an earlier call to play it on sign-in). Spending the flag there
- * anyway is what keeps the queue reached by authenticating from playing one.
- * `EntranceOverlay` renders only during a full entrance, so its presence is the
- * observable. It is hidden from screen readers, and RNTL skips hidden elements by
- * default — so every query passes `includeHiddenElements`, or "no overlay" would
- * pass even when one rendered. (TAC-384.)
+ * Spending the flag at boot is what keeps the queue reached by authenticating
+ * from playing a second one. `EntranceOverlay` renders only during a full
+ * entrance, so its presence is the observable. It is hidden from screen
+ * readers, and RNTL skips hidden elements by default, so every query passes
+ * `includeHiddenElements`, or "no overlay" would pass even when one rendered.
  */
-describe('RootLayout — cold-launch entrance arming (TAC-384)', () => {
-  it('spends the flag on a signed-out cold launch but plays nothing', () => {
+describe('RootLayout — cold-launch entrance arming (TAC-384, TAC-388)', () => {
+  const signedIn: SessionState = {
+    status: 'signed-in',
+    session: { user: { email: 'jaipal@theanalog.company' } },
+  };
+
+  it('plays the entrance on a signed-out cold launch', () => {
     mockSession = { status: 'signed-out', session: null };
     const { queryByTestId } = render(<RootLayout />);
     expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
     expect(consumeColdLaunchMock).toHaveLastReturnedWith(true);
-    expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).toBeNull();
+    expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).not.toBeNull();
   });
 
   it('plays the entrance on a signed-in cold launch', () => {
-    mockSession = {
-      status: 'signed-in',
-      session: { user: { email: 'jaipal@theanalog.company' } },
-    };
+    mockSession = signedIn;
     const { queryByTestId } = render(<RootLayout />);
     expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
     expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).not.toBeNull();
   });
 
-  it('does NOT re-arm on the queue after authenticating', () => {
-    // The SMS-OTP path: signed-out first, then signed-in. The signed-out launch
-    // already spent the flag, so crossing the auth gate must not start one.
-    mockSession = { status: 'signed-out', session: null };
-    const { rerender, queryByTestId } = render(<RootLayout />);
-    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
-    expect(consumeColdLaunchMock).toHaveLastReturnedWith(true);
+  it('does NOT replay on the queue after authenticating', () => {
+    // The SMS-OTP path: the entrance plays over sign-in, the operator signs in.
+    // Crossing the auth gate must neither spend the flag again nor start one.
+    jest.useFakeTimers();
+    try {
+      mockSession = { status: 'signed-out', session: null };
+      const { rerender, queryByTestId } = render(<RootLayout />);
+      expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).not.toBeNull();
+      act(() => {
+        jest.advanceTimersByTime(entrance.totalMs);
+      });
+      expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).toBeNull();
 
-    mockSession = {
-      status: 'signed-in',
-      session: { user: { email: 'jaipal@theanalog.company' } },
-    };
-    rerender(<RootLayout />);
-    expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
-    expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).toBeNull();
+      mockSession = signedIn;
+      rerender(<RootLayout />);
+      expect(consumeColdLaunchMock).toHaveBeenCalledTimes(1);
+      expect(queryByTestId('entrance-overlay', { includeHiddenElements: true })).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('does not arm anything while the gate is still closed', () => {
@@ -268,5 +282,46 @@ describe('RootLayout — cold-launch entrance arming (TAC-384)', () => {
     mockSession = { status: 'loading', session: null };
     render(<RootLayout />);
     expect(consumeColdLaunchMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The tab row is a view swap, not navigation. (TAC-388.)
+ *
+ * Queue, Texts and You are sibling screens of this root stack, and the tab row
+ * moves between them with `router.replace`, which animates unless the screen
+ * says otherwise. The transitions that ARE navigation, the edit screen and a
+ * thread, belong to nested stacks and are pinned in
+ * `__tests__/screens/stack-animations.test.tsx`. This pins the configuration;
+ * that nothing moves on a phone is device UAT.
+ */
+describe('RootLayout: tab screens do not animate (TAC-388)', () => {
+  beforeEach(() => {
+    for (const key of Object.keys(mockScreenOptions)) delete mockScreenOptions[key];
+  });
+
+  it('turns the transition off for Queue, Texts and You', () => {
+    mockSession = {
+      status: 'signed-in',
+      session: { user: { email: 'jaipal@theanalog.company' } },
+    };
+    render(<RootLayout />);
+    for (const name of ['queue', 'conversations', 'you']) {
+      expect(mockScreenOptions[name]).toEqual({ animation: 'none' });
+    }
+  });
+
+  it('leaves the other root screens on their default transitions', () => {
+    mockSession = {
+      status: 'signed-in',
+      session: { user: { email: 'jaipal@theanalog.company' } },
+    };
+    render(<RootLayout />);
+    // Guards the guard: the screens have to have registered at all.
+    expect(Object.keys(mockScreenOptions)).toEqual(
+      expect.arrayContaining(['index', 'auth/callback']),
+    );
+    expect(mockScreenOptions.index).toBeUndefined();
+    expect(mockScreenOptions['auth/callback']).toBeUndefined();
   });
 });

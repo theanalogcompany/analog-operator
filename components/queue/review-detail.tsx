@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { type StyleProp, Text, View, type ViewStyle } from 'react-native';
 
 import { type PendingDraft } from '@/lib/api/queue';
 import { CARD_COPY } from '@/lib/card-copy';
-import { secondaryTriggerLabels } from '@/lib/review-bucket';
+import { planAlsoLines, secondaryTriggerLabels } from '@/lib/review-bucket';
 import { body as bodyType, reviewDetail, typePresets } from '@/lib/theme';
 
 type Surface = 'card' | 'takeover';
@@ -36,13 +37,14 @@ type Props = {
  *    the sentence through caps too is how a card came to read "FLAGGED — THIS
  *    OFFERS SOMETHING FREE — YOUR CALL."
  * 2. "Also": the other triggers that fired, in server order, primary excluded
- *    (see `secondaryTriggerLabels`).
+ *    (see `secondaryTriggerLabels`), one reason per row beside the caps
+ *    prefix. Run together as one paragraph, two reasons read as one thought.
+ *    A reason that doesn't fit is withheld and counted, never cut off
+ *    mid-sentence (see `planAlsoLines`). (TAC-388.)
  * 3. "Couldn't verify": the claims the grounding check flagged, verbatim.
  *
- * The two labels are inline prefixes rather than lines of their own, so each
- * part costs only its own lines. On the card every line comes out of the
- * thread; on the takeover every line counts against what Honey can hold (see
- * `reviewDetail` in lib/theme.ts).
+ * On the card every line comes out of the thread; on the takeover every line
+ * counts against what Honey can hold (see `reviewDetail` in lib/theme.ts).
  */
 export function ReviewDetail({ draft, surface, style }: Props) {
   const reason = draft.reviewReason?.trim() ?? '';
@@ -50,6 +52,16 @@ export function ReviewDetail({ draft, surface, style }: Props) {
   const claims = draft.ungroundedClaims
     .map((claim) => claim.trim())
     .filter((claim) => claim.length > 0);
+
+  // How many lines each reason needs at this surface's width, reported by the
+  // hidden measuring copies below. Keyed on the labels, so a different draft
+  // starts unmeasured instead of borrowing another draft's counts.
+  const alsoKey = also.join('\n');
+  const unmeasured = (): (number | null)[] => also.map(() => null);
+  const [measured, setMeasured] = useState<{ key: string; lineCounts: (number | null)[] }>(
+    () => ({ key: alsoKey, lineCounts: unmeasured() }),
+  );
+
   if (!reason && also.length === 0 && claims.length === 0) return null;
 
   const caps = reviewDetail[surface];
@@ -62,8 +74,23 @@ export function ReviewDetail({ draft, surface, style }: Props) {
     fontSize: typePresets.composerCaption.size,
     letterSpacing: typePresets.composerCaption.tracking,
   };
-  const alsoText = also.join(' ');
   const claimsText = claims.map((claim) => `“${claim}”`).join(' ');
+  const plan = planAlsoLines({
+    labels: also,
+    lineCounts: measured.key === alsoKey ? measured.lineCounts : unmeasured(),
+    maxItems: caps.alsoItems,
+    maxLinesPerItem: caps.alsoItemLines,
+  });
+
+  const recordLines = (index: number, lines: number): void => {
+    setMeasured((prev) => {
+      const current = prev.key === alsoKey ? prev.lineCounts : unmeasured();
+      if (prev.key === alsoKey && current[index] === lines) return prev;
+      const next = current.slice();
+      next[index] = lines;
+      return { key: alsoKey, lineCounts: next };
+    });
+  };
 
   return (
     <View style={[{ gap: reviewDetail.gapPx }, style]}>
@@ -79,25 +106,81 @@ export function ReviewDetail({ draft, surface, style }: Props) {
         </Text>
       ) : null}
       {also.length > 0 ? (
-        <Text
-          allowFontScaling={false}
+        <View
           testID="review-detail-also"
-          // Announced in sentence case: VoiceOver can spell a short caps word
-          // out letter by letter.
-          accessibilityLabel={`${CARD_COPY.detail.also}: ${alsoText}`}
-          numberOfLines={caps.alsoLines}
-          className="font-inter-tight"
-          style={{ ...line, color: palette.detail }}
+          accessible
+          // Every reason in full, including any the block holds back, and in
+          // sentence case: VoiceOver can spell a short caps word out letter by
+          // letter.
+          accessibilityLabel={`${CARD_COPY.detail.also}: ${also.join(' ')}`}
+          // Invisible, not absent, until measured: the reasons column needs its
+          // real width for the measuring copies to report real line counts.
+          // Baseline, so the smaller caps prefix sits on the first reason's line
+          // the way the inline "Couldn't verify" prefix does below.
+          style={{
+            flexDirection: 'row',
+            alignItems: 'baseline',
+            gap: reviewDetail.alsoPrefixGapPx,
+            opacity: plan ? 1 : 0,
+          }}
         >
           <Text
             allowFontScaling={false}
             className="font-inter-tight-medium"
-            style={{ ...prefix, color: palette.also }}
+            style={{ ...prefix, lineHeight: reviewDetail.lineHeightPx, color: palette.also }}
           >
-            {`${CARD_COPY.detail.also.toUpperCase()}  `}
+            {CARD_COPY.detail.also.toUpperCase()}
           </Text>
-          {alsoText}
-        </Text>
+          <View style={{ flex: 1 }}>
+            <View
+              // Keyed on the labels, so every copy remounts and reports again
+              // when they change. Fabric drops an onTextLayout whose lines match
+              // the last one it sent, so a reused copy would stay silent, its
+              // count null, and the block invisible.
+              key={alsoKey}
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, opacity: 0 }}
+            >
+              {also.map((label, index) => (
+                <Text
+                  key={`${index}:${label}`}
+                  testID="review-detail-also-measure"
+                  allowFontScaling={false}
+                  className="font-inter-tight"
+                  style={line}
+                  onTextLayout={(event) => recordLines(index, event.nativeEvent.lines.length)}
+                >
+                  {label}
+                </Text>
+              ))}
+            </View>
+            {plan?.shown.map((label, index) => (
+              <Text
+                key={`${index}:${label}`}
+                testID="review-detail-also-item"
+                allowFontScaling={false}
+                numberOfLines={caps.alsoItemLines}
+                className="font-inter-tight"
+                style={{ ...line, color: palette.detail }}
+              >
+                {label}
+              </Text>
+            ))}
+            {plan && plan.hidden > 0 ? (
+              <Text
+                testID="review-detail-also-more"
+                allowFontScaling={false}
+                numberOfLines={1}
+                className="font-inter-tight-medium"
+                style={{ ...line, color: palette.detail }}
+              >
+                {`+${plan.hidden} ${CARD_COPY.detail.more}`}
+              </Text>
+            ) : null}
+          </View>
+        </View>
       ) : null}
       {claims.length > 0 ? (
         <Text

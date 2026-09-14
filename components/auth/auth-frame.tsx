@@ -5,9 +5,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GroundScreen } from '@/components/ground/ground-screen';
 import { HelpFooter } from '@/components/ui/help-footer';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
+import { useEntrance } from '@/lib/entrance-context';
 import { body as bodyType, display, layout, typePresets } from '@/lib/theme';
 
 const LOGO = require('../../assets/images/logo.png');
+const MARK_SIZE = { width: 44, height: 44 } as const;
 
 type Props = {
   title: string;
@@ -26,20 +28,29 @@ type Props = {
  */
 export function AuthFrame({ title, subtitle, children }: Props) {
   const insets = useSafeAreaInsets();
+  // The cold-launch entrance put its own mark on screen, so a second one here
+  // would be two logos. Hidden for the rest of any launch whose entrance played
+  // in full, on every sign-in screen, with its space kept so the title does not
+  // move. Reduced motion shows no entrance mark, so this one stays. (TAC-388.)
+  const markSuppressed = useEntrance().mode === 'full';
 
   return (
     <GroundScreen name="auth">
       <View style={{ flex: 1, paddingHorizontal: 26 }}>
         <View style={{ alignItems: 'center', paddingTop: 56, paddingBottom: 40 }}>
-          <Image
-            source={LOGO}
-            accessibilityLabel="Analog"
-            resizeMode="contain"
-            // The mark ships dark with an alpha channel; tintColor is the RN
-            // equivalent of the design's `brightness(0) invert(1)`.
-            tintColor="#FFFFFF"
-            style={{ width: 44, height: 44 }}
-          />
+          {markSuppressed ? (
+            <View testID="auth-mark-slot" style={MARK_SIZE} />
+          ) : (
+            <Image
+              source={LOGO}
+              accessibilityLabel="Analog"
+              resizeMode="contain"
+              // The mark ships dark with an alpha channel; tintColor is the RN
+              // equivalent of the design's `brightness(0) invert(1)`.
+              tintColor="#FFFFFF"
+              style={MARK_SIZE}
+            />
+          )}
         </View>
 
         <Text

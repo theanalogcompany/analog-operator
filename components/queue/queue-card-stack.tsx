@@ -281,6 +281,7 @@ function FrontCard({
                 resolves to nothing, and the pan dies silently while the card
                 still renders and every unit test still passes. (TAC-37.) */}
             <Animated.View
+              testID="queue-front-card"
               collapsable={false}
               style={[
                 { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 3 },

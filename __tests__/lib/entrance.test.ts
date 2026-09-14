@@ -323,45 +323,21 @@ describe('consumeColdLaunch', () => {
 
 describe('resolveEntranceMode', () => {
   it('plays the full entrance on a cold launch', () => {
-    expect(
-      resolveEntranceMode({ coldLaunch: true, signedIn: true, reducedMotion: false }),
-    ).toBe('full');
+    expect(resolveEntranceMode({ coldLaunch: true, reducedMotion: false })).toBe('full');
   });
 
   it('reduces the entrance when the operator asked for less motion', () => {
-    expect(resolveEntranceMode({ coldLaunch: true, signedIn: true, reducedMotion: true })).toBe(
-      'reduced',
-    );
+    expect(resolveEntranceMode({ coldLaunch: true, reducedMotion: true })).toBe('reduced');
   });
 
   it('plays nothing when this is not a cold launch', () => {
     // Resume from background, a tab switch, a venue switch, and the queue
     // after signing in all land here.
-    expect(
-      resolveEntranceMode({ coldLaunch: false, signedIn: true, reducedMotion: false }),
-    ).toBe('off');
+    expect(resolveEntranceMode({ coldLaunch: false, reducedMotion: false })).toBe('off');
   });
 
-  it('prefers off over reduced — there is nothing to reduce', () => {
-    expect(
-      resolveEntranceMode({ coldLaunch: false, signedIn: true, reducedMotion: true }),
-    ).toBe('off');
-  });
-});
-
-describe('resolveEntranceMode — signed out', () => {
-  /**
-   * The sign-in screen draws its own mark, so an entrance over it shows two
-   * logos. Signed out plays nothing, whatever reduced motion says. (Decided
-   * 2026-09-14, reversing an earlier call to play it on sign-in.)
-   */
-  it('plays nothing on a signed-out cold launch', () => {
-    expect(
-      resolveEntranceMode({ coldLaunch: true, signedIn: false, reducedMotion: false }),
-    ).toBe('off');
-    expect(
-      resolveEntranceMode({ coldLaunch: true, signedIn: false, reducedMotion: true }),
-    ).toBe('off');
+  it('prefers off over reduced, since there is nothing to reduce', () => {
+    expect(resolveEntranceMode({ coldLaunch: false, reducedMotion: true })).toBe('off');
   });
 });
 

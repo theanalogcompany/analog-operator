@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react-native';
 
 import EditScreen from '@/app/queue/edit';
 import { type UseQueueResult } from '@/hooks/use-queue';
@@ -20,6 +20,7 @@ import {
   peekDeclineHandoff,
   stageDeclineHandoff,
 } from '@/lib/decline-handoff';
+import { takeoverHeader } from '@/lib/theme';
 
 const mockRouter = {
   push: jest.fn(),
@@ -44,11 +45,13 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockRouter.params,
 }));
 
+// Mutable, so a test can put the takeover under a real status bar. (TAC-388.)
+const mockInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 jest.mock('react-native-safe-area-context', () => {
   const { View } = jest.requireActual('react-native');
   return {
     SafeAreaView: View,
-    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+    useSafeAreaInsets: () => mockInsets,
   };
 });
 
@@ -72,14 +75,34 @@ jest.mock('@/hooks/use-thread-realtime', () => ({
 
 // Captures the takeover's ground DECISION. How a ground paints belongs to
 // lib/grounds.ts and its own tests.
-const mockGround: { name: string | null } = { name: null };
+const mockGround: { name: string | null; edges: readonly string[] | undefined } = {
+  name: null,
+  edges: undefined,
+};
 jest.mock('@/components/ground/ground-screen', () => {
   const { View } = jest.requireActual('react-native');
   return {
-    GroundScreen: ({ name, children }: { name: string; children: ReactNode }) => {
+    GroundScreen: ({
+      name,
+      edges,
+      children,
+    }: {
+      name: string;
+      edges?: readonly string[];
+      children: ReactNode;
+    }) => {
       mockGround.name = name;
+      mockGround.edges = edges;
       return <View>{children}</View>;
     },
+  };
+});
+
+// The pinned header's backing paints a named ground; this records which.
+jest.mock('@/components/ground/ground', () => {
+  const { View } = jest.requireActual('react-native');
+  return {
+    Ground: ({ name }: { name: string }) => <View testID={`ground-${name}`} />,
   };
 });
 
@@ -116,6 +139,7 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
 }
 
 beforeEach(async () => {
+  mockInsets.top = 0;
   mockRouter.push.mockReset();
   mockRouter.back.mockReset();
   (editAndSend as jest.Mock).mockReset();
@@ -706,4 +730,78 @@ describe('EditScreen — ground and header (TAC-364)', () => {
     render(<EditScreen />);
     expect(mockGround.name).toBe('resting');
   });
+});
+
+// TAC-388. The takeover opens as a transparent modal, where the native safe-area
+// view reports no top inset, so its header drew under the status bar (the clock
+// sat on top of BACK). And the pinned block had nothing behind it, so the thread
+// showed through beneath it. Both routes in render this same header. These pin
+// the layout; that it clears the clock on a phone is device UAT.
+describe('EditScreen: chrome (TAC-388)', () => {
+  const DECLINE_ID = '88b1e6d8-9a0f-4bc2-8e4d-5a6b7c8d9e0f';
+  const BODY = "So sorry, we can't do the cortado today after all.";
+  const STATUS_BAR = 62;
+
+  beforeEach(() => {
+    mockInsets.top = STATUS_BAR;
+  });
+
+  afterEach(() => {
+    __resetDeclineHandoffForTests();
+  });
+
+  async function openFrom(route: 'draft' | 'decline'): Promise<string> {
+    if (route === 'draft') {
+      mockRouter.params = { messageId: mockQueue.drafts[0].messageId, bucket: 'obligation' };
+    } else {
+      mockQueue.drafts = [];
+      stageDeclineHandoff(
+        makeDraft({
+          messageId: DECLINE_ID,
+          draftBody: BODY,
+          reviewReasonCode: 'operator_decline_initiated',
+        }),
+      );
+      mockRouter.params = { messageId: DECLINE_ID, prefill: BODY, bucket: 'headsUp' };
+    }
+    await renderAndDrain();
+    return mockRouter.params.bucket as string;
+  }
+
+  function isInside(
+    node: ReturnType<typeof screen.getByTestId>,
+    container: ReturnType<typeof screen.getByTestId>,
+  ): boolean {
+    for (let cursor = node.parent; cursor; cursor = cursor.parent) {
+      if (cursor === container) return true;
+    }
+    return false;
+  }
+
+  it.each(['draft', 'decline'] as const)(
+    'pads the header row below the status bar, opened from a %s',
+    async (route) => {
+      await openFrom(route);
+      const row = StyleSheet.flatten(screen.getByTestId('takeover-header-row').props.style);
+      expect(row.paddingTop).toBe(STATUS_BAR + takeoverHeader.rowPaddingTopPx);
+      // The header pads the top itself, so the ground must not add it again.
+      expect(mockGround.edges).toEqual(['left', 'right']);
+    },
+  );
+
+  it.each(['draft', 'decline'] as const)(
+    'backs the pinned block with its own ground and clips the thread, opened from a %s',
+    async (route) => {
+      const bucket = await openFrom(route);
+      const pinned = screen.getByTestId('takeover-pinned-header');
+      expect(StyleSheet.flatten(pinned.props.style)).toMatchObject({ overflow: 'hidden' });
+      expect(within(pinned).getByTestId(`ground-${bucket}`)).toBeTruthy();
+
+      const clip = screen.getByTestId('takeover-thread-clip');
+      expect(StyleSheet.flatten(clip.props.style)).toMatchObject({ overflow: 'hidden' });
+      const thread = screen.UNSAFE_getByType(ScrollView);
+      expect(isInside(thread, clip)).toBe(true);
+      expect(isInside(thread, pinned)).toBe(false);
+    },
+  );
 });

@@ -164,6 +164,41 @@ export function secondaryTriggerLabels(
   return out;
 }
 
+/** Which reasons a surface shows, and how many it holds back. */
+export type AlsoPlan = { shown: string[]; hidden: number };
+
+/**
+ * Which secondary reasons fit a surface, and how many are held back.
+ *
+ * `lineCounts[i]` is how many lines `labels[i]` needs at the surface's width,
+ * measured on device. A reason that needs more than `maxLinesPerItem` is
+ * withheld, never cut: an operator reading half a reason completes it
+ * themselves, and may complete it wrong. The labels are the server's and can
+ * change without a client release, so no fixed cap could promise that. Past
+ * `maxItems` the last row goes to a count instead, so what is held back is
+ * never silent. Null until every label has been measured. (TAC-388.)
+ */
+export function planAlsoLines(args: {
+  labels: readonly string[];
+  lineCounts: readonly (number | null)[];
+  maxItems: number;
+  maxLinesPerItem: number;
+}): AlsoPlan | null {
+  const { labels, lineCounts, maxItems, maxLinesPerItem } = args;
+  if (lineCounts.length !== labels.length) return null;
+  const fits: string[] = [];
+  for (let i = 0; i < labels.length; i++) {
+    const lines = lineCounts[i];
+    if (lines === null) return null;
+    if (lines <= maxLinesPerItem) fits.push(labels[i]);
+  }
+  if (fits.length === labels.length && fits.length <= maxItems) {
+    return { shown: fits, hidden: 0 };
+  }
+  const shown = fits.slice(0, Math.max(0, maxItems - 1));
+  return { shown, hidden: labels.length - shown.length };
+}
+
 /** `"01 / 04"`: the flag strip's right-hand progress counter. */
 export function formatProgress(position: number, total: number): string {
   const pad = (n: number): string => String(Math.max(0, n)).padStart(2, '0');
