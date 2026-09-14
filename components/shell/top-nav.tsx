@@ -65,7 +65,7 @@ export function TopNav() {
       <View style={{ flex: 1, alignItems: 'flex-start' }}>
         <Tab
           label="Queue"
-          count={queue.drafts.length}
+          count={queue.drafts.length + queue.commitments.length}
           active={active === 'queue'}
           onPress={() => router.replace('/queue')}
         />

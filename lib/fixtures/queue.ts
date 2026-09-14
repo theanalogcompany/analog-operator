@@ -1,9 +1,16 @@
 import {
+  type DeclineCommitmentResult,
+  type HeadsUpCommitment,
   type PendingDraft,
   type RecognitionState,
   type ThreadMessage,
 } from '@/lib/api/queue';
-import { type ApiError, type Result, ok } from '@/lib/api/errors';
+import { type ApiError, type Result, err, ok } from '@/lib/api/errors';
+import {
+  FIXTURE_CENTRAL_PERK_ID,
+  FIXTURE_SEXTANT_ID,
+  FIXTURE_VENUES,
+} from '@/lib/fixtures/venues';
 // import type only — avoids a circular import with the realtime channels,
 // which import subscribe*Fixture from this file.
 import type { QueueChannelEvent } from '@/lib/realtime/queue-channel';
@@ -206,14 +213,52 @@ function seedDrafts(): PendingDraft[] {
   ];
 }
 
+// Heads-up cards (TAC-364). A comp arriving now, so the code chip and the "Now"
+// arrival render offline, and a scheduled recommendation at the other venue,
+// so a card with no chip and a clock time does too.
+function seedCommitments(): HeadsUpCommitment[] {
+  const now = Date.now();
+  return [
+    {
+      id: '55e8b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c',
+      venueId: FIXTURE_SEXTANT_ID,
+      guestId: 'ee55b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c',
+      type: 'comp',
+      guest: { name: 'Sam' },
+      description: 'A cortado on the house, after the mix-up with Tuesday’s order',
+      code: '7K2P',
+      expected_arrival: null,
+      created_at: new Date(now - 26 * 60 * 60_000).toISOString(),
+      recognitionState: 'regular',
+      sourceMessageId: '66f9c4b6-7e8d-4fa0-9c2b-3e4f5a6b7c8d',
+    },
+    {
+      id: '77a0d5c7-8f9e-4ab1-8d3c-4f5a6b7c8d9e',
+      venueId: FIXTURE_CENTRAL_PERK_ID,
+      guestId: 'ff77d5c7-8f9e-4ab1-8d3c-4f5a6b7c8d9e',
+      type: 'recommendation',
+      guest: { name: 'Lena' },
+      description: 'Try the rosemary loaf when it comes out at 4',
+      code: null,
+      expected_arrival: new Date(now + 3 * 60 * 60_000).toISOString(),
+      created_at: new Date(now - 2 * 60 * 60_000).toISOString(),
+      recognitionState: 'new',
+      sourceMessageId: null,
+    },
+  ];
+}
+
 const queue: Map<string, PendingDraft> = new Map();
+const commitments: Map<string, HeadsUpCommitment> = new Map();
 const archive: Map<string, ArchiveEntry> = new Map();
 const subscribers: Set<Subscriber> = new Set();
 
 function reseed(): void {
   queue.clear();
+  commitments.clear();
   archive.clear();
   for (const d of seedDrafts()) queue.set(d.messageId, d);
+  for (const c of seedCommitments()) commitments.set(c.id, c);
 }
 
 reseed();
@@ -233,6 +278,60 @@ export function listQueueFixture(): PendingDraft[] {
   return Array.from(queue.values()).sort(
     (a, b) => b.pendingSinceMs - a.pendingSinceMs,
   );
+}
+
+export function listCommitmentsFixture(): HeadsUpCommitment[] {
+  return Array.from(commitments.values()).sort((a, b) =>
+    (a.created_at ?? '').localeCompare(b.created_at ?? ''),
+  );
+}
+
+/** Mirrors `/acknowledge`: clears the card, sends nothing. 409 once it's gone. */
+export function acknowledgeCommitmentFixture(commitmentId: string): Result<void> {
+  if (!commitments.delete(commitmentId)) {
+    return err<ApiError>({ kind: 'HTTP', status: 409, message: 'already_acknowledged' });
+  }
+  return ok(undefined);
+}
+
+/**
+ * Mirrors `/draft-decline`: cancels the commitment and persists a PENDING
+ * decline draft into the fixture queue (nothing is sent), returning
+ * `{ messageId, body }`. 409 once the commitment is gone.
+ */
+export function declineCommitmentFixture(
+  commitmentId: string,
+): Result<DeclineCommitmentResult> {
+  const commitment = commitments.get(commitmentId);
+  if (!commitment) {
+    return err<ApiError>({ kind: 'HTTP', status: 409, message: 'invalid_state' });
+  }
+  commitments.delete(commitmentId);
+  const messageId = fixtureUuid();
+  const body =
+    "So sorry, we can't do that today after all. Can we make it up to you next time?";
+  queue.set(
+    messageId,
+    draft({
+      messageId,
+      venueId: commitment.venueId,
+      venueSlug:
+        FIXTURE_VENUES.find((v) => v.id === commitment.venueId)?.slug ?? '',
+      guestId: commitment.guestId,
+      guestDisplayName: commitment.guest.name || null,
+      guestPhoneFallback: '+15551110005',
+      recognitionState: commitment.recognitionState,
+      agentReasoning: null,
+      recentContext: [],
+      draftBody: body,
+      category: null,
+      voiceFidelity: null,
+      reviewReason: "You passed on the last one, so here's another go.",
+      pendingMinutes: 0,
+    }),
+  );
+  emit();
+  return ok({ messageId, body });
 }
 
 export function approveDraftFixture(messageId: string): Result<void> {
@@ -316,6 +415,27 @@ export function getThreadFixture(messageId: string): ThreadMessage[] {
         direction: 'inbound',
         body: 'perfect, see you around 7',
         createdAt: new Date(Date.now() - 5 * 24 * 60 * 60_000 + 4 * 60_000).toISOString(),
+      },
+    ],
+    // Sam: the conversation behind the comp heads-up card (TAC-364).
+    '66f9c4b6-7e8d-4fa0-9c2b-3e4f5a6b7c8d': [
+      {
+        id: 'aa05d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        direction: 'inbound',
+        body: 'hey, tuesday you gave me a latte instead of my cortado',
+        createdAt: new Date(Date.now() - 26 * 60 * 60_000).toISOString(),
+      },
+      {
+        id: 'aa06d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        direction: 'outbound',
+        body: "So sorry about that. Your next cortado is on us, just mention 7K2P.",
+        createdAt: new Date(Date.now() - 26 * 60 * 60_000 + 90_000).toISOString(),
+      },
+      {
+        id: 'aa07d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+        direction: 'inbound',
+        body: 'omw now!',
+        createdAt: new Date(Date.now() - 2 * 60_000).toISOString(),
       },
     ],
     // Devon L. — earlier rosemary-loaf preamble

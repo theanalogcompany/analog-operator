@@ -34,7 +34,12 @@ type ChangeHandler = (payload: {
 
 type ChannelHandle = {
   channelName: string;
-  subscriptions: { event: string; filter: string; handler: ChangeHandler }[];
+  subscriptions: {
+    event: string;
+    table: string;
+    filter: string;
+    handler: ChangeHandler;
+  }[];
   fireStatus: (status: string) => void;
 };
 
@@ -49,7 +54,7 @@ function mockLiveChannel(): ChannelHandle {
     type ChannelLike = {
       on: (
         kind: string,
-        opts: { event: string; filter: string },
+        opts: { event: string; table: string; filter: string },
         handler: ChangeHandler,
       ) => ChannelLike;
       subscribe: (cb: (status: string) => void) => ChannelLike;
@@ -58,6 +63,7 @@ function mockLiveChannel(): ChannelHandle {
       on: (_kind, opts, handler) => {
         handle.subscriptions.push({
           event: opts.event,
+          table: opts.table,
           filter: opts.filter,
           handler,
         });
@@ -114,7 +120,7 @@ describe('createQueueChannel — live mode', () => {
     channel.unsubscribe();
   });
 
-  it('sets the realtime auth token, opens INSERT + UPDATE on messages with the venue_id filter', () => {
+  it('sets the realtime auth token, opens INSERT + UPDATE on messages and guest_commitments with the venue_id filter', () => {
     const handle = mockLiveChannel();
     const onEvent = jest.fn();
     createQueueChannel({
@@ -126,9 +132,13 @@ describe('createQueueChannel — live mode', () => {
 
     expect(setAuth).toHaveBeenCalledWith('tok');
     expect(handle.channelName).toBe(`operator-queue-${OPERATOR_ID}`);
-    expect(handle.subscriptions.map((s) => s.event)).toEqual([
-      'INSERT',
-      'UPDATE',
+    expect(
+      handle.subscriptions.map((s) => `${s.table}:${s.event}`),
+    ).toEqual([
+      'messages:INSERT',
+      'messages:UPDATE',
+      'guest_commitments:INSERT',
+      'guest_commitments:UPDATE',
     ]);
     for (const sub of handle.subscriptions) {
       expect(sub.filter).toBe(`venue_id=in.(${VENUE_A},${VENUE_B})`);
@@ -158,6 +168,28 @@ describe('createQueueChannel — live mode', () => {
     // soft-removed (REPLICA IDENTITY FULL means old is populated)
     onEvent.mockClear();
     insertHandler({ new: null, old: { direction: 'outbound' } });
+    expect(onEvent).toHaveBeenCalledWith({ type: 'queue_changed' });
+  });
+
+  it('emits queue_changed on any heads-up commitment change, with no direction filter', () => {
+    const handle = mockLiveChannel();
+    const onEvent = jest.fn();
+    createQueueChannel({
+      operatorId: OPERATOR_ID,
+      venueIds: [VENUE_A],
+      accessToken: 'tok',
+      onEvent,
+    });
+
+    const commitmentSubs = handle.subscriptions.filter(
+      (s) => s.table === 'guest_commitments',
+    );
+    expect(commitmentSubs).toHaveLength(2);
+    // A commitment row has no `direction`, so the messages post-filter must not
+    // be applied to it: entering and leaving pending_ack both move a card.
+    commitmentSubs[0].handler({ new: { status: 'pending_ack' } });
+    commitmentSubs[1].handler({ new: { status: 'acknowledged' }, old: {} });
+    expect(onEvent).toHaveBeenCalledTimes(2);
     expect(onEvent).toHaveBeenCalledWith({ type: 'queue_changed' });
   });
 

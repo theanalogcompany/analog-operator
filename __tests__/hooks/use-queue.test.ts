@@ -8,7 +8,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { useQueue } from '@/hooks/use-queue';
-import { type PendingDraft, listQueue } from '@/lib/api/queue';
+import { type HeadsUpCommitment, type PendingDraft, listQueue } from '@/lib/api/queue';
 
 // The realtime subscription (session/token wiring, channel creation) is
 // exercised by __tests__/lib/realtime-queue-channel.test.ts and the queue
@@ -60,7 +60,7 @@ describe('use-queue', () => {
 describe('use-queue — enabled gating (queue-context lift)', () => {
   beforeEach(() => {
     listQueueMock.mockReset();
-    listQueueMock.mockResolvedValue({ ok: true, data: [makeDraft()] });
+    listQueueMock.mockResolvedValue({ ok: true, data: { drafts: [makeDraft()], commitments: [] } });
   });
 
   it('never calls listQueue while enabled is false', async () => {
@@ -134,7 +134,7 @@ describe('use-queue — enabled gating (queue-context lift)', () => {
 
     // The stale fetch now resolves with the OUTGOING operator's data.
     await act(async () => {
-      resolveFetch({ ok: true, data: [makeDraft()] });
+      resolveFetch({ ok: true, data: { drafts: [makeDraft()], commitments: [] } });
       await pending;
       // Flush the microtask reload()'s continuation runs on after the await.
       await Promise.resolve();
@@ -144,5 +144,58 @@ describe('use-queue — enabled gating (queue-context lift)', () => {
     expect(result.current.drafts).toEqual([]);
     expect(result.current.status).toBe('loading');
     expect(result.current.error).toBeNull();
+  });
+});
+
+describe('use-queue — heads-up commitments (TAC-364)', () => {
+  const commitment = (id: string, created_at: string): HeadsUpCommitment => ({
+    id,
+    venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+    type: 'comp',
+    guest: { name: 'Sam' },
+    description: 'A cortado on the house',
+    code: '7K2P',
+    expected_arrival: null,
+    created_at,
+    recognitionState: null,
+    sourceMessageId: null,
+  });
+  const OLDER = commitment('55e8b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c', '2026-09-14T07:00:00.000Z');
+  const NEWER = commitment('77a0d5c7-8f9e-4ab1-8d3c-4f5a6b7c8d9e', '2026-09-14T09:00:00.000Z');
+
+  beforeEach(() => {
+    listQueueMock.mockReset();
+    listQueueMock.mockResolvedValue({
+      ok: true,
+      data: { drafts: [makeDraft()], commitments: [NEWER, OLDER] },
+    });
+  });
+
+  it('loads commitments with the drafts, oldest promise first', async () => {
+    const { result } = renderHook(() => useQueue());
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.commitments.map((c) => c.id)).toEqual([OLDER.id, NEWER.id]);
+  });
+
+  it('clears commitments on sign-out, like drafts', async () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useQueue({ enabled }),
+      { initialProps: { enabled: true } },
+    );
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.commitments).toHaveLength(2);
+    rerender({ enabled: false });
+    expect(result.current.commitments).toEqual([]);
+  });
+
+  it('removes a commitment and restores it to its place, once', async () => {
+    const { result } = renderHook(() => useQueue());
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    act(() => result.current.optimisticallyRemoveCommitment(OLDER.id));
+    expect(result.current.commitments.map((c) => c.id)).toEqual([NEWER.id]);
+    act(() => result.current.restoreCommitment(OLDER));
+    act(() => result.current.restoreCommitment(OLDER));
+    expect(result.current.commitments.map((c) => c.id)).toEqual([OLDER.id, NEWER.id]);
   });
 });

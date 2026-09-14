@@ -7,34 +7,61 @@ import QueueScreen from '@/app/queue/index';
 import { type GroundName } from '@/lib/grounds';
 import { type QueueContextValue } from '@/lib/queue-context';
 import { clearUndoState } from '@/hooks/use-undo-state';
-import { type PendingDraft, approveDraft } from '@/lib/api/queue';
+import {
+  type HeadsUpCommitment,
+  type PendingDraft,
+  acknowledgeCommitment,
+  approveDraft,
+  declineCommitment,
+} from '@/lib/api/queue';
+import {
+  __resetDeclineHandoffForTests,
+  peekDeclineHandoff,
+} from '@/lib/decline-handoff';
+import { type QueueItem } from '@/lib/queue-items';
+import { HEADS_UP_TONE } from '@/lib/queue-tone';
 import {
   __resetTapStateForTests,
   setPendingTap,
 } from '@/lib/notifications/tap-handler';
 
 type CardStackProps = {
-  drafts: PendingDraft[];
+  items: QueueItem[];
   position: number;
   total: number;
+  busyKey?: string | null;
   onApprove: (draft: PendingDraft) => void;
   onEdit: (draft: PendingDraft) => void;
   onRefuseApprove: (draft: PendingDraft) => void;
+  onAcknowledge: (commitment: HeadsUpCommitment) => void | Promise<void>;
+  onDecline: (commitment: HeadsUpCommitment) => void | Promise<void>;
   onPressHelp: () => void;
 };
 let lastCardStackProps: CardStackProps | null = null;
 let lastGroundName: GroundName | null = null;
 let lastEntranceGround: GroundName | null = null;
+const mockRouterPush = jest.fn();
+
+// The draft cards the screen handed the stack, in deck order. Heads-up cards
+// ride the same `items` list (TAC-364); the tests that use this are about drafts.
+function stackDrafts(): PendingDraft[] {
+  return (lastCardStackProps?.items ?? []).flatMap((item) =>
+    item.kind === 'draft' ? [item.draft] : [],
+  );
+}
 
 type SessionStub = { status: 'signed-in'; session: { user: { email: string | null } } };
 
 const mockQueue: QueueContextValue = {
   drafts: [],
+  commitments: [],
   status: 'ready',
   error: null,
   reload: jest.fn().mockResolvedValue(undefined),
   optimisticallyRemove: jest.fn(),
   restore: jest.fn(),
+  optimisticallyRemoveCommitment: jest.fn(),
+  restoreCommitment: jest.fn(),
   findVenueIdForGuest: jest.fn().mockReturnValue(null),
 };
 
@@ -69,7 +96,7 @@ jest.mock('expo-linking', () => ({
   openSettings: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: mockRouterPush, replace: jest.fn() }),
   usePathname: () => '/queue',
 }));
 jest.mock('@/lib/queue-context', () => ({ useQueueContext: () => mockQueue }));
@@ -110,6 +137,8 @@ jest.mock('@/lib/api/queue', () => {
     ...actual,
     approveDraft: jest.fn().mockResolvedValue({ ok: true, data: undefined }),
     undoAction: jest.fn().mockResolvedValue({ ok: true, data: undefined }),
+    acknowledgeCommitment: jest.fn(),
+    declineCommitment: jest.fn(),
   };
 });
 jest.mock('@/components/queue/empty-state', () => {
@@ -119,6 +148,7 @@ jest.mock('@/components/queue/empty-state', () => {
 
 beforeEach(() => {
   mockQueue.drafts = [];
+  mockQueue.commitments = [];
   mockSession = {
     status: 'signed-in',
     session: { user: { email: 'jaipal@theanalog.company' } },
@@ -328,11 +358,11 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(THIRD_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       draftFor(TARGET_GUEST_ID, '33a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
-    setPendingTap(TARGET_GUEST_ID);
+    setPendingTap({ kind: 'draft', guestId: TARGET_GUEST_ID });
     renderScreen();
     expect(lastCardStackProps).not.toBeNull();
-    expect(lastCardStackProps!.drafts[0].guestId).toBe(TARGET_GUEST_ID);
-    expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
+    expect(stackDrafts()[0].guestId).toBe(TARGET_GUEST_ID);
+    expect(stackDrafts().map((d) => d.guestId)).toEqual([
       TARGET_GUEST_ID,
       OTHER_GUEST_ID,
       THIRD_GUEST_ID,
@@ -344,9 +374,9 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       draftFor(THIRD_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
-    setPendingTap(TARGET_GUEST_ID); // not in drafts
+    setPendingTap({ kind: 'draft', guestId: TARGET_GUEST_ID }); // not in drafts
     renderScreen();
-    expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
+    expect(stackDrafts().map((d) => d.guestId)).toEqual([
       OTHER_GUEST_ID,
       THIRD_GUEST_ID,
     ]);
@@ -357,9 +387,9 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       draftFor(TARGET_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
-    setPendingTap(TARGET_GUEST_ID);
+    setPendingTap({ kind: 'draft', guestId: TARGET_GUEST_ID });
     renderScreen();
-    expect(lastCardStackProps!.drafts[0].guestId).toBe(TARGET_GUEST_ID);
+    expect(stackDrafts()[0].guestId).toBe(TARGET_GUEST_ID);
 
     // Simulate the operator approving the surfaced card. The screen calls
     // optimisticallyRemove (here a no-op mock — we control drafts directly)
@@ -376,7 +406,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
     renderScreen();
-    expect(lastCardStackProps!.drafts.map((d) => d.guestId)).toEqual([
+    expect(stackDrafts().map((d) => d.guestId)).toEqual([
       OTHER_GUEST_ID,
     ]);
   });
@@ -505,6 +535,181 @@ describe('QueueScreen refusal path', () => {
       lastCardStackProps!.onRefuseApprove(draft);
     });
 
-    expect(lastCardStackProps!.drafts.map((d) => d.messageId)).toEqual([MESSAGE_ID]);
+    expect(stackDrafts().map((d) => d.messageId)).toEqual([MESSAGE_ID]);
+  });
+});
+
+// Heads-up cards (TAC-364). The stack is mocked to null here, so these drive the
+// screen's handlers directly: they claim what the SCREEN does with an
+// acknowledge or a decline. That a swipe on a heads-up card reaches these
+// handlers, and never `onApprove`, is claimed at the gesture's own seam in
+// __tests__/components/queue/queue-card-stack-routing.test.tsx.
+describe('QueueScreen — heads-up cards (TAC-364)', () => {
+  const DECLINE_MESSAGE_ID = '88b1e6d8-9a0f-4bc2-8e4d-5a6b7c8d9e0f';
+  const DECLINE_BODY = "So sorry, we can't do the cortado today after all.";
+
+  const commitment = (
+    overrides: Partial<HeadsUpCommitment> = {},
+  ): HeadsUpCommitment => ({
+    id: '55e8b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c',
+    venueId: VENUE_A,
+    guestId: 'ee55b3a5-6d7c-4e9f-8b1a-2d3e4f5a6b7c',
+    type: 'comp',
+    guest: { name: 'Sam' },
+    description: 'A cortado on the house',
+    code: '7K2P',
+    expected_arrival: null,
+    created_at: '2026-09-14T08:00:00.000Z',
+    recognitionState: 'regular',
+    sourceMessageId: null,
+    ...overrides,
+  });
+
+  const httpError = (status: number) => ({
+    ok: false as const,
+    error: { kind: 'HTTP' as const, status, message: `http ${status}` },
+  });
+
+  beforeEach(() => {
+    (acknowledgeCommitment as jest.Mock).mockReset();
+    (acknowledgeCommitment as jest.Mock).mockResolvedValue({ ok: true, data: undefined });
+    (declineCommitment as jest.Mock).mockReset();
+    (declineCommitment as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: { messageId: DECLINE_MESSAGE_ID, body: DECLINE_BODY },
+    });
+    (mockQueue.optimisticallyRemoveCommitment as jest.Mock).mockClear();
+    (mockQueue.restoreCommitment as jest.Mock).mockClear();
+    mockRouterPush.mockClear();
+    __resetDeclineHandoffForTests();
+  });
+
+  it('puts heads-up cards on the deck, ahead of drafts', () => {
+    mockQueue.commitments = [commitment()];
+    mockQueue.drafts = [draftWithTone()];
+    renderScreen();
+    expect(lastCardStackProps!.items.map((item: QueueItem) => item.kind)).toEqual([
+      'headsUp',
+      'draft',
+    ]);
+  });
+
+  it('acknowledging sends nothing to the guest', async () => {
+    const c = commitment();
+    mockQueue.commitments = [c];
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onAcknowledge(c);
+    });
+    expect(acknowledgeCommitment).toHaveBeenCalledWith(c.id);
+    expect(approveDraft).not.toHaveBeenCalled();
+    expect(declineCommitment).not.toHaveBeenCalled();
+    expect(mockQueue.optimisticallyRemoveCommitment).toHaveBeenCalledWith(c.id);
+    expect(mockQueue.restoreCommitment).not.toHaveBeenCalled();
+  });
+
+  it('puts the card back when the acknowledge fails', async () => {
+    (acknowledgeCommitment as jest.Mock).mockResolvedValue(httpError(500));
+    const c = commitment();
+    mockQueue.commitments = [c];
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onAcknowledge(c);
+    });
+    expect(mockQueue.restoreCommitment).toHaveBeenCalledWith(c);
+  });
+
+  it('does not put back a card that was already handled somewhere else', async () => {
+    (acknowledgeCommitment as jest.Mock).mockResolvedValue(httpError(409));
+    const c = commitment();
+    mockQueue.commitments = [c];
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onAcknowledge(c);
+    });
+    expect(mockQueue.optimisticallyRemoveCommitment).toHaveBeenCalledWith(c.id);
+    expect(mockQueue.restoreCommitment).not.toHaveBeenCalled();
+  });
+
+  it('declining opens the written draft for review and sends nothing', async () => {
+    const c = commitment();
+    mockQueue.commitments = [c];
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onDecline(c);
+    });
+    expect(declineCommitment).toHaveBeenCalledWith(c.id);
+    expect(approveDraft).not.toHaveBeenCalled();
+    expect(acknowledgeCommitment).not.toHaveBeenCalled();
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/queue/edit',
+      params: {
+        messageId: DECLINE_MESSAGE_ID,
+        prefill: DECLINE_BODY,
+        tone: HEADS_UP_TONE,
+      },
+    });
+    expect(mockQueue.optimisticallyRemoveCommitment).toHaveBeenCalledWith(c.id);
+  });
+
+  it('stages the decline draft so the takeover renders it before the queue reloads', async () => {
+    const c = commitment();
+    mockQueue.commitments = [c];
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onDecline(c);
+    });
+    expect(peekDeclineHandoff(DECLINE_MESSAGE_ID)).toMatchObject({
+      messageId: DECLINE_MESSAGE_ID,
+      draftBody: DECLINE_BODY,
+      venueId: c.venueId,
+      guestId: c.guestId,
+      guestDisplayName: 'Sam',
+    });
+  });
+
+  it('stays put, card and all, when the decline could not be written', async () => {
+    (declineCommitment as jest.Mock).mockResolvedValue(httpError(502));
+    const c = commitment();
+    mockQueue.commitments = [c];
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onDecline(c);
+    });
+    expect(mockRouterPush).not.toHaveBeenCalled();
+    expect(mockQueue.optimisticallyRemoveCommitment).not.toHaveBeenCalled();
+    expect(peekDeclineHandoff(DECLINE_MESSAGE_ID)).toBeNull();
+  });
+
+  it('clears a card another device already declined, without opening anything', async () => {
+    (declineCommitment as jest.Mock).mockResolvedValue(httpError(409));
+    const c = commitment();
+    mockQueue.commitments = [c];
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onDecline(c);
+    });
+    expect(mockQueue.optimisticallyRemoveCommitment).toHaveBeenCalledWith(c.id);
+    expect(mockRouterPush).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the tapped commitment, not a draft for the same guest', () => {
+    const tapped = commitment();
+    const other = commitment({
+      id: '77a0d5c7-8f9e-4ab1-8d3c-4f5a6b7c8d9e',
+      guestId: 'ff77d5c7-8f9e-4ab1-8d3c-4f5a6b7c8d9e',
+    });
+    mockQueue.commitments = [other, tapped];
+    mockQueue.drafts = [draftWithTone({ guestId: tapped.guestId })];
+    setPendingTap({
+      kind: 'commitment',
+      guestId: tapped.guestId,
+      commitmentId: tapped.id,
+    });
+    renderScreen();
+    expect(lastCardStackProps!.items[0]).toMatchObject({
+      kind: 'headsUp',
+      commitment: { id: tapped.id },
+    });
   });
 });

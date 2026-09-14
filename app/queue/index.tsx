@@ -16,14 +16,32 @@ import {
   setUndoState,
 } from '@/hooks/use-undo-state';
 import { useSessionProgress } from '@/hooks/use-session-progress';
-import { type PendingDraft, approveDraft, undoAction } from '@/lib/api/queue';
+import {
+  type HeadsUpCommitment,
+  type PendingDraft,
+  acknowledgeCommitment,
+  approveDraft,
+  declineCommitment,
+  isCommitmentGone,
+  undoAction,
+} from '@/lib/api/queue';
+import {
+  buildDeclineHandoffDraft,
+  stageDeclineHandoff,
+} from '@/lib/decline-handoff';
 import { openHelpSms } from '@/lib/help';
 import { setBadgeCount } from '@/lib/notifications/badge';
 import {
+  type TapTarget,
   consumePendingTap,
   subscribeToTaps,
 } from '@/lib/notifications/tap-handler';
-import { groundForTone, toneFor } from '@/lib/queue-tone';
+import {
+  buildQueueItems,
+  headsUpItemKey,
+  surfaceTappedItem,
+} from '@/lib/queue-items';
+import { HEADS_UP_TONE, groundForTone, toneFor } from '@/lib/queue-tone';
 import { useQueueContext } from '@/lib/queue-context';
 import { useVenueSelection } from '@/lib/venue-context';
 import { display, layout, typePresets } from '@/lib/theme';
@@ -33,6 +51,12 @@ import { display, layout, typePresets } from '@/lib/theme';
 // condition and must say the same thing.
 const NOTHING_TO_SEND_MESSAGE =
   'Nothing to send yet — swipe left to write your answer';
+
+// Heads-up card copy. No em dashes: it is read fast mid-shift. (TAC-364.)
+const ACKNOWLEDGE_FAILED_MESSAGE = "Couldn't acknowledge that. Try again.";
+const DECLINE_WRITING_MESSAGE = 'Writing the decline…';
+const DECLINE_FAILED_MESSAGE = "Couldn't write the decline. Try again.";
+const ALREADY_HANDLED_MESSAGE = 'That one was already handled.';
 
 function handleHelp(): void {
   void openHelpSms().then((result) => {
@@ -45,55 +69,59 @@ export default function QueueScreen() {
   const venue = useVenueSelection();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [surfacedGuestId, setSurfacedGuestId] = useState<string | null>(null);
+  const [surfacedTarget, setSurfacedTarget] = useState<TapTarget | null>(null);
+  // The heads-up card whose decline the server is writing, if any. Its gesture
+  // is off until the response lands, so a second swipe can't start a second
+  // decline.
+  const [decliningId, setDecliningId] = useState<string | null>(null);
 
   // Drain any pending notification-tap on mount (cold-launch case) and subscribe
   // for warm-launch taps that land while the queue is mounted. Surfacing reorders
-  // the FIFO list so that guest's card lands on top of the stack for this mount;
-  // normal FIFO resumes once the surfaced card is dispatched. Per TAC-288
-  // settled-decision #4.
+  // the deck so the tapped card lands on top for this mount; normal order
+  // resumes once that card is dispatched. Per TAC-288 settled-decision #4,
+  // extended by TAC-364 so an arrival push surfaces its own heads-up card.
   useEffect(() => {
     const pending = consumePendingTap();
-    if (pending) setSurfacedGuestId(pending);
-    return subscribeToTaps((guestId) => {
+    if (pending) setSurfacedTarget(pending);
+    return subscribeToTaps((target) => {
       consumePendingTap();
-      setSurfacedGuestId(guestId);
+      setSurfacedTarget(target);
     });
   }, []);
 
-  // Surface the pushed guest's card on top of the FIFO stack for this mount.
-  // If the surfaced guest is no longer in the queue (sent / skipped from
-  // another device, or just dispatched here), fall back to the natural order.
-  const displayDrafts = useMemo(() => {
-    if (!surfacedGuestId) return queue.drafts;
-    const idx = queue.drafts.findIndex((d) => d.guestId === surfacedGuestId);
-    if (idx === -1) return queue.drafts;
-    return [
-      queue.drafts[idx],
-      ...queue.drafts.slice(0, idx),
-      ...queue.drafts.slice(idx + 1),
-    ];
-  }, [queue.drafts, surfacedGuestId]);
+  // One deck, two kinds of card (see lib/queue-items.ts). If the tapped card is
+  // no longer in the queue (handled on another device, or just dispatched
+  // here), the deck keeps its natural order.
+  const items = useMemo(
+    () => buildQueueItems(queue.drafts, queue.commitments),
+    [queue.drafts, queue.commitments],
+  );
+  const displayItems = useMemo(
+    () => surfaceTappedItem(items, surfacedTarget),
+    [items, surfacedTarget],
+  );
 
   const visibleIds = useMemo(
-    () => displayDrafts.map((d) => d.messageId),
-    [displayDrafts],
+    () => displayItems.map((item) => item.key),
+    [displayItems],
   );
   // Scoped to the venue: cards seen at one venue must not inflate another's
   // denominator after a switch. (TAC-382.)
   const progress = useSessionProgress(visibleIds, venue.selectedVenueId);
 
-  const top = displayDrafts[0];
+  const top = displayItems[0];
   // The ground encodes why the top card was flagged, so the operator knows what
   // kind of decision is in front of them before reading a word. With an empty
   // deck there is no decision, so it settles to clay — `resting`, which must
   // also be the entrance's ground; see CLAUDE.md. (TAC-384.)
-  const groundName = top ? groundForTone(toneFor(top)) : 'resting';
+  const groundName = top
+    ? groundForTone(top.kind === 'draft' ? toneFor(top.draft) : HEADS_UP_TONE)
+    : 'resting';
 
   // A tapped notification may be for a guest at a venue that isn't the one on
-  // screen. The APNs payload carries no venueId (see lib/notifications/
+  // screen. Neither APNs payload carries a venueId (see lib/notifications/
   // tap-handler.ts), so the venue is resolved here, from the queue, once the
-  // draft is actually in hand — which is why this is its own effect rather
+  // card is actually in hand — which is why this is its own effect rather
   // than part of the subscribe effect above: on a cold launch the tap lands
   // before the first listQueue() resolves, and this re-runs when it does.
   //
@@ -103,6 +131,7 @@ export default function QueueScreen() {
   // toast is what makes the switch visible rather than mysterious.
   const { findVenueIdForGuest } = queue;
   const { selectedVenueId, select: selectVenue, venues } = venue;
+  const surfacedGuestId = surfacedTarget?.guestId ?? null;
   useEffect(() => {
     if (!surfacedGuestId) return;
     const venueId = findVenueIdForGuest(surfacedGuestId);
@@ -118,28 +147,45 @@ export default function QueueScreen() {
     showToast(`Switched to ${target.name}`);
   }, [surfacedGuestId, findVenueIdForGuest, selectedVenueId, selectVenue, venues]);
 
-  // Badge mirrors the visible queue. Sync on every drafts change (covers swipe
-  // approve + restore + realtime updates + reload) and on foreground transitions
-  // (covers server-driven badge updates that drift from the local count while
-  // the app was backgrounded). Queue length is the source of truth — brief
-  // divergence under the TAC-37 undo flow is by design.
+  // Badge mirrors the visible queue, heads-up cards included (the server's push
+  // badge counts pending_ack commitments too). Sync on every change (covers
+  // swipes, restores, realtime updates and reloads) and on foreground
+  // transitions (covers server-driven badge updates that drift from the local
+  // count while the app was backgrounded). Queue length is the source of truth
+  // — brief divergence under the TAC-37 undo flow is by design.
+  const pendingCount = queue.drafts.length + queue.commitments.length;
   useEffect(() => {
-    void setBadgeCount(queue.drafts.length);
-  }, [queue.drafts.length]);
+    void setBadgeCount(pendingCount);
+  }, [pendingCount]);
 
-  // Track latest drafts.length in a ref so the AppState subscription stays
-  // mounted across re-renders. Subscribing on every count change would tear
-  // down and re-attach the listener for no benefit.
-  const draftCountRef = useRef(queue.drafts.length);
-  draftCountRef.current = queue.drafts.length;
+  // Track the latest count in a ref so the AppState subscription stays mounted
+  // across re-renders. Subscribing on every count change would tear down and
+  // re-attach the listener for no benefit.
+  const pendingCountRef = useRef(pendingCount);
+  pendingCountRef.current = pendingCount;
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void setBadgeCount(draftCountRef.current);
+        void setBadgeCount(pendingCountRef.current);
       }
     });
     return () => sub.remove();
   }, []);
+
+  const clearSurfaceForDraft = (draft: PendingDraft): void => {
+    if (surfacedTarget?.kind === 'draft' && surfacedTarget.guestId === draft.guestId) {
+      setSurfacedTarget(null);
+    }
+  };
+
+  const clearSurfaceForCommitment = (commitment: HeadsUpCommitment): void => {
+    if (
+      surfacedTarget?.kind === 'commitment' &&
+      surfacedTarget.commitmentId === commitment.id
+    ) {
+      setSurfacedTarget(null);
+    }
+  };
 
   const handleApprove = async (draft: PendingDraft): Promise<void> => {
     // Defense-in-depth. Unreachable via swipe since TAC-312 — the gesture now
@@ -154,7 +200,7 @@ export default function QueueScreen() {
     }
     queue.optimisticallyRemove(draft.messageId);
     progress.markCleared(draft.messageId);
-    if (draft.guestId === surfacedGuestId) setSurfacedGuestId(null);
+    clearSurfaceForDraft(draft);
     void setUndoState({ action: 'approve', draft });
     const result = await approveDraft(draft.messageId);
     if (!result.ok) {
@@ -174,7 +220,7 @@ export default function QueueScreen() {
   };
 
   const handleEdit = (draft: PendingDraft): void => {
-    if (draft.guestId === surfacedGuestId) setSurfacedGuestId(null);
+    clearSurfaceForDraft(draft);
     router.push({
       pathname: '/queue/edit',
       params: {
@@ -182,6 +228,62 @@ export default function QueueScreen() {
         // The takeover's ground is the card's ground, so the color carries
         // through from the card you swiped.
         tone: toneFor(draft),
+      },
+    });
+  };
+
+  // Heads-up swipe-right. Acknowledging tells the server the operator knows the
+  // guest is coming, and that is all it does: nothing is sent to the guest.
+  // There is no server-side undo for it, so it takes no undo record. (TAC-364.)
+  const handleAcknowledge = async (commitment: HeadsUpCommitment): Promise<void> => {
+    const key = headsUpItemKey(commitment.id);
+    queue.optimisticallyRemoveCommitment(commitment.id);
+    progress.markCleared(key);
+    clearSurfaceForCommitment(commitment);
+    const result = await acknowledgeCommitment(commitment.id);
+    if (result.ok) return;
+    // Acknowledged or declined somewhere else already: the card was stale, so
+    // clearing it was right and there is nothing to retry.
+    if (isCommitmentGone(result.error)) return;
+    queue.restoreCommitment(commitment);
+    progress.markRestored(key);
+    showToast(ACKNOWLEDGE_FAILED_MESSAGE);
+  };
+
+  // Heads-up swipe-left. The server writes an apology, persists it as a PENDING
+  // draft and cancels the commitment; nothing is sent. The operator reviews that
+  // draft on the existing edit takeover, which is the only place it can be sent
+  // from. The swipe itself never dispatches a message. (TAC-364, TAC-299.)
+  const handleDecline = async (commitment: HeadsUpCommitment): Promise<void> => {
+    if (decliningId) return;
+    setDecliningId(commitment.id);
+    showToast(DECLINE_WRITING_MESSAGE);
+    const result = await declineCommitment(commitment.id);
+    setDecliningId(null);
+    if (!result.ok) {
+      if (isCommitmentGone(result.error)) {
+        queue.optimisticallyRemoveCommitment(commitment.id);
+        progress.markCleared(headsUpItemKey(commitment.id));
+        clearSurfaceForCommitment(commitment);
+        showToast(ALREADY_HANDLED_MESSAGE);
+        return;
+      }
+      showToast(DECLINE_FAILED_MESSAGE);
+      return;
+    }
+    queue.optimisticallyRemoveCommitment(commitment.id);
+    progress.markCleared(headsUpItemKey(commitment.id));
+    clearSurfaceForCommitment(commitment);
+    // The takeover resolves its draft from the queue, which cannot hold a row
+    // the server created moments ago; the staged handoff stands in until the
+    // realtime reload delivers it. See lib/decline-handoff.ts.
+    stageDeclineHandoff(buildDeclineHandoffDraft(commitment, result.data));
+    router.push({
+      pathname: '/queue/edit',
+      params: {
+        messageId: result.data.messageId,
+        prefill: result.data.body,
+        tone: HEADS_UP_TONE,
       },
     });
   };
@@ -252,7 +354,7 @@ export default function QueueScreen() {
             </TrackedCaps>
           </Pressable>
         </View>
-      ) : displayDrafts.length === 0 ? (
+      ) : displayItems.length === 0 ? (
         <>
           <EmptyState />
           <View
@@ -281,12 +383,15 @@ export default function QueueScreen() {
         </>
       ) : (
         <QueueCardStack
-          drafts={displayDrafts}
+          items={displayItems}
           position={progress.position}
           total={progress.total}
+          busyKey={decliningId ? headsUpItemKey(decliningId) : null}
           onApprove={handleApprove}
           onEdit={handleEdit}
           onRefuseApprove={handleRefuseApprove}
+          onAcknowledge={handleAcknowledge}
+          onDecline={handleDecline}
           onPressHelp={handleHelp}
         />
       )}

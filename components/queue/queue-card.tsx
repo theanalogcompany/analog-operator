@@ -23,13 +23,18 @@ function displayName(draft: PendingDraft): string {
   return draft.guestPhoneFallback;
 }
 
-function minutesPending(draft: PendingDraft): string {
-  const minutes = Math.max(0, Math.floor(draft.pendingSinceMs / 60_000));
+/** "just now" / "4 min" / "2 hrs". Shared with the heads-up card's head. */
+export function formatPendingDuration(ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
   if (minutes < 1) return 'just now';
   if (minutes === 1) return '1 min';
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   return `${hours} hr${hours > 1 ? 's' : ''}`;
+}
+
+function minutesPending(draft: PendingDraft): string {
+  return formatPendingDuration(draft.pendingSinceMs);
 }
 
 type Props = {
@@ -63,7 +68,7 @@ type Props = {
  * nothing left to offer. Keep it as one string — mixing the two APIs on the
  * same view double-draws on iOS.
  */
-const cardShadow = {
+export const cardShadow = {
   boxShadow: '0px 26px 64px rgba(20,17,14,0.42)',
 } as const;
 

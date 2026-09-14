@@ -41,11 +41,14 @@ const findVenueIdForGuest = jest.fn<string | null, [string]>();
 
 const mockQueue: QueueContextValue = {
   drafts: [] as PendingDraft[],
+  commitments: [],
   status: 'ready',
   error: null,
   reload: jest.fn().mockResolvedValue(undefined),
   optimisticallyRemove: jest.fn(),
   restore: jest.fn(),
+  optimisticallyRemoveCommitment: jest.fn(),
+  restoreCommitment: jest.fn(),
   findVenueIdForGuest,
 };
 
@@ -123,7 +126,7 @@ beforeEach(() => {
 describe('notification tap for a guest at another venue', () => {
   it('switches to that guest’s venue', async () => {
     findVenueIdForGuest.mockReturnValue(VENUE_B);
-    setPendingTap(GUEST_AT_B);
+    setPendingTap({ kind: 'draft', guestId: GUEST_AT_B });
 
     await renderScreen();
 
@@ -133,7 +136,7 @@ describe('notification tap for a guest at another venue', () => {
   it('says which venue it switched to, rather than switching silently', async () => {
     // An unexplained jump is how an operator learns to distrust the app.
     findVenueIdForGuest.mockReturnValue(VENUE_B);
-    setPendingTap(GUEST_AT_B);
+    setPendingTap({ kind: 'draft', guestId: GUEST_AT_B });
 
     await renderScreen();
 
@@ -142,7 +145,7 @@ describe('notification tap for a guest at another venue', () => {
 
   it('does not switch when the guest is already at the selected venue', async () => {
     findVenueIdForGuest.mockReturnValue(VENUE_A);
-    setPendingTap(GUEST_AT_A);
+    setPendingTap({ kind: 'draft', guestId: GUEST_AT_A });
 
     await renderScreen();
 
@@ -153,7 +156,7 @@ describe('notification tap for a guest at another venue', () => {
   it('does not switch when the guest has no pending draft anywhere', async () => {
     // Sent or skipped from another device between the push and the tap.
     findVenueIdForGuest.mockReturnValue(null);
-    setPendingTap(GUEST_AT_B);
+    setPendingTap({ kind: 'draft', guestId: GUEST_AT_B });
 
     await renderScreen();
 
@@ -167,7 +170,7 @@ describe('notification tap for a guest at another venue', () => {
     mockVenue.venues = [];
     mockVenue.selectedVenueId = null;
     findVenueIdForGuest.mockReturnValue(VENUE_B);
-    setPendingTap(GUEST_AT_B);
+    setPendingTap({ kind: 'draft', guestId: GUEST_AT_B });
 
     await renderScreen();
 
