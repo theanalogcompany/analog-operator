@@ -7,7 +7,7 @@
     "scheme": "analog-operator",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/app-icon-kiln-1024.png",
     "ios": {
       "bundleIdentifier": "company.theanalog.operator",
       "supportsTablet": false,
