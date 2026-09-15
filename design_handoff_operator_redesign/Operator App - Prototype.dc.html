@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,400&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#E7E2D8;font-family:'Inter Tight',system-ui,sans-serif}a{color:#A85638;text-decoration:none}a:hover{color:#8E3F26}input,textarea{font-family:inherit}@keyframes undoDrain{from{transform:scaleX(1)}to{transform:scaleX(0)}}</style></helmet>
+
+<div style="min-height:100%;box-sizing:border-box;padding:{{ pagePad }};display:flex;flex-direction:column;align-items:center;gap:22px;background:{{ pageBg }}">
+<sc-if value="{{ showIntro }}" hint-placeholder-val="{{ true }}"><div style="text-align:center;max-width:420px">
+  <div style="font-family:'Fraunces',serif;font-style:italic;font-size:26px;line-height:32px;color:#1C1814">The operator app, working.</div>
+  <div style="margin-top:10px;font-size:12px;line-height:18px;color:#6F6658">Drag a card right to send, left to write your own. Tap a tab, a row, the compose field.</div>
+</div></sc-if>
+
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ dw }}" height="{{ dh }}" hint-size="402px,874px">
+<div style="height:100%;position:relative;overflow:hidden;font-family:'Inter Tight',sans-serif;background:{{ ground }}">
+
+  <sc-if value="{{ isAuth }}" hint-placeholder-val="{{ false }}">
+    <div style="height:100%;display:flex;flex-direction:column;padding:62px 26px 0;box-sizing:border-box">
+      <div style="display:flex;justify-content:center;padding:56px 0 40px"><img src="assets/images/logo.png" alt="Analog" style="width:44px;height:44px;object-fit:contain;filter:brightness(0) invert(1)"></div>
+      <div style="font-family:'Fraunces',serif;font-style:italic;font-size:34px;line-height:41px;letter-spacing:-0.4px;color:#FFFFFF;text-align:center">{{ authTitle }}</div>
+      <div style="margin-top:14px;font-size:13.5px;line-height:20px;color:#FFFFFF;text-align:center">{{ authSub }}</div>
+      <sc-if value="{{ isSignIn }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-top:36px;background:#FFFFFF;border-radius:16px;height:52px;display:flex;align-items:center;padding:0 18px"><span style="font-size:16px;color:#1C1814">+1 555 111 0001</span></div>
+      </sc-if>
+      <sc-if value="{{ isVerify }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:36px;display:flex;gap:8px">
+          <sc-for list="{{ codeCells }}" as="cell" hint-placeholder-count="6">
+            <div style="flex:1;background:{{ cell.bg }};border-radius:12px;height:56px;display:flex;align-items:center;justify-content:center"><span style="font-size:22px;font-weight:500;color:#1C1814">{{ cell.digit }}</span></div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div onClick="{{ authAction }}" style="margin-top:14px;background:#1C1814;border-radius:16px;height:52px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="opacity:0.88"><span style="font-size:11.5px;font-weight:500;letter-spacing:2.6px;text-transform:uppercase;color:#FFFFFF">{{ authCta }}</span></div>
+      <div style="margin-top:26px;display:flex;justify-content:center"><span style="font-size:9.5px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:#FFFFFF;border-bottom:1px solid rgba(255,255,255,0.6);padding-bottom:4px">{{ authLink }}</span></div>
+      <div style="margin-top:auto;display:flex;justify-content:center;padding-bottom:40px"><span style="font-size:9.5px;font-weight:500;letter-spacing:1.7px;text-transform:uppercase;color:rgba(255,255,255,0.85)">Need help? <span style="color:#FFFFFF">Chat with Jaipal</span></span></div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+  <div style="height:100%;display:flex;flex-direction:column;padding-top:62px;box-sizing:border-box">
+
+    <sc-if value="{{ topFlank }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;padding:18px 22px 0;flex:none;border-bottom:1px solid rgba(255,255,255,0.16)">
+        <div style="flex:1;display:flex;justify-content:flex-start;margin-bottom:-1px"><div onClick="{{ goQueue }}" style="display:flex;align-items:baseline;gap:5px;padding-bottom:7px;cursor:pointer;border-bottom:{{ queueRule }}"><span style="font-size:11px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:{{ queueTabColor }}">Queue</span><span style="font-size:11px;font-weight:500;letter-spacing:1.2px;color:{{ queueTabColor }}">{{ queueCount }}</span></div></div>
+        <sc-if value="{{ logoTop }}" hint-placeholder-val="{{ true }}"><img src="assets/images/logo.png" alt="Analog" style="flex:none;width:24px;height:24px;object-fit:contain;filter:brightness(0) invert(1);margin-bottom:9px"></sc-if>
+        <div style="flex:1;display:flex;justify-content:flex-end;gap:12px;margin-bottom:-1px"><div onClick="{{ goConvos }}" style="display:flex;align-items:baseline;gap:5px;padding-bottom:7px;cursor:pointer;border-bottom:{{ convoRule }}"><span style="font-size:11px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:{{ convoTabColor }}">Texts</span></div><div onClick="{{ goYou }}" style="display:flex;align-items:baseline;gap:5px;padding-bottom:7px;cursor:pointer;border-bottom:{{ youRule }}"><span style="font-size:11px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:{{ youTabColor }}">You</span></div></div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ topSpread }}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{ logoTop }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;justify-content:center;padding:14px 20px 10px;flex:none">
+          <img src="assets/images/logo.png" alt="Analog" style="width:28px;height:28px;object-fit:contain;filter:brightness(0) invert(1)">
+        </div>
+      </sc-if>
+      <div style="display:flex;align-items:baseline;padding:{{ tabsPad }};flex:none;border-bottom:1px solid rgba(255,255,255,0.16)">
+        <div style="flex:1;display:flex;justify-content:flex-start;margin-bottom:-1px"><div onClick="{{ goQueue }}" style="display:flex;align-items:baseline;gap:5px;padding-bottom:7px;cursor:pointer;border-bottom:{{ queueRule }}"><span style="font-size:11px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:{{ queueTabColor }}">Queue</span><span style="font-size:11px;font-weight:500;letter-spacing:1.2px;color:{{ queueTabColor }}">{{ queueCount }}</span></div></div>
+        <div style="flex:none;margin-bottom:-1px"><div onClick="{{ goConvos }}" style="display:flex;align-items:baseline;gap:5px;padding-bottom:7px;cursor:pointer;border-bottom:{{ convoRule }}"><span style="font-size:11px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:{{ convoTabColor }}">Texts</span></div></div>
+        <div style="flex:1;display:flex;justify-content:flex-end;margin-bottom:-1px"><div onClick="{{ goYou }}" style="display:flex;align-items:baseline;gap:5px;padding-bottom:7px;cursor:pointer;border-bottom:{{ youRule }}"><span style="font-size:11px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:{{ youTabColor }}">You</span></div></div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ hasCards }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;min-height:0;display:flex;align-items:center;padding:0 26px 96px">
+        <div style="position:relative;width:100%">
+          <div style="position:absolute;inset:0;border-radius:20px;background:rgba(255,255,255,{{ peekFar }});transform:translateY(30px) scaleX(0.86)"></div>
+          <div style="position:absolute;inset:0;border-radius:20px;background:rgba(255,255,255,{{ peekNear }});transform:translateY(15px) scaleX(0.93)"></div>
+          <div onPointerDown="{{ onDown }}" onPointerMove="{{ onMove }}" onPointerUp="{{ onUp }}" onPointerCancel="{{ onUp }}" style="position:relative;width:100%;height:560px;box-sizing:border-box;display:flex;flex-direction:column;border-radius:20px;overflow:hidden;background:#FFFFFF;box-shadow:0 26px 64px rgba(20,17,14,0.42);touch-action:pan-y;cursor:grab;transform:translateX({{ dragX }}px) rotate({{ dragRot }}deg);transition:{{ dragEase }}">
+            <div style="position:absolute;top:0;bottom:0;right:0;width:64%;z-index:5;pointer-events:none;opacity:{{ washRight }};background:linear-gradient(to left, rgba(168,86,56,0.94), rgba(168,86,56,0.52) 44%, rgba(168,86,56,0.18) 74%, rgba(168,86,56,0))"></div>
+            <div style="position:absolute;top:0;bottom:0;left:0;width:64%;z-index:5;pointer-events:none;opacity:{{ washLeft }};background:linear-gradient(to right, rgba(58,53,48,0.92), rgba(58,53,48,0.5) 44%, rgba(58,53,48,0.16) 74%, rgba(58,53,48,0))"></div>
+
+            <div style="flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 20px;background:{{ topStrip }}">
+              <span style="font-size:9.5px;font-weight:500;letter-spacing:2.6px;line-height:14px;text-transform:uppercase;color:#FFFFFF">{{ topReason }}</span>
+              <span style="font-size:9px;font-weight:500;letter-spacing:2.2px;color:rgba(255,255,255,0.6);flex:none">{{ topCounter }}</span>
+            </div>
+            <div style="flex:none;padding:20px 20px 0">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:12.5px;font-weight:500;letter-spacing:1.6px;text-transform:uppercase;color:#1C1814">{{ topName }}</span>
+                <span style="border:1px solid rgba(28,24,20,0.25);padding:2px 6px;font-size:8px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:#4A4339">{{ topBadge }}</span>
+                <span style="margin-left:auto;font-size:9px;font-weight:500;letter-spacing:1.9px;text-transform:uppercase;color:#6F6658">{{ topTime }}</span>
+              </div>
+              <sc-if value="{{ topHasReasoning }}" hint-placeholder-val="{{ true }}">
+                <div style="font-size:12.5px;line-height:19px;color:#6F6658;margin-top:12px">{{ topReasoning }}</div>
+              </sc-if>
+            </div>
+            <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;padding:0 20px 4px">
+              <div style="flex:none;display:flex;justify-content:center;padding:14px 0 10px"><span style="font-size:8.5px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:#6F6658">{{ topWhen }}</span></div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <sc-for list="{{ topThread }}" as="m" hint-placeholder-count="2">
+                  <sc-if value="{{ m.isIn }}" hint-placeholder-val="{{ true }}">
+                    <div style="align-self:flex-start;max-width:78%;background:#E3DCCE;border-radius:18px 18px 18px 5px;padding:9px 13px"><span style="font-size:13.5px;line-height:19px;color:#1C1814">{{ m.body }}</span></div>
+                  </sc-if>
+                  <sc-if value="{{ m.isOut }}" hint-placeholder-val="{{ false }}">
+                    <div style="align-self:flex-end;max-width:78%;background:#FFFFFF;border:1px solid rgba(28,24,20,0.14);border-radius:18px 18px 5px 18px;padding:9px 13px"><span style="font-size:13.5px;line-height:19px;color:#4A4339">{{ m.body }}</span></div>
+                  </sc-if>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex:none;padding:0 20px 20px">
+              <div onClick="{{ openEdit }}" style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(28,24,20,0.10);position:relative;cursor:pointer">
+                <div style="border:1px solid rgba(28,24,20,0.18);border-radius:20px;padding:11px 48px 11px 15px;min-height:42px;box-sizing:border-box"><span style="font-size:13.5px;line-height:19px;color:{{ topDraftColor }}">{{ topDraft }}</span></div>
+                <div style="position:absolute;right:6px;bottom:6px;width:30px;height:30px;border-radius:15px;background:#A85638;display:flex;align-items:center;justify-content:center;opacity:{{ planeOpacity }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;margin-top:9px"><span style="font-size:8.5px;font-weight:500;letter-spacing:1.9px;text-transform:uppercase;color:{{ topCaptionColor }}">{{ topCaption }}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="position:absolute;left:20px;right:20px;bottom:46px;display:flex;align-items:center;z-index:4;pointer-events:none">
+        <div style="flex:1;display:flex;justify-content:flex-start"><span style="font-size:{{ hintLeftSize }}px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:{{ hintLeftColor }}">{{ hintLeft }}</span></div>
+        <span style="flex:none;font-size:9.5px;font-weight:500;letter-spacing:1.7px;text-transform:uppercase;color:rgba(255,255,255,0.85);white-space:nowrap">Need help? <span style="color:#FFFFFF">Chat with Jaipal</span></span>
+        <div style="flex:1;display:flex;justify-content:flex-end"><span style="font-size:{{ hintRightSize }}px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:{{ hintRightColor }}">Send →</span></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:0 40px 70px">
+        <div style="width:8px;height:8px;border-radius:4px;background:#E5B19C;margin-bottom:6px"></div>
+        <div style="font-family:'Fraunces',serif;font-style:italic;font-size:32px;line-height:38px;text-align:center;color:#FFFFFF">You&rsquo;re all caught up.</div>
+        <div style="font-size:13px;line-height:20px;text-align:center;max-width:250px;color:rgba(255,255,255,0.92)">Nothing pending review. Guests are being handled. Take a breath.</div>
+      </div>
+      <div style="flex:none;display:flex;justify-content:center;padding-bottom:46px"><span style="font-size:9.5px;font-weight:500;letter-spacing:1.7px;text-transform:uppercase;color:rgba(255,255,255,0.85)">Need help? <span style="color:#FFFFFF">Chat with Jaipal</span></span></div>
+    </sc-if>
+
+    <sc-if value="{{ onConvos }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:22px 22px 14px;flex:none">
+        <div style="font-family:'Fraunces',serif;font-style:italic;font-size:30px;line-height:35px;letter-spacing:-0.4px;color:#FFFFFF">Everything happening.</div>
+        <div style="margin-top:12px;font-size:9.5px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:rgba(255,255,255,0.92)">{{ activeCount }} active now · {{ totalCount }} open</div>
+      </div>
+      <div style="display:flex;gap:8px;padding:0 22px 16px;flex:none">
+        <div onClick="{{ toggleActive }}" style="display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;cursor:pointer;background:{{ activePillBg }};border:1px solid {{ activePillBorder }}"><span style="width:5px;height:5px;border-radius:5px;background:{{ activePillDot }}"></span><span style="font-size:9.5px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:{{ activePillText }}">Active</span></div>
+        <div onClick="{{ toggleMenu }}" style="display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;cursor:pointer;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.4)"><span style="font-size:9.5px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:#FFFFFF">{{ typeLabel }}</span><span style="font-size:8px;color:rgba(255,255,255,0.75)">▼</span></div>
+      </div>
+      <sc-if value="{{ listSurface }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:0 18px 58px">
+          <div style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 8px 22px rgba(20,17,14,0.14)">
+            <sc-for list="{{ rows }}" as="row" hint-placeholder-count="6">
+              <div onClick="{{ row.open }}" style="padding:14px 16px;cursor:pointer;border-top:{{ row.rule }};opacity:{{ row.rowOpacity }}" style-hover="background:rgba(28,24,20,0.03)">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <span style="width:5px;height:5px;border-radius:5px;background:{{ row.dotBg }};border:{{ row.dotBorder }}"></span>
+                  <span style="font-size:12.5px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:#1C1814">{{ row.name }}</span>
+                  <span style="border:1px solid rgba(28,24,20,0.22);padding:2px 6px;font-size:8px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:#4A4339">{{ row.badgeLabel }}</span>
+                  <span style="margin-left:auto;font-size:9px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:#6F6658">{{ row.time }}</span>
+                </div>
+                <div style="margin-top:7px;padding-left:14px;font-size:12.5px;line-height:18px;color:#5C5447;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="font-size:9px;font-weight:500;letter-spacing:1.6px;text-transform:uppercase;color:#6F6658">{{ row.speaker }} — </span>{{ row.preview }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ listEditorial }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:0 22px 58px">
+          <sc-for list="{{ rows }}" as="row" hint-placeholder-count="6">
+            <div onClick="{{ row.open }}" style="padding:17px 0 18px;cursor:pointer;border-top:{{ row.ruleLight }}">
+              <div style="display:flex;align-items:baseline;gap:12px">
+                <span style="width:5px;height:5px;border-radius:5px;background:{{ row.dotLight }};margin-bottom:4px;flex:none"></span>
+                <span style="flex:1;font-family:'Fraunces',serif;font-style:italic;font-size:20px;line-height:24px;color:#FFFFFF">{{ row.name }}</span>
+                <span style="font-size:9px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:rgba(255,255,255,0.72)">{{ row.badgeLabel }} · {{ row.time }}</span>
+              </div>
+              <div style="margin-top:7px;padding-left:17px;font-size:12.5px;line-height:18px;color:rgba(255,255,255,0.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ row.speaker }} — {{ row.preview }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ listStriped }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:0 14px 58px">
+          <sc-for list="{{ rows }}" as="row" hint-placeholder-count="6">
+            <div onClick="{{ row.open }}" style="padding:13px 16px;border-radius:12px;cursor:pointer;background:{{ row.stripe }}" style-hover="background:rgba(255,255,255,0.2)">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="width:5px;height:5px;border-radius:5px;background:{{ row.dotLight }}"></span>
+                <span style="font-size:12.5px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:#FFFFFF">{{ row.name }}</span>
+                <span style="border:1px solid rgba(255,255,255,0.4);padding:2px 6px;font-size:8px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:#FFFFFF">{{ row.badgeLabel }}</span>
+                <span style="margin-left:auto;font-size:9px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:rgba(255,255,255,0.78)">{{ row.time }}</span>
+              </div>
+              <div style="margin-top:6px;padding-left:14px;font-size:12.5px;line-height:18px;color:rgba(255,255,255,0.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ row.speaker }} — {{ row.preview }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ onThread }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 22px 16px;flex:none">
+        <span onClick="{{ goConvos }}" style="font-size:20px;line-height:20px;color:#FFFFFF;cursor:pointer">‹</span>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="font-size:12.5px;font-weight:500;letter-spacing:1.6px;text-transform:uppercase;color:#FFFFFF">{{ threadName }}</span>
+            <span style="border:1px solid rgba(255,255,255,0.45);padding:2px 6px;font-size:8px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:#FFFFFF">{{ threadBadge }}</span>
+          </div>
+          <span style="font-size:10.5px;letter-spacing:0.3px;color:rgba(255,255,255,0.92)">{{ threadMeta }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;border-radius:999px;border:1px solid rgba(255,255,255,0.4);padding:5px 10px"><span style="width:5px;height:5px;border-radius:5px;background:{{ threadDot }}"></span><span style="font-size:8.5px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:#FFFFFF">{{ threadState }}</span></div>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;padding:14px 22px 10px;overflow-y:auto">
+        <div style="display:flex;justify-content:center;padding-bottom:8px;flex:none"><span style="font-size:8.5px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:rgba(255,255,255,0.92)">Sat Sep 12 · afternoon</span></div>
+        <sc-for list="{{ threadMsgs }}" as="m" hint-placeholder-count="4">
+          <sc-if value="{{ m.isIn }}" hint-placeholder-val="{{ true }}">
+            <div style="align-self:flex-start;max-width:78%;background:#E3DCCE;border-radius:18px 18px 18px 5px;padding:9px 13px"><span style="font-size:13.5px;line-height:19px;color:#1C1814">{{ m.body }}</span></div>
+          </sc-if>
+          <sc-if value="{{ m.isOut }}" hint-placeholder-val="{{ false }}">
+            <div style="align-self:flex-end;max-width:78%;background:#FFFFFF;border-radius:18px 18px 5px 18px;padding:9px 13px"><span style="font-size:13.5px;line-height:19px;color:#4A4339">{{ m.body }}</span></div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <div style="flex:none;display:flex;gap:10px;padding:14px 22px 46px">
+        <span style="width:5px;height:5px;border-radius:5px;background:#E5B19C;margin-top:7px;flex:none"></span>
+        <span style="flex:1;font-size:12.5px;line-height:19px;color:rgba(255,255,255,0.94)">Sana is handling this one. You&rsquo;ll see it in the queue if it needs your input.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ onYou }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:22px 22px 18px;flex:none">
+        <sc-if value="{{ logoYou }}" hint-placeholder-val="{{ false }}"><img src="assets/images/logo.png" alt="Analog" style="width:34px;height:34px;object-fit:contain;filter:brightness(0) invert(1);margin-bottom:16px"></sc-if>
+        <div style="font-family:'Fraunces',serif;font-style:italic;font-size:30px;line-height:35px;letter-spacing:-0.4px;color:#FFFFFF">Sextant Coffee Roasters</div>
+        <div style="margin-top:12px;font-size:9.5px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:rgba(255,255,255,0.92)">Signed in as jaipal@theanalog.company</div>
+      </div>
+      <div style="padding:0 18px;display:flex;flex-direction:column;gap:9px;flex:none">
+        <div style="background:#FFFFFF;border-radius:16px;box-shadow:0 8px 22px rgba(20,17,14,0.14)">
+          <div style="display:flex;align-items:center;padding:16px 18px">
+            <span style="flex:1;font-size:11px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:#1C1814">Push notifications</span>
+            <span style="font-size:10px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:#6F6658">On</span>
+          </div>
+          <div style="display:flex;align-items:center;padding:16px 18px;border-top:1px solid rgba(28,24,20,0.10)">
+            <span style="flex:1;font-size:11px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:#1C1814">Chat with Jaipal</span>
+            <span style="font-size:12px;color:#6F6658">›</span>
+          </div>
+        </div>
+        <div onClick="{{ signOut }}" style="background:#FFFFFF;border-radius:16px;box-shadow:0 8px 22px rgba(20,17,14,0.14);cursor:pointer" style-hover="opacity:0.88">
+          <div style="display:flex;align-items:center;padding:16px 18px">
+            <span style="flex:1;font-size:11px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:#A85638">Sign out</span>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ onEdit }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;padding-top:62px;box-sizing:border-box;background:{{ editGround }}">
+      <div style="display:flex;align-items:center;padding:14px 20px 0;flex:none">
+        <div style="flex:1;display:flex;justify-content:flex-start"><span onClick="{{ closeEdit }}" style="font-size:10px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:#FFFFFF;cursor:pointer">‹ Back</span></div>
+        <div style="flex:none;display:flex;align-items:center;gap:9px">
+          <span style="font-size:12.5px;font-weight:500;letter-spacing:1.6px;text-transform:uppercase;color:#FFFFFF">{{ topName }}</span>
+          <span style="border:1px solid rgba(255,255,255,0.5);padding:2px 6px;font-size:8px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:#FFFFFF">{{ topBadge }}</span>
+        </div>
+        <div style="flex:1"></div>
+      </div>
+      <div style="padding:18px 22px 18px;flex:none">
+        <div style="font-size:9.5px;font-weight:500;letter-spacing:2.6px;text-transform:uppercase;color:#FFFFFF">{{ topReason }}</div>
+        <sc-if value="{{ topHasReasoning }}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:10px;font-size:12.5px;line-height:19px;color:#FFFFFF">{{ topReasoning }}</div>
+        </sc-if>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;padding:8px 22px 8px;overflow:hidden">
+        <div style="display:flex;justify-content:center;padding:6px 0 8px;flex:none"><span style="font-size:8.5px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:{{ editMeta }}">{{ topWhen }}</span></div>
+        <sc-for list="{{ topThread }}" as="m" hint-placeholder-count="2">
+          <sc-if value="{{ m.isIn }}" hint-placeholder-val="{{ true }}">
+            <div style="align-self:flex-start;max-width:78%;background:#E3DCCE;border-radius:18px 18px 18px 5px;padding:9px 13px"><span style="font-size:13.5px;line-height:19px;color:#1C1814">{{ m.body }}</span></div>
+          </sc-if>
+          <sc-if value="{{ m.isOut }}" hint-placeholder-val="{{ false }}">
+            <div style="align-self:flex-end;max-width:78%;background:#FFFFFF;border-radius:18px 18px 5px 18px;padding:9px 13px"><span style="font-size:13.5px;line-height:19px;color:#4A4339">{{ m.body }}</span></div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <div style="flex:none;padding:14px 20px 0">
+        <div style="position:relative">
+          <textarea value="{{ editText }}" onChange="{{ onEditText }}" placeholder="{{ editPlaceholder }}" style="width:100%;box-sizing:border-box;resize:none;background:#FFFFFF;border:none;border-radius:20px;padding:14px 54px 14px 16px;min-height:78px;font-size:13.5px;line-height:20px;color:#1C1814;outline:none"></textarea>
+          <div onClick="{{ sendEdit }}" style="position:absolute;right:9px;bottom:13px;width:32px;height:32px;border-radius:16px;background:#A85638;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:{{ sendOpacity }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div>
+        </div>
+        <div style="display:flex;justify-content:center;margin-top:16px;padding-bottom:28px"><span onClick="{{ skipDraft }}" style="font-size:9.5px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:{{ editMeta }};cursor:pointer">Don&rsquo;t send anything</span></div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeMenu }}" style="position:absolute;inset:0;background:rgba(20,17,14,0.28);z-index:7"></div>
+    <div style="position:absolute;top:242px;left:96px;min-width:196px;background:#FFFFFF;border-radius:16px;padding:6px;box-shadow:0 18px 44px rgba(20,17,14,0.34);z-index:8">
+      <sc-for list="{{ typeOptions }}" as="o" hint-placeholder-count="5">
+        <div onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:12px;cursor:pointer;background:{{ o.bg }}" style-hover="background:rgba(28,24,20,0.06)">
+          <span style="flex:1;font-size:12px;letter-spacing:0.2px;color:#1C1814;font-weight:{{ o.weight }}">{{ o.label }}</span>
+          <span style="font-size:10px;font-weight:500;letter-spacing:1.4px;color:#6F6658">{{ o.count }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ logoFooter }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;left:0;right:0;bottom:84px;display:flex;justify-content:center;z-index:4;pointer-events:none">
+      <img src="assets/images/logo.png" alt="Analog" style="width:22px;height:22px;object-fit:contain;filter:brightness(0) invert(1);opacity:0.72">
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toastOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;left:20px;right:20px;bottom:40px;background:#FBF8F2;border-radius:18px;overflow:hidden;z-index:9;box-shadow:0 16px 38px rgba(20,17,14,0.34)">
+      <div style="display:flex;align-items:center;padding:15px 18px">
+        <span style="flex:1;font-size:13px;color:#1C1814">{{ toastText }} <span style="color:#6F6658">{{ toastGuest }}</span></span>
+        <span onClick="{{ undo }}" style="font-size:9.5px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:#A85638;cursor:pointer">Undo</span>
+      </div>
+      <div style="height:2px;background:rgba(28,24,20,0.10)"><div style="height:2px;background:#A85638;transform-origin:left;animation:undoDrain 3s linear forwards"></div></div>
+    </div>
+  </sc-if>
+
+</div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:460,&quot;height&quot;:900},&quot;seedAuth&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;&quot;,&quot;signin&quot;,&quot;verify&quot;],&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;seedMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;queue&quot;,&quot;convos&quot;,&quot;thread&quot;,&quot;you&quot;],&quot;default&quot;:&quot;queue&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;seedIndex&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:0,&quot;min&quot;:0,&quot;max&quot;:4,&quot;tsType&quot;:&quot;number&quot;},&quot;seedDrag&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:0,&quot;min&quot;:-140,&quot;max&quot;:140,&quot;tsType&quot;:&quot;number&quot;},&quot;seedEditing&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;seedToast&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;seedActiveOnly&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;seedMenu&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;seedType&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;All guests&quot;,&quot;New&quot;,&quot;Returning&quot;,&quot;Regular&quot;,&quot;Raving Fan&quot;],&quot;default&quot;:&quot;All guests&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;seedThread&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Maya R.&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;seedCode&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;editGround&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;single&quot;,&quot;fade&quot;],&quot;default&quot;:&quot;single&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Options&quot;},&quot;showIntro&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;topStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;flank&quot;,&quot;spread&quot;],&quot;default&quot;:&quot;spread&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Options&quot;},&quot;logoSpot&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;top&quot;,&quot;footer&quot;,&quot;none&quot;],&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Options&quot;},&quot;listStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;surface&quot;,&quot;editorial&quot;,&quot;striped&quot;],&quot;default&quot;:&quot;striped&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Options&quot;}}">
+const GROUNDS = {
+  clay: 'linear-gradient(to bottom, rgba(26,16,10,0.58), rgba(26,16,10,0.42) 26%, rgba(26,16,10,0) 54%), radial-gradient(120% 70% at 50% 48%, rgba(229,177,156,0.3), rgba(229,177,156,0) 62%), linear-gradient(168deg, #9E4E30 0%, #8A3E24 46%, #48210F 100%)',
+  stone: 'linear-gradient(to bottom, rgba(22,17,12,0.64), rgba(22,17,12,0.46) 26%, rgba(22,17,12,0) 54%), radial-gradient(120% 70% at 50% 48%, rgba(247,241,227,0.26), rgba(247,241,227,0) 62%), linear-gradient(168deg, #8A8072 0%, #5F5749 46%, #24211C 100%)',
+  ink: 'radial-gradient(120% 76% at 50% 10%, rgba(133,122,106,0.42), rgba(133,122,106,0) 62%), linear-gradient(168deg, #4A4339 0%, #2A251F 50%, #131110 100%)',
+  clayFade: 'linear-gradient(180deg, #8E3F26 0%, #B06A50 24%, #D9C6B6 58%, #E6DCC8 100%)',
+};
+const STRIP = { clay: '#A85638', stone: '#3A3530', ink: '#1C1814' };
+const COMMIT = 80;
+
+function seedDrafts() {
+  return [
+    { id: 'd1', name: 'Devon L.', badge: 'Raving Fan', time: '22 min', tone: 'clay',
+      reason: 'Reservation', when: 'Today · 6:56 PM',
+      reasoning: 'Parents in town for one night, hoping for the rosemary loaf at 7. Lean into the occasion — the buckwheat slice is a fair gesture.',
+      thread: [
+        { d: 'in', body: "Bringing my parents tomorrow — they're only in town one night." },
+        { d: 'in', body: 'Any chance you have the rosemary loaf coming out around 7?' },
+      ],
+      draft: "We'll time a loaf for 7 — and there'll be a slice of the buckwheat cake for the table on us, since tomorrow's the day. Looking forward to meeting them." },
+    { id: 'd2', name: '+1 555 018 2246', badge: 'New', time: '11 min', tone: 'stone',
+      reason: 'Flagged — first message from new guest', when: 'Today · 7:07 PM', reasoning: '',
+      thread: [{ d: 'in', body: 'do you guys do gluten free pasta' }],
+      draft: 'We do — we keep a gluten-free penne behind the bar and run it through clean water. Just let your server know.' },
+    { id: 'd3', name: 'Maya R.', badge: 'Returning', time: '4 min', tone: 'clay',
+      reason: 'Flagged — low fidelity score', when: 'Today · 7:14 PM',
+      reasoning: "She's confirming the table, not just asking — voice is clipped and warm. Match the energy, hold the corner spot.",
+      thread: [
+        { d: 'in', body: 'Hi! Is the patio open tonight?' },
+        { d: 'out', body: "Yes — patio's open until 9. Want me to hold a corner table?" },
+        { d: 'in', body: 'Yes please! Two of us at 7:30 if you can swing it.' },
+      ],
+      draft: 'Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.' },
+    { id: 'd4', name: 'Priya N.', badge: 'Regular', time: '2 min', tone: 'ink',
+      reason: 'Flagged — no draft generated', when: 'Today · 7:16 PM',
+      reasoning: "Asking about a lost jacket — I don't have anything on lost property, so this needs your words, not mine.",
+      thread: [{ d: 'in', body: 'think i left a denim jacket on the back bench sunday — any chance?' }],
+      draft: '' },
+  ];
+}
+
+const CONVOS = [
+  ['Maya R.', 'Returning', 2, 'Sana', 'Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.'],
+  ['+1 555 018 2246', 'New', 6, 'Guest', 'perfect thank you, see you at 8'],
+  ['Tomas B.', 'Regular', 12, 'Sana', '8:15 is yours. Same table.'],
+  ['Devon L.', 'Raving Fan', 18, 'Sana', "We'll time a loaf for 7 — and there'll be a slice of the buckwheat cake for the table on us."],
+  ['Elise W.', 'New', 41, 'Guest', 'good to know, thanks'],
+  ['Hana K.', 'Returning', 122, 'Sana', 'Anytime — the patio heaters are on until close.'],
+  ['Marcus D.', 'Raving Fan', 190, 'Sana', "Two, if you want them. I'll put your name on the shelf."],
+  ['Rae O.', 'New', 305, 'Sana', 'We do — brunch is walk-in only, 9 to 2 on weekends.'],
+  ['Jun P.', 'Regular', 1500, 'Sana', 'Booked. 7:30, table four.'],
+];
+
+const THREADS = {
+  'Maya R.': [
+    { d: 'in', body: 'Hi! Is the patio open tonight?' },
+    { d: 'out', body: "Yes — patio's open until 9. Want me to hold a corner table?" },
+    { d: 'in', body: 'Yes please! Two of us at 7:30 if you can swing it.' },
+    { d: 'out', body: 'Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.' },
+  ],
+};
+
+class Component extends DCLogic {
+  state = {
+    mode: this.props.seedMode || 'queue',
+    drafts: seedDrafts().slice(this.props.seedIndex || 0),
+    dragX: this.props.seedDrag || 0,
+    dragging: false,
+    editing: !!this.props.seedEditing,
+    editText: this.props.seedEditing ? (seedDrafts().slice(this.props.seedIndex || 0)[0] || { draft: '' }).draft : '',
+    toast: this.props.seedToast || null,
+    lastRemoved: null,
+    activeOnly: !!this.props.seedActiveOnly,
+    menuOpen: !!this.props.seedMenu,
+    typeFilter: this.props.seedType || 'All guests',
+    thread: this.props.seedMode === 'thread' ? (this.props.seedThread || 'Maya R.') : null,
+    auth: this.props.seedAuth || null,
+    code: this.props.seedCode || '',
+  };
+
+  componentWillUnmount() {
+    clearTimeout(this.toastTimer);
+    clearTimeout(this.flyTimer);
+  }
+
+  top() { return this.state.drafts[0] || null; }
+
+  down = (e) => {
+    if (!this.top()) return;
+    this.startX = e.clientX;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+    this.setState({ dragging: true });
+  };
+  move = (e) => {
+    if (!this.state.dragging) return;
+    this.setState({ dragX: e.clientX - this.startX });
+  };
+  up = () => {
+    if (!this.state.dragging) return;
+    const dx = this.state.dragX;
+    const draft = this.top();
+    if (dx > COMMIT && draft && draft.draft.trim()) this.fly(1, () => this.dispatch('Sent'));
+    else if (dx < -COMMIT && draft) this.fly(-1, () => this.setState({ editing: true, editText: draft.draft, dragX: 0 }));
+    else this.setState({ dragging: false, dragX: 0 });
+  };
+  fly = (dir, done) => {
+    this.setState({ dragging: false, dragX: dir * 440 });
+    clearTimeout(this.flyTimer);
+    this.flyTimer = setTimeout(done, 250);
+  };
+
+  dispatch = (verb) => {
+    const [removed, ...rest] = this.state.drafts;
+    this.setState({ drafts: rest, dragX: 0, lastRemoved: removed, toast: verb });
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.setState({ toast: null }), 3000);
+  };
+  undo = () => {
+    clearTimeout(this.toastTimer);
+    const back = this.state.lastRemoved;
+    this.setState((s) => ({ drafts: back ? [back, ...s.drafts] : s.drafts, toast: null, lastRemoved: null }));
+  };
+  sendEdit = () => {
+    if (!this.state.editText.trim()) return;
+    this.setState({ editing: false });
+    this.dispatch('Sent your version');
+  };
+  skip = () => {
+    this.setState({ editing: false });
+    this.dispatch('Dismissed');
+  };
+  authAction = () => {
+    if (this.state.auth === 'signin') this.setState({ auth: 'verify', code: '' });
+    else if (this.state.auth === 'verify') {
+      if (this.state.code.length < 6) this.setState({ code: '742913' });
+      else this.setState({ auth: null, mode: 'queue', drafts: seedDrafts() });
+    }
+  };
+
+  renderVals() {
+    const s = this.state;
+    const top = this.top();
+    const dx = s.dragX;
+    const intensity = Math.min(1, Math.abs(dx) / 140);
+    const onQueue = s.mode === 'queue';
+    const onConvos = s.mode === 'convos';
+    const onThread = s.mode === 'thread';
+    const onYou = s.mode === 'you';
+    const hasDraft = !!(top && top.draft.trim());
+    const editSingle = (this.props.editGround || 'single') === 'single';
+    const topStyle = this.props.topStyle || 'spread';
+
+    const fmt = (m) => (m < 1 ? 'now' : m < 60 ? m + 'm' : m < 1440 ? Math.floor(m / 60) + 'h' : Math.floor(m / 1440) + 'd');
+    const rows = CONVOS.map(([name, badge, mins, speaker, preview]) => {
+      const active = mins <= 60;
+      return {
+        name, badgeLabel: badge, speaker, preview, active, mins,
+        time: fmt(mins),
+        rowOpacity: active ? 1 : 0.82,
+        dotBg: active ? '#C66A4A' : 'transparent',
+        dotBorder: active ? '0' : '1px solid rgba(28,24,20,0.25)',
+        open: () => this.setState({ mode: 'thread', thread: name }),
+      };
+    }).filter((r) => (s.activeOnly ? r.active : true))
+      .filter((r) => (s.typeFilter === 'All guests' ? true : r.badgeLabel === s.typeFilter));
+
+    const listStyle = this.props.listStyle || 'striped';
+    const listRows = rows.map((r, i) => ({
+      ...r,
+      key: r.name,
+      rule: i === 0 ? '0' : '1px solid rgba(28,24,20,0.09)',
+      ruleLight: i === 0 ? '0' : '1px solid rgba(255,255,255,0.18)',
+      dotLight: r.active ? '#E5B19C' : 'rgba(255,255,255,0.32)',
+      stripe: i % 2 === 0 ? 'rgba(255,255,255,0.12)' : 'transparent',
+    }));
+
+    const allRows = CONVOS.map(([n, badge]) => ({ badgeLabel: badge }));
+    const typeOptions = ['All guests', 'New', 'Returning', 'Regular', 'Raving Fan'].map((label) => ({
+      key: label,
+      label,
+      count: String(label === 'All guests' ? allRows.length : allRows.filter((r) => r.badgeLabel === label).length),
+      bg: s.typeFilter === label ? 'rgba(28,24,20,0.06)' : 'transparent',
+      weight: s.typeFilter === label ? '500' : '400',
+      pick: () => this.setState({ typeFilter: label, menuOpen: false }),
+    }));
+
+    const threadRow = CONVOS.map(([n, b, m]) => ({ name: n, badgeLabel: b, mins: m })).find((r) => r.name === s.thread);
+    const threadMsgs = (THREADS[s.thread] || [{ d: 'in', body: (CONVOS.find((c) => c[0] === s.thread) || [, , , , ''])[4] }])
+      .map((m, i) => ({ key: 'tm' + i, body: m.body, isIn: m.d === 'in', isOut: m.d === 'out' }));
+
+    const tabOn = '#FFFFFF';
+    const tabOff = 'rgba(255,255,255,0.78)';
+    const rule = (on) => (on ? '1px solid #FFFFFF' : '1px solid transparent');
+
+    return {
+      dw: 402, dh: 874,
+      showIntro: this.props.showIntro !== false,
+      pagePad: this.props.showIntro === false ? '0' : '48px 24px 64px',
+      pageBg: this.props.showIntro === false ? 'transparent' : '#E7E2D8',
+
+      isAuth: !!s.auth,
+      isApp: !s.auth,
+      isSignIn: s.auth === 'signin',
+      isVerify: s.auth === 'verify',
+      authTitle: s.auth === 'verify' ? 'Enter the code' : 'Welcome back',
+      authSub: s.auth === 'verify' ? 'Sent to +1 555 111 0001' : "We'll text you a 6-digit code to sign in.",
+      authCta: s.auth === 'verify' ? (s.code.length === 6 ? 'Verify' : 'Fill the code') : 'Send code',
+      authLink: s.auth === 'verify' ? 'Resend code' : 'Sign in with email instead',
+      authAction: this.authAction,
+      codeCells: [0, 1, 2, 3, 4, 5].map((i) => ({ key: 'c' + i, digit: s.code[i] || '', bg: s.code[i] ? '#FFFFFF' : 'rgba(255,255,255,0.22)' })),
+
+      ground: s.auth ? GROUNDS.clay
+        : onQueue ? (top ? GROUNDS[top.tone] : GROUNDS.stone)
+        : GROUNDS.stone,
+      queueCount: s.drafts.length,
+      queueTabColor: onQueue ? tabOn : tabOff,
+      convoTabColor: (onConvos || onThread) ? tabOn : tabOff,
+      youTabColor: onYou ? tabOn : tabOff,
+      queueRule: rule(onQueue),
+      convoRule: rule(onConvos || onThread),
+      youRule: rule(onYou),
+      goQueue: () => this.setState({ mode: 'queue', thread: null }),
+      goConvos: () => this.setState({ mode: 'convos', thread: null }),
+      goYou: () => this.setState({ mode: 'you', thread: null }),
+      signOut: () => this.setState({ auth: 'signin', mode: 'queue' }),
+
+      onQueue, onConvos, onThread, onYou,
+      hasCards: onQueue && !!top,
+      isEmpty: onQueue && !top,
+      dragX: dx,
+      dragRot: dx * 0.04,
+      dragEase: s.dragging ? 'none' : 'transform 220ms cubic-bezier(.2,.8,.2,1)',
+      washRight: dx > 0 ? intensity : 0,
+      washLeft: dx < 0 ? intensity : 0,
+      peekNear: 0.55 + intensity * 0.35,
+      peekFar: 0.26 + intensity * 0.16,
+      onDown: this.down, onMove: this.move, onUp: this.up,
+      topStrip: top ? STRIP[top.tone] : '#1C1814',
+      topReason: top ? top.reason : '',
+      topCounter: top ? '0' + (5 - s.drafts.length) + ' / 04' : '',
+      topName: top ? top.name : '',
+      topBadge: top ? top.badge : '',
+      topTime: top ? top.time : '',
+      topHasReasoning: !!(top && top.reasoning),
+      topReasoning: top ? top.reasoning : '',
+      topWhen: top ? top.when : '',
+      topThread: top ? top.thread.map((m, i) => ({ key: top.id + i, body: m.body, isIn: m.d === 'in', isOut: m.d === 'out' })) : [],
+      topDraft: hasDraft ? top.draft : 'Type your answer to send to the guest',
+      topDraftColor: hasDraft ? '#1C1814' : '#6F6658',
+      topCaption: hasDraft ? 'Draft — swipe right to send' : 'Nothing drafted — swipe left to write',
+      topCaptionColor: hasDraft ? '#A85638' : '#6F6658',
+      planeOpacity: hasDraft ? 1 : 0.3,
+      hintLeft: hasDraft ? '← Edit' : '← Write',
+      hintLeftSize: dx < -20 ? 13 : 10,
+      hintLeftColor: dx > 20 ? 'rgba(255,255,255,0.45)' : '#FFFFFF',
+      hintRightSize: dx > 20 ? 13 : 10,
+      hintRightColor: !hasDraft ? 'rgba(255,255,255,0.35)' : dx < -20 ? 'rgba(255,255,255,0.45)' : '#FFFFFF',
+
+      rows: listRows,
+      listSurface: listStyle === 'surface',
+      listEditorial: listStyle === 'editorial',
+      listStriped: listStyle === 'striped',
+      activeCount: rows.filter((r) => r.active).length,
+      totalCount: CONVOS.length,
+      typeLabel: s.typeFilter,
+      typeOptions,
+      menuOpen: s.menuOpen,
+      toggleMenu: () => this.setState({ menuOpen: !s.menuOpen }),
+      closeMenu: () => this.setState({ menuOpen: false }),
+      toggleActive: () => this.setState({ activeOnly: !s.activeOnly }),
+      activePillBg: s.activeOnly ? '#FFFFFF' : 'rgba(255,255,255,0.14)',
+      activePillBorder: s.activeOnly ? '#FFFFFF' : 'rgba(255,255,255,0.4)',
+      activePillDot: s.activeOnly ? '#A85638' : '#E5B19C',
+      activePillText: s.activeOnly ? '#1C1814' : '#FFFFFF',
+
+      threadName: s.thread || '',
+      threadBadge: threadRow ? threadRow.badgeLabel : '',
+      threadMeta: '+1 555 111 0001 · 4 conversations since June',
+      threadMsgs,
+      threadState: threadRow && threadRow.mins <= 60 ? 'Live' : 'Quiet',
+      threadDot: threadRow && threadRow.mins <= 60 ? '#E5B19C' : 'rgba(255,255,255,0.6)',
+
+      onEdit: s.editing,
+      editGround: editSingle ? GROUNDS[top ? top.tone : 'clay'] : GROUNDS.clayFade,
+      editMeta: editSingle ? 'rgba(255,255,255,0.85)' : '#4A4339',
+      editText: s.editText,
+      editPlaceholder: hasDraft ? 'Edit the message…' : 'Type your answer to send to the guest',
+      onEditText: (e) => this.setState({ editText: e.target.value }),
+      sendEdit: this.sendEdit,
+      sendOpacity: s.editText.trim() ? 1 : 0.4,
+      skipDraft: this.skip,
+      openEdit: () => top && this.setState({ editing: true, editText: top.draft }),
+      closeEdit: () => this.setState({ editing: false, dragX: 0 }),
+
+      toastOpen: !!s.toast,
+      toastText: s.toast || '',
+      toastGuest: s.lastRemoved ? 'to ' + s.lastRemoved.name : '',
+      undo: this.undo,
+      topFlank: topStyle === 'flank',
+      topSpread: topStyle === 'spread',
+      logoTop: (this.props.logoSpot || 'none') === 'top',
+      logoFooter: (this.props.logoSpot || 'none') === 'footer' && onQueue && !!top,
+      logoYou: (this.props.logoSpot || 'none') !== 'top',
+      tabsPad: (this.props.logoSpot || 'none') === 'top' ? '2px 26px 0' : '20px 26px 0',
+    };
+  }
+}
+</script>
+</body>
+</html>

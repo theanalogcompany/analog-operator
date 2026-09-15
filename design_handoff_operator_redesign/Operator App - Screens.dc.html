@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,400&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#E7E2D8;font-family:'Inter Tight',system-ui,sans-serif}a{color:#A85638;text-decoration:none}a:hover{color:#8E3F26}</style></helmet>
+
+<div style="padding:56px 56px 96px;background:#E7E2D8;min-height:100%;box-sizing:border-box">
+<div style="max-width:640px;margin-bottom:44px">
+  <div style="font-size:10px;font-weight:500;letter-spacing:2.6px;text-transform:uppercase;color:#6F6658;margin-bottom:14px">Prototype · screen by screen</div>
+  <div style="font-family:'Fraunces',serif;font-style:italic;font-size:34px;line-height:40px;letter-spacing:-0.4px;color:#1C1814">Queue, Texts, You.</div>
+  <div style="font-size:13px;line-height:20px;color:#5C5447;margin-top:14px">9a is locked in. The hint row is pinned to the bottom so it no longer moves with the card, the sent window is paper with a clay timer, the filter pills are back as they were, and every neutral screen shares one stone ground. The mark is out of the top row (16c) and the three words are spread across it; the card sits lower. The Texts list is the striped treatment, no grouping — the filter does that. Every queue card is one height again, and the middle tab is centred on the island.</div>
+</div>
+<div style="display:flex;flex-wrap:nowrap;gap:40px;align-items:flex-start;width:max-content">
+<div id="s01" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">01</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Sign in</span>
+    <span style="font-size:11px;color:#6F6658">phone number</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-auth="signin" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s02" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">02</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Verify</span>
+    <span style="font-size:11px;color:#6F6658">code entered</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-auth="verify" seed-code="742913" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s03" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">03</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Queue 01</span>
+    <span style="font-size:11px;color:#6F6658">Devon L.</span>
+  </div>
+  <dc-import name="Operator App - Prototype" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s04" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">04</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Queue 02</span>
+    <span style="font-size:11px;color:#6F6658">new guest</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-index="{{ n1 }}" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s05" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">05</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Queue 03</span>
+    <span style="font-size:11px;color:#6F6658">Maya R.</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-index="{{ n2 }}" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s06" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">06</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Queue 04</span>
+    <span style="font-size:11px;color:#6F6658">no draft</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-index="{{ n3 }}" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s07" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">07</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Swiping right</span>
+    <span style="font-size:11px;color:#6F6658">send wash</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-index="{{ n2 }}" seed-drag="{{ n96 }}" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s08" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">08</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Swiping left</span>
+    <span style="font-size:11px;color:#6F6658">edit wash</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-index="{{ n2 }}" seed-drag="{{ neg96 }}" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s09" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">09</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Edit takeover</span>
+    <span style="font-size:11px;color:#6F6658">one gradient, locked</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-index="{{ n2 }}" seed-editing="{{ yes }}" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s10" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">10</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Just sent</span>
+    <span style="font-size:11px;color:#6F6658">paper bar, clay timer</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-index="{{ n1 }}" seed-toast="Sent" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s11" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">11</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">All caught up</span>
+    <span style="font-size:11px;color:#6F6658">stone — no flag, no colour</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-index="{{ n4 }}" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s12" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">12</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Texts</span>
+    <span style="font-size:11px;color:#6F6658">striped bands — locked</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-mode="convos" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s13" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">13</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Active filter on</span>
+    <span style="font-size:11px;color:#6F6658">same list, filtered</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-mode="convos" seed-active-only="{{ yes }}" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s13b" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">13b</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Guest filter</span>
+    <span style="font-size:11px;color:#6F6658">anchored menu</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-mode="convos" seed-menu="{{ yes }}" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s14" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">14</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Thread</span>
+    <span style="font-size:11px;color:#6F6658">same ground as 11</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-mode="thread" seed-thread="Maya R." show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s15" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">15</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">You</span>
+    <span style="font-size:11px;color:#6F6658">sign out lives here</span>
+  </div>
+  <dc-import name="Operator App - Prototype" seed-mode="you" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+<div id="s16c" style="display:flex;flex-direction:column;gap:10px;flex:none;width:max-content;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font-size:9.5px;font-weight:600;letter-spacing:1.2px;padding:3px 7px;background:#1C1814;color:#FFFFFF">16c</span>
+    <span style="font-size:12.5px;font-weight:500;color:#1C1814">Top row</span>
+    <span style="font-size:11px;color:#6F6658">no mark, three words spread</span>
+  </div>
+  <dc-import name="Operator App - Prototype" logo-spot="none" show-intro="{{ no }}" hint-size="402px,874px" style="width:402px;height:874px"></dc-import>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true, no: false, n0: 0, n1: 1, n2: 2, n3: 3, n4: 4, n96: 96, neg96: -96 };
+  }
+}
+</script>
+</body>
+</html>

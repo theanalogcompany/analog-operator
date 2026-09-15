@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,400&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#241F1A;font-family:'Inter Tight',system-ui,sans-serif}a{color:#E5B19C;text-decoration:none}a:hover{color:#F2EBDC}</style></helmet>
+
+<div style="padding:64px 64px 96px;background:#241F1A;min-height:100%;box-sizing:border-box">
+
+<div style="max-width:760px;margin-bottom:56px">
+<div style="font-family:'Inter Tight',sans-serif;font-size:10.5px;font-weight:500;letter-spacing:1.9px;text-transform:uppercase;color:#857A6A;margin-bottom:14px">theanalogcompany / analog-operator · main</div>
+<div style="font-family:'Fraunces',serif;font-style:italic;font-size:42px;line-height:48px;letter-spacing:-0.6px;color:#F2EBDC">The operator app as it stands today.</div>
+<div style="font-family:'Inter Tight',sans-serif;font-size:14px;line-height:22px;color:#A99E8C;margin-top:16px;max-width:560px;text-wrap:pretty">Every screen below is recreated from the Expo source — layout, spacing, type and color values come from <span style="color:#E5B19C">tailwind.config.js</span>, <span style="color:#E5B19C">lib/theme.ts</span> and the route files. Content is the fixture data in <span style="color:#E5B19C">lib/fixtures/</span>. Baseline for the redesign.</div>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:56px;align-items:flex-start">
+
+<!-- ══ 1. QUEUE ══ -->
+<div style="display:flex;flex-direction:column;gap:14px;flex:none">
+<sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px"><div style="font-family:'Inter Tight',sans-serif;font-size:13px;font-weight:500;color:#F2EBDC">Queue</div><div style="font-family:'Inter Tight',sans-serif;font-size:11px;color:#857A6A">app/queue/index.tsx · flagged card with agent reasoning</div></div></sc-if>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ dw }}" height="{{ dh }}" hint-size="402px,874px">
+<div style="height:100%;background:#F2EBDC;padding-top:62px;box-sizing:border-box;display:flex;flex-direction:column;font-family:'Inter Tight',sans-serif">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px 8px">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1C1814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    <img src="assets/images/logo.png" alt="Analog" style="width:34px;height:34px;object-fit:contain">
+    <div style="width:22px"></div>
+  </div>
+  <div style="display:flex;gap:26px;padding:6px 22px 0;border-bottom:0.5px solid rgba(28,24,20,0.06)">
+    <div style="position:relative;padding-bottom:10px"><div style="display:flex;align-items:baseline;gap:4px"><span style="font-size:13px;font-weight:500;color:#1C1814">Queue</span><span style="font-size:13px;font-weight:500;color:#1C1814">4</span></div><div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:#C66A4A"></div></div>
+    <div style="padding-bottom:10px"><span style="font-size:13px;font-weight:500;color:#857A6A">Conversations</span></div>
+  </div>
+
+  <div style="padding:12px 22px 4px">
+    <div style="font-family:'Fraunces',serif;font-style:italic;font-size:28px;line-height:34px;letter-spacing:-0.4px;color:#1C1814">Good morning, Jaipal.</div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
+      <span style="font-size:13px;font-weight:500;color:#1C1814">4</span><span style="font-size:13px;color:#857A6A">drafts</span><span style="font-size:13px;color:#857A6A">·</span><span style="font-size:13px;font-weight:500;color:#1C1814">3</span><span style="font-size:13px;color:#857A6A">need your input</span>
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:16px 18px 0">
+    <div style="width:100%;max-width:354px">
+      <div style="overflow:hidden;border-radius:20px;border:0.5px solid rgba(28,24,20,0.12);background:#fff;box-shadow:0 8px 24px rgba(28,24,20,0.10);max-height:520px">
+        <div style="display:flex;align-items:center;gap:10px;padding:18px 18px 14px">
+          <span style="font-size:15px;font-weight:500;color:#1C1814">Maya R.</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 8px;background:#EDE4D2"><span style="width:5px;height:5px;border-radius:5px;background:#4A4339"></span><span style="font-size:9.5px;font-weight:600;letter-spacing:1.33px;line-height:11px;text-transform:uppercase;color:#4A4339">Returning</span></span>
+          <span style="margin-left:auto;font-size:11px;letter-spacing:0.44px;color:#857A6A">4 min</span>
+        </div>
+        <div style="margin:0 16px 14px;border-radius:4px;border-left:2px solid #C66A4A;background:#F2EBDC;padding:12px 14px">
+          <div style="font-size:13px;line-height:20px;color:#1C1814"><span style="font-weight:500;color:#A85638">Flagged because: </span>low fidelity score</div>
+          <div style="font-family:'Fraunces',serif;font-style:italic;margin-top:6px;font-size:13px;line-height:18px;color:#1C1814">She&rsquo;s confirming the table, not just asking — voice is clipped and warm. Match the energy, hold the corner spot.</div>
+        </div>
+        <div style="height:0.5px;background:rgba(28,24,20,0.12);margin:0 18px"></div>
+        <div style="display:flex;flex-direction:column;gap:6px;padding:14px 18px 6px">
+          <div style="align-self:flex-start;max-width:86%;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">Hi! Is the patio open tonight?</span></div>
+          <div style="align-self:flex-end;max-width:86%;border-radius:18px 18px 6px 18px;border:0.5px solid rgba(28,24,20,0.12);background:#F7F1E3;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#1C1814">Yes — patio&rsquo;s open until 9. Want me to hold a corner table?</span></div>
+          <div style="align-self:flex-start;max-width:86%;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">Yes please! Two of us at 7:30 if you can swing it.</span></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;padding:14px 18px 18px">
+          <div style="position:relative;max-width:86%">
+            <div style="background:#fff;border:1px solid #C66A4A;border-radius:20px 20px 6px 20px;padding:12px 48px 12px 16px"><span style="font-size:14.5px;line-height:22px;color:#1C1814">Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.</span></div>
+            <div style="position:absolute;right:8px;bottom:8px;width:28px;height:28px;border-radius:14px;background:#C66A4A;display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:20px 8px 10px">
+        <span style="font-size:13px;color:#857A6A">← Swipe left to edit</span>
+        <span style="font-size:13px;color:#857A6A">Swipe right to send →</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:center;padding:8px 0 16px">
+    <span style="font-size:12px;color:#857A6A">Need help? <span style="font-weight:500;color:#C66A4A">Chat with Jaipal</span></span>
+  </div>
+  <div style="height:34px"></div>
+</div>
+</x-import>
+</div>
+
+<!-- ══ 2. EDIT TAKEOVER ══ -->
+<div style="display:flex;flex-direction:column;gap:14px;flex:none">
+<sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px"><div style="font-family:'Inter Tight',sans-serif;font-size:13px;font-weight:500;color:#F2EBDC">Edit takeover</div><div style="font-family:'Inter Tight',sans-serif;font-size:11px;color:#857A6A">app/queue/edit.tsx · swipe left from the queue card</div></div></sc-if>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ dw }}" height="{{ dh }}" hint-size="402px,874px">
+<div style="height:100%;background:#FFFFFF;padding-top:62px;box-sizing:border-box;display:flex;flex-direction:column;font-family:'Inter Tight',sans-serif">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px 12px">
+    <div style="display:flex;align-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4A4339" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><span style="font-size:14px;color:#4A4339">Back</span></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:15px;font-weight:500;color:#1C1814">Maya R.</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 8px;background:#EDE4D2"><span style="width:5px;height:5px;border-radius:5px;background:#4A4339"></span><span style="font-size:9.5px;font-weight:600;letter-spacing:1.33px;line-height:11px;text-transform:uppercase;color:#4A4339">Returning</span></span>
+    </div>
+    <div style="width:60px"></div>
+  </div>
+
+  <div style="margin:0 18px 4px;border-radius:4px;border-left:2px solid #C66A4A;background:#F2EBDC;padding:12px 14px">
+    <div style="font-size:12.5px;line-height:19px;color:#1C1814"><span style="font-weight:500;color:#A85638">Flagged because: </span>low fidelity score</div>
+    <div style="font-family:'Fraunces',serif;font-style:italic;margin-top:6px;font-size:13px;line-height:18px;color:#1C1814">She&rsquo;s confirming the table, not just asking — voice is clipped and warm. Match the energy, hold the corner spot.</div>
+  </div>
+
+  <div style="flex:1;display:flex;flex-direction:column;gap:4px;padding:12px 18px 16px;overflow:hidden">
+    <div style="align-self:center;padding:8px 0"><span style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#857A6A">Mon Sep 7 · morning</span></div>
+    <div style="align-self:flex-start;max-width:80%;margin-top:4px;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">hey! is dinner walk-in friendly tonight?</span></div>
+    <div style="align-self:flex-end;max-width:80%;margin-top:4px;border-radius:18px 18px 6px 18px;border:0.5px solid rgba(28,24,20,0.12);background:#F7F1E3;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#1C1814">walk-ins welcome — patio runs first-come on weekday nights.</span></div>
+    <div style="align-self:flex-start;max-width:80%;margin-top:4px;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">perfect, see you around 7</span></div>
+    <div style="align-self:center;padding:8px 0"><span style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#857A6A">Sat Sep 12 · morning</span></div>
+    <div style="align-self:flex-start;max-width:80%;margin-top:4px;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">Hi! Is the patio open tonight?</span></div>
+    <div style="align-self:flex-end;max-width:80%;margin-top:4px;border-radius:18px 18px 6px 18px;border:0.5px solid rgba(28,24,20,0.12);background:#F7F1E3;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#1C1814">Yes — patio&rsquo;s open until 9. Want me to hold a corner table?</span></div>
+    <div style="align-self:flex-start;max-width:80%;margin-top:4px;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">Yes please! Two of us at 7:30 if you can swing it.</span></div>
+  </div>
+
+  <div style="border-top:0.5px solid rgba(28,24,20,0.12);background:#fff;padding:12px 16px 46px">
+    <div style="display:flex;align-items:flex-end;gap:10px">
+      <div style="flex:1;border-radius:18px;border:1px solid #C66A4A;padding:10px 14px;min-height:44px;box-sizing:border-box"><span style="font-size:14.5px;line-height:22px;color:#1C1814">Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.</span></div>
+      <div style="width:38px;height:38px;border-radius:19px;background:#C66A4A;display:flex;align-items:center;justify-content:center;flex:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div>
+    </div>
+    <div style="display:flex;justify-content:center;margin-top:12px"><span style="font-size:11px;letter-spacing:1.65px;text-transform:uppercase;color:#857A6A">Don&rsquo;t send anything</span></div>
+  </div>
+</div>
+</x-import>
+</div>
+
+<!-- ══ 3. CONVERSATIONS ══ -->
+<div style="display:flex;flex-direction:column;gap:14px;flex:none">
+<sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px"><div style="font-family:'Inter Tight',sans-serif;font-size:13px;font-weight:500;color:#F2EBDC">Conversations</div><div style="font-family:'Inter Tight',sans-serif;font-size:11px;color:#857A6A">app/conversations/index.tsx · 12 guests, 5 active</div></div></sc-if>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ dw }}" height="{{ dh }}" hint-size="402px,874px">
+<div style="height:100%;background:#F2EBDC;padding-top:62px;box-sizing:border-box;display:flex;flex-direction:column;font-family:'Inter Tight',sans-serif">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px 8px">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1C1814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    <img src="assets/images/logo.png" alt="Analog" style="width:34px;height:34px;object-fit:contain">
+    <div style="width:22px"></div>
+  </div>
+  <div style="display:flex;gap:26px;padding:6px 22px 0;border-bottom:0.5px solid rgba(28,24,20,0.06)">
+    <div style="padding-bottom:10px"><div style="display:flex;align-items:baseline;gap:4px"><span style="font-size:13px;font-weight:500;color:#857A6A">Queue</span><span style="font-size:13px;font-weight:500;color:#857A6A">4</span></div></div>
+    <div style="position:relative;padding-bottom:10px"><span style="font-size:13px;font-weight:500;color:#1C1814">Conversations</span><div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:#C66A4A"></div></div>
+  </div>
+
+  <div style="padding:18px 22px 10px">
+    <div style="font-family:'Fraunces',serif;font-style:italic;font-size:27px;line-height:32px;letter-spacing:-0.4px;color:#1C1814">Everything happening.</div>
+    <div style="display:flex;align-items:baseline;gap:7px;margin-top:7px">
+      <span style="font-size:13px;font-weight:500;color:#1C1814">5</span><span style="font-size:13px;color:#857A6A">active now</span><span style="font-size:13px;color:#857A6A">·</span><span style="font-size:13px;font-weight:500;color:#1C1814">12</span><span style="font-size:13px;color:#857A6A">open</span>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:8px;padding:0 22px 14px">
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;background:#FFFFFF;border:0.5px solid rgba(28,24,20,0.12)"><span style="width:5px;height:5px;border-radius:5px;background:#C66A4A"></span><span style="font-size:11.5px;font-weight:500;color:#4A4339">Active</span></div>
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;background:#FFFFFF;border:0.5px solid rgba(28,24,20,0.12)"><span style="font-size:11.5px;font-weight:500;color:#1C1814">All guests</span><span style="font-size:9px;opacity:0.6;color:#1C1814">▾</span></div>
+  </div>
+
+  <div style="flex:1;overflow:hidden;padding:0 16px 20px">
+    <div style="border-radius:16px;border:0.5px solid rgba(28,24,20,0.12);background:#fff;overflow:hidden">
+      <sc-for list="{{ rows }}" as="row" hint-placeholder-count="8">
+        <div style="padding:14px 16px;border-top:{{ row.rowBorder }};opacity:{{ row.rowOpacity }}">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="width:6px;height:6px;border-radius:6px;background:{{ row.dotBg }};border:{{ row.dotBorder }}"></span>
+            <span style="font-size:15px;font-weight:500;color:#1C1814">{{ row.name }}</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 8px;background:{{ row.badgeBg }}"><span style="width:5px;height:5px;border-radius:5px;background:{{ row.badgeDot }}"></span><span style="font-size:9.5px;font-weight:600;letter-spacing:1.33px;line-height:11px;text-transform:uppercase;color:{{ row.badgeText }}">{{ row.badgeLabel }}</span></span>
+            <span style="margin-left:auto;font-size:11px;letter-spacing:0.44px;color:#857A6A">{{ row.time }}</span>
+          </div>
+          <div style="margin-top:6px;font-size:13px;line-height:19px;color:#4A4339;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:#857A6A">{{ row.speaker }} · </span>{{ row.preview }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="height:34px"></div>
+</div>
+</x-import>
+</div>
+
+<!-- ══ 4. THREAD ══ -->
+<div style="display:flex;flex-direction:column;gap:14px;flex:none">
+<sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px"><div style="font-family:'Inter Tight',sans-serif;font-size:13px;font-weight:500;color:#F2EBDC">Conversation thread</div><div style="font-family:'Inter Tight',sans-serif;font-size:11px;color:#857A6A">app/conversations/[guestId].tsx · read-only, no compose box</div></div></sc-if>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ dw }}" height="{{ dh }}" hint-size="402px,874px">
+<div style="height:100%;background:#F2EBDC;padding-top:62px;box-sizing:border-box;display:flex;flex-direction:column;font-family:'Inter Tight',sans-serif">
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:0.5px solid rgba(28,24,20,0.12);background:#F2EBDC">
+    <span style="font-size:22px;line-height:22px;color:#1C1814">‹</span>
+    <div style="flex:1;display:flex;flex-direction:column;gap:3px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:15px;font-weight:500;color:#1C1814">Maya R.</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 8px;background:#EDE4D2"><span style="width:5px;height:5px;border-radius:5px;background:#4A4339"></span><span style="font-size:9.5px;font-weight:600;letter-spacing:1.33px;line-height:11px;text-transform:uppercase;color:#4A4339">Returning</span></span>
+      </div>
+      <div style="font-size:11px;letter-spacing:0.3px;color:#857A6A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">+15551110001 · 4 conversations since June</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:20px;background:rgba(28,24,20,0.05)"><span style="width:5px;height:5px;border-radius:5px;background:#C66A4A"></span><span style="font-size:10px;letter-spacing:1.1px;font-weight:500;text-transform:uppercase;color:#4A4339">Live</span></div>
+  </div>
+
+  <div style="flex:1;display:flex;flex-direction:column;gap:4px;padding:16px 18px 8px;overflow:hidden">
+    <div style="align-self:center;padding:8px 0"><span style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#857A6A">Mon Sep 7 · afternoon</span></div>
+    <div style="align-self:flex-start;max-width:80%;margin-top:4px;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">hey! is dinner walk-in friendly tonight?</span></div>
+    <div style="align-self:flex-end;max-width:80%;margin-top:4px;border-radius:18px 18px 6px 18px;border:0.5px solid rgba(28,24,20,0.12);background:#F7F1E3;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#1C1814">walk-ins welcome — patio runs first-come on weekday nights.</span></div>
+    <div style="align-self:flex-start;max-width:80%;margin-top:4px;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">perfect, see you around 7</span></div>
+    <div style="align-self:center;padding:8px 0"><span style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#857A6A">Sat Sep 12 · afternoon</span></div>
+    <div style="align-self:flex-start;max-width:80%;margin-top:4px;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">Hi! Is the patio open tonight?</span></div>
+    <div style="align-self:flex-end;max-width:80%;margin-top:4px;border-radius:18px 18px 6px 18px;border:0.5px solid rgba(28,24,20,0.12);background:#F7F1E3;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#1C1814">Yes — patio&rsquo;s open until 9. Want me to hold a corner table?</span></div>
+    <div style="align-self:flex-start;max-width:80%;margin-top:4px;border-radius:18px 18px 18px 6px;background:#3A3530;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#F0EDE7">Yes please! Two of us at 7:30 if you can swing it.</span></div>
+    <div style="align-self:flex-end;max-width:80%;margin-top:4px;border-radius:18px 18px 6px 18px;border:0.5px solid rgba(28,24,20,0.12);background:#F7F1E3;padding:10px 14px"><span style="font-size:14px;line-height:20px;color:#1C1814">Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.</span></div>
+    <div style="align-self:flex-end;padding-top:6px"><span style="font-size:10.5px;letter-spacing:0.6px;color:#857A6A">Sent by Sana · 9:39 AM</span></div>
+  </div>
+
+  <div style="display:flex;gap:10px;padding:14px 20px 24px;border-top:0.5px solid rgba(28,24,20,0.12);background:#F7F1E3">
+    <span style="width:6px;height:6px;border-radius:6px;background:#C66A4A;margin-top:6px;flex:none"></span>
+    <span style="flex:1;font-size:12.5px;line-height:18px;color:#4A4339">Sana is handling this one. You&rsquo;ll see it in the queue if it needs your input.</span>
+  </div>
+  <div style="height:34px"></div>
+</div>
+</x-import>
+</div>
+
+<!-- ══ 5. EMPTY ══ -->
+<div style="display:flex;flex-direction:column;gap:14px;flex:none">
+<sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px"><div style="font-family:'Inter Tight',sans-serif;font-size:13px;font-weight:500;color:#F2EBDC">Queue — empty</div><div style="font-family:'Inter Tight',sans-serif;font-size:11px;color:#857A6A">components/queue/empty-state.tsx</div></div></sc-if>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ dw }}" height="{{ dh }}" hint-size="402px,874px">
+<div style="height:100%;background:#F2EBDC;padding-top:62px;box-sizing:border-box;display:flex;flex-direction:column;font-family:'Inter Tight',sans-serif">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px 8px">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1C1814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    <img src="assets/images/logo.png" alt="Analog" style="width:34px;height:34px;object-fit:contain">
+    <div style="width:22px"></div>
+  </div>
+  <div style="display:flex;gap:26px;padding:6px 22px 0;border-bottom:0.5px solid rgba(28,24,20,0.06)">
+    <div style="position:relative;padding-bottom:10px"><div style="display:flex;align-items:baseline;gap:4px"><span style="font-size:13px;font-weight:500;color:#1C1814">Queue</span><span style="font-size:13px;font-weight:500;color:#1C1814">0</span></div><div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:#C66A4A"></div></div>
+    <div style="padding-bottom:10px"><span style="font-size:13px;font-weight:500;color:#857A6A">Conversations</span></div>
+  </div>
+  <div style="padding:12px 22px 4px">
+    <div style="font-family:'Fraunces',serif;font-style:italic;font-size:28px;line-height:34px;letter-spacing:-0.4px;color:#1C1814">Good morning, Jaipal.</div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
+      <span style="font-size:13px;font-weight:500;color:#1C1814">0</span><span style="font-size:13px;color:#857A6A">drafts</span><span style="font-size:13px;color:#857A6A">·</span><span style="font-size:13px;font-weight:500;color:#1C1814">0</span><span style="font-size:13px;color:#857A6A">need your input</span>
+    </div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:14px;padding:80px 32px 0">
+    <div style="width:8px;height:8px;border-radius:4px;background:#C66A4A;margin-bottom:8px"></div>
+    <div style="font-family:'Fraunces',serif;font-style:italic;font-size:32px;line-height:36px;text-align:center;color:#1C1814">You&rsquo;re all caught up.</div>
+    <div style="font-size:13px;line-height:20px;text-align:center;max-width:240px;color:#857A6A">Nothing pending review. Guests are being handled. Take a breath.</div>
+  </div>
+  <div style="display:flex;justify-content:center;padding:8px 0 16px">
+    <span style="font-size:12px;color:#857A6A">Need help? <span style="font-weight:500;color:#C66A4A">Chat with Jaipal</span></span>
+  </div>
+  <div style="height:34px"></div>
+</div>
+</x-import>
+</div>
+
+<!-- ══ 6. ERROR ══ -->
+<div style="display:flex;flex-direction:column;gap:14px;flex:none">
+<sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px"><div style="font-family:'Inter Tight',sans-serif;font-size:13px;font-weight:500;color:#F2EBDC">Queue — load error</div><div style="font-family:'Inter Tight',sans-serif;font-size:11px;color:#857A6A">app/queue/index.tsx · status === 'error'</div></div></sc-if>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ dw }}" height="{{ dh }}" hint-size="402px,874px">
+<div style="height:100%;background:#F2EBDC;padding-top:62px;box-sizing:border-box;display:flex;flex-direction:column;font-family:'Inter Tight',sans-serif">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px 8px">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1C1814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    <img src="assets/images/logo.png" alt="Analog" style="width:34px;height:34px;object-fit:contain">
+    <div style="width:22px"></div>
+  </div>
+  <div style="display:flex;gap:26px;padding:6px 22px 0;border-bottom:0.5px solid rgba(28,24,20,0.06)">
+    <div style="position:relative;padding-bottom:10px"><div style="display:flex;align-items:baseline;gap:4px"><span style="font-size:13px;font-weight:500;color:#1C1814">Queue</span><span style="font-size:13px;font-weight:500;color:#1C1814">0</span></div><div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:#C66A4A"></div></div>
+    <div style="padding-bottom:10px"><span style="font-size:13px;font-weight:500;color:#857A6A">Conversations</span></div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 32px">
+    <div style="font-family:'Fraunces',serif;font-style:italic;font-size:24px;text-align:center;color:#1C1814">We couldn&rsquo;t load the queue.</div>
+    <div style="margin-top:24px;border-radius:8px;border:0.5px solid rgba(28,24,20,0.12);padding:12px 20px"><span style="font-size:10px;letter-spacing:1.8px;font-weight:500;text-transform:uppercase;color:#1C1814">Try again</span></div>
+  </div>
+  <div style="height:34px"></div>
+</div>
+</x-import>
+</div>
+
+<!-- ══ 7. SIGN IN ══ -->
+<div style="display:flex;flex-direction:column;gap:14px;flex:none">
+<sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px"><div style="font-family:'Inter Tight',sans-serif;font-size:13px;font-weight:500;color:#F2EBDC">Sign in</div><div style="font-family:'Inter Tight',sans-serif;font-size:11px;color:#857A6A">app/sign-in/index.tsx · phone OTP</div></div></sc-if>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ dw }}" height="{{ dh }}" hint-size="402px,874px">
+<div style="height:100%;background:#F2EBDC;padding:96px 24px 0;box-sizing:border-box;font-family:'Inter Tight',sans-serif">
+  <div style="font-family:'Fraunces',serif;font-style:italic;font-size:40px;line-height:46px;color:#3A3530">Welcome back</div>
+  <div style="margin-top:12px;font-size:16px;line-height:22px;color:#3A3530">We&rsquo;ll text you a 6-digit code to sign in.</div>
+  <div style="margin-top:32px;border:1px solid rgba(58,53,48,0.2);border-radius:12px;padding:12px 16px"><span style="font-size:18px;color:rgba(58,53,48,0.4)">(555) 123-4567</span></div>
+  <div style="margin-top:16px;background:#C66A4A;border-radius:12px;padding:16px 24px;display:flex;justify-content:center"><span style="font-size:16px;font-weight:500;color:#F2EBDC">Send code</span></div>
+  <div style="margin-top:24px;display:flex;justify-content:center"><span style="font-size:16px;text-decoration:underline;color:rgba(58,53,48,0.7)">Sign in with email instead</span></div>
+</div>
+</x-import>
+</div>
+
+<!-- ══ 8. VERIFY ══ -->
+<div style="display:flex;flex-direction:column;gap:14px;flex:none">
+<sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px"><div style="font-family:'Inter Tight',sans-serif;font-size:13px;font-weight:500;color:#F2EBDC">Verify</div><div style="font-family:'Inter Tight',sans-serif;font-size:11px;color:#857A6A">app/sign-in/verify.tsx · button disabled until 6 digits</div></div></sc-if>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ dw }}" height="{{ dh }}" hint-size="402px,874px">
+<div style="height:100%;background:#F2EBDC;padding:96px 24px 0;box-sizing:border-box;font-family:'Inter Tight',sans-serif">
+  <div style="font-family:'Fraunces',serif;font-style:italic;font-size:32px;line-height:38px;color:#3A3530">Enter the code</div>
+  <div style="margin-top:12px;font-size:16px;line-height:22px;color:rgba(58,53,48,0.7)">Sent to +15551110001</div>
+  <div style="margin-top:32px;border:1px solid rgba(58,53,48,0.2);border-radius:12px;padding:12px 16px;text-align:center"><span style="font-size:28px;letter-spacing:8px;color:rgba(58,53,48,0.3)">123456</span></div>
+  <div style="margin-top:16px;background:#C66A4A;border-radius:12px;padding:16px 24px;display:flex;justify-content:center;opacity:0.5"><span style="font-size:16px;font-weight:500;color:#F2EBDC">Verify</span></div>
+  <div style="margin-top:24px;display:flex;justify-content:center"><span style="font-size:16px;text-decoration:underline;color:rgba(58,53,48,0.7)">Resend code</span></div>
+</div>
+</x-import>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showCaptions&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const badge = {
+      new: { badgeBg: '#EDE4D2', badgeText: '#4A4339', badgeDot: '#857A6A', badgeLabel: 'New' },
+      returning: { badgeBg: '#EDE4D2', badgeText: '#4A4339', badgeDot: '#4A4339', badgeLabel: 'Returning' },
+      regular: { badgeBg: '#E5B19C', badgeText: '#6B3220', badgeDot: '#A85638', badgeLabel: 'Regular' },
+      raving_fan: { badgeBg: '#C66A4A', badgeText: '#FFFFFF', badgeDot: '#FFFFFF', badgeLabel: 'Raving Fan' },
+    };
+    // Mirrors lib/fixtures/conversations.ts seedGuests(), rendered through
+    // conversation-row.tsx: active = last message within 60 min.
+    const seed = [
+      ['Maya R.', 'returning', 2, 'Sana', 'Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.'],
+      ['+15550182246', 'new', 6, 'Guest', 'perfect thank you, see you at 8'],
+      ['Tomas B.', 'regular', 12, 'Sana', '8:15 is yours. Same table.'],
+      ['Devon L.', 'raving_fan', 18, 'Sana', "We'll time a loaf for 7 — and there'll be a slice of the buckwheat cake for the table on us, since tomorrow's the day. Looking forward to meeting them."],
+      ['Elise W.', 'new', 41, 'Guest', 'good to know, thanks'],
+      ['Hana K.', 'returning', 122, 'Sana', 'Anytime — the patio heaters are on until close.'],
+      ['Marcus D.', 'raving_fan', 190, 'Sana', "Two, if you want them. I'll put your name on the shelf."],
+      ['Rae O.', 'new', 305, 'Sana', 'We do — brunch is walk-in only, 9 to 2 on weekends.'],
+      ['Jun P.', 'regular', 1500, 'Sana', 'Booked. 7:30, table four.'],
+      ['Sofia L.', 'returning', 1610, 'Sana', "They're behind the register — come by anytime this week."],
+      ['Ben A.', 'new', 2900, 'Sana', 'Dogs are very welcome on the patio. Water bowl by the door.'],
+      ['Nadia S.', 'regular', 4300, 'Sana', "Six on the 20th is in the book. I'll ask the kitchen about a candle."],
+    ];
+    const fmt = (m) => (m < 1 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`);
+    const rows = seed.map(([name, state, mins, speaker, preview], i) => {
+      const active = mins <= 60;
+      return {
+        name, speaker, preview,
+        time: fmt(mins),
+        rowOpacity: active ? 1 : 0.62,
+        rowBorder: i === 0 ? '0' : '0.5px solid rgba(28,24,20,0.06)',
+        dotBg: active ? '#C66A4A' : 'transparent',
+        dotBorder: active ? '0' : '1px solid rgba(28,24,20,0.2)',
+        ...badge[state],
+      };
+    });
+    return { rows, dw: 402, dh: 874, showCaptions: this.props.showCaptions ?? true };
+  }
+}
+</script>
+</body>
+</html>
