@@ -36,7 +36,10 @@ Rules, in order of how badly they break things if ignored:
 
 1. **Build only from Ready.** A ticket in Todo has not been audited. A ticket
    with anything under `## Open questions` is not buildable whatever its
-   status says.
+   status says. **Ready never means approved.** An audit sets Ready without
+   asking Jaipal anything, and a ticket can reach In Progress the same way:
+   TAC-403 did, with a `[PLAN]` nobody had answered. An unanswered plan
+   blocks the build whatever the status says.
 2. **Never promote a ticket to Ready yourself.** Only an audit that found
    nothing, or a ruling from Jaipal, moves a ticket there.
 3. **Never mark a ticket Done.** Merging moves it to Ready For QA
