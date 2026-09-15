@@ -29,7 +29,7 @@ export function isConversationActive(
  * {Year}" (a prior year) — matches the imported design's two label modes.
  *
  * Takes an explicit IANA `timezone` (same pattern as
- * `lib/thread-cluster.ts`'s `formatClusterTimestamp`) rather than reading
+ * `lib/thread-cluster.ts`'s day separators) rather than reading
  * the JS runtime's ambient local time, so the same-year/prior-year check is
  * deterministic regardless of what machine or CI runner executes it. Near a
  * year boundary, different timezones can legitimately name different

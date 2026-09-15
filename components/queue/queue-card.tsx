@@ -13,7 +13,7 @@ import {
   stripLabelForDraft,
 } from '@/lib/review-bucket';
 import { body as bodyType, card, typePresets } from '@/lib/theme';
-import { deviceTimezone, formatDayDivider } from '@/lib/thread-cluster';
+import { computeItems, deviceTimezone } from '@/lib/thread-cluster';
 
 import { RecognitionBadge } from './recognition-badge';
 import { ReviewDetail } from './review-detail';
@@ -96,8 +96,11 @@ export function QueueCard({
   // "improve" this into app-state language. (TAC-310.)
   const hasDraft = draft.draftBody.trim().length > 0;
 
-  const thread = draft.recentContext;
-  const firstMessage = thread[0];
+  // The excerpt runs through the same day-boundary rule as the edit screen, so
+  // an excerpt that crosses midnight labels both days instead of filing this
+  // morning's message under yesterday. Bubble positions come back unused: the
+  // card doesn't chain its bubbles. (TAC-408.)
+  const items = computeItems(draft.recentContext, deviceTimezone());
   const reasoning = draft.agentReasoning?.trim();
 
   return (
@@ -209,21 +212,25 @@ export function QueueCard({
           paddingBottom: 4,
         }}
       >
-        {firstMessage ? (
-          <View style={{ alignItems: 'center', paddingTop: 14, paddingBottom: 10 }}>
-            <TrackedCaps {...typePresets.dateDivider} color="#6F6658">
-              {formatDayDivider(firstMessage.createdAt, deviceTimezone())}
-            </TrackedCaps>
-          </View>
-        ) : null}
-        {thread.map((message) => (
-          <MessageBubble
-            key={message.id}
-            direction={message.direction}
-            body={message.body}
-            surface="card"
-          />
-        ))}
+        {items.map((item) =>
+          item.kind === 'timestamp' ? (
+            <View
+              key={item.key}
+              style={{ alignItems: 'center', paddingTop: 14, paddingBottom: 10 }}
+            >
+              <TrackedCaps {...typePresets.dateDivider} color="#6F6658">
+                {item.label}
+              </TrackedCaps>
+            </View>
+          ) : (
+            <MessageBubble
+              key={item.key}
+              direction={item.message.direction}
+              body={item.message.body}
+              surface="card"
+            />
+          ),
+        )}
       </View>
 
       {/* d. Composer — a preview of the draft, not an input. Tapping it opens

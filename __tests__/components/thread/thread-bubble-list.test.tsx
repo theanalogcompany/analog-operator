@@ -6,7 +6,7 @@ import { type ThreadItem } from '@/lib/thread-cluster';
 import { dividerBacking } from '@/lib/theme';
 
 const ITEMS: ThreadItem[] = [
-  { kind: 'timestamp', key: 'ts-1', label: 'Fri Sep 5 · evening' },
+  { kind: 'timestamp', key: 'ts-1', label: 'Fri Sep 5 · 8:00 PM' },
   {
     kind: 'bubble',
     key: 'b-1',
@@ -26,8 +26,8 @@ describe('ThreadBubbleList', () => {
     render(<ThreadBubbleList items={ITEMS} />);
     // Dividers render as tracked caps; the un-uppercased string stays as the
     // accessibility label so VoiceOver doesn't spell it out.
-    expect(screen.getByText('FRI SEP 5 · EVENING')).toBeTruthy();
-    expect(screen.getByLabelText('Fri Sep 5 · evening')).toBeTruthy();
+    expect(screen.getByText('FRI SEP 5 · 8:00 PM')).toBeTruthy();
+    expect(screen.getByLabelText('Fri Sep 5 · 8:00 PM')).toBeTruthy();
   });
 
   it('renders both bubble bodies', () => {
@@ -42,12 +42,12 @@ describe('ThreadBubbleList', () => {
     render(<ThreadBubbleList items={ITEMS} surface="card" />);
     const backing = screen.getByTestId('thread-divider-backing');
     expect(StyleSheet.flatten(backing.props.style).backgroundColor).toBe(dividerBacking.color);
-    expect(within(backing).getByText('FRI SEP 5 · EVENING')).toBeTruthy();
+    expect(within(backing).getByText('FRI SEP 5 · 8:00 PM')).toBeTruthy();
   });
 
   it('leaves the Texts thread unbacked, since clay clears 4.5:1 alone', () => {
     render(<ThreadBubbleList items={ITEMS} surface="thread" />);
     expect(screen.queryByTestId('thread-divider-backing')).toBeNull();
-    expect(screen.getByText('FRI SEP 5 · EVENING')).toBeTruthy();
+    expect(screen.getByText('FRI SEP 5 · 8:00 PM')).toBeTruthy();
   });
 });

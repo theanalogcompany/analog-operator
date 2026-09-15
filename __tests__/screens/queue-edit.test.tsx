@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react-native';
 
 import EditScreen from '@/app/queue/edit';
+import { QueueCard } from '@/components/queue/queue-card';
 import { type UseQueueResult } from '@/hooks/use-queue';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { clearUndoState, getUndoState } from '@/hooks/use-undo-state';
@@ -20,7 +21,7 @@ import {
   peekDeclineHandoff,
   stageDeclineHandoff,
 } from '@/lib/decline-handoff';
-import { takeoverHeader } from '@/lib/theme';
+import { card, takeoverHeader } from '@/lib/theme';
 
 const mockRouter = {
   push: jest.fn(),
@@ -426,6 +427,37 @@ describe('EditScreen', () => {
     });
     expect(screen.getByText('older history line 2')).toBeTruthy();
     expect(screen.getByText('is the patio open')).toBeTruthy();
+  });
+
+  // The card and the takeover have to name the same message the same way —
+  // the defect was one screen calling a 9:39 AM message "night". Both
+  // components are real here: the claim is about what each renders, so mocking
+  // either would prove nothing about the pair. `venueTimezone` is null, so
+  // both read the device's zone; TAC-414 is what makes them agree when the
+  // venue's zone differs. (TAC-408.)
+  it('renders the same day separator as the queue card, for the same message', async () => {
+    const DIVIDER = / · \d{1,2}:\d{2}\s?(AM|PM)$/;
+    // Local date parts, so the label is the same in any runner's zone. Sep 10
+    // 2026 is far enough back to read as a named day rather than "Today".
+    const message: ThreadMessage = {
+      id: '00000000-0000-4000-8000-00000000000a',
+      direction: 'inbound',
+      body: 'is the patio open',
+      createdAt: new Date(2026, 8, 10, 9, 39).toISOString(),
+    };
+    const draft = makeDraft({ recentContext: [message], venueTimezone: null });
+    mockQueue.drafts = [draft];
+    mockRouter.params = { messageId: draft.messageId };
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: [message] });
+
+    await renderAndDrain();
+    const onTakeover = screen.getByText(DIVIDER).props.children;
+
+    const asCard = render(<QueueCard draft={draft} height={card.heightPx} />);
+    const onCard = asCard.getByText(DIVIDER).props.children;
+
+    expect(onTakeover).toBe(onCard);
+    expect(onCard).toBe('THU SEP 10 · 9:39 AM');
   });
 
   it('falls back to recentContext when getThread returns an error', async () => {

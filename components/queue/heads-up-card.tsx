@@ -14,7 +14,7 @@ import {
 } from '@/lib/heads-up';
 import { formatProgress, stripColorFor } from '@/lib/review-bucket';
 import { body as bodyType, card, typePresets } from '@/lib/theme';
-import { deviceTimezone, formatDayDivider } from '@/lib/thread-cluster';
+import { computeItems, deviceTimezone } from '@/lib/thread-cluster';
 
 import { cardShadow, formatPendingDuration } from './queue-card';
 import { RecognitionBadge } from './recognition-badge';
@@ -61,8 +61,17 @@ export function HeadsUpCard({
 }: Props) {
   const timezone = deviceTimezone();
   const name = headsUpGuestName(commitment);
-  const tail = thread.slice(-HEADS_UP_THREAD_TAIL);
-  const firstMessage = tail[0];
+  // Same day-boundary rule as the draft card and the edit screen. A
+  // commitment's conversation often predates the arrival by a day or more, so
+  // this tail crosses midnight more often than a draft card's. (TAC-408.)
+  // `now` rather than the wall clock, so the separator reads the same clock as
+  // the strip and the arrival label. They agree in production; a card deciding
+  // two labels from two clocks is only ever a trap for a test.
+  const items = computeItems(
+    thread.slice(-HEADS_UP_THREAD_TAIL),
+    timezone,
+    now.getTime(),
+  );
   const arrival = arrivalLabel(commitment.expected_arrival, now, timezone);
   const code = commitment.code?.trim() ?? '';
   const description = commitment.description.trim();
@@ -148,21 +157,25 @@ export function HeadsUpCard({
             paddingBottom: 4,
           }}
         >
-          {firstMessage ? (
-            <View style={{ alignItems: 'center', paddingTop: 14, paddingBottom: 10 }}>
-              <TrackedCaps {...typePresets.dateDivider} color="#6F6658">
-                {formatDayDivider(firstMessage.createdAt, timezone)}
-              </TrackedCaps>
-            </View>
-          ) : null}
-          {tail.map((message) => (
-            <MessageBubble
-              key={message.id}
-              direction={message.direction}
-              body={message.body}
-              surface="card"
-            />
-          ))}
+          {items.map((item) =>
+            item.kind === 'timestamp' ? (
+              <View
+                key={item.key}
+                style={{ alignItems: 'center', paddingTop: 14, paddingBottom: 10 }}
+              >
+                <TrackedCaps {...typePresets.dateDivider} color="#6F6658">
+                  {item.label}
+                </TrackedCaps>
+              </View>
+            ) : (
+              <MessageBubble
+                key={item.key}
+                direction={item.message.direction}
+                body={item.message.body}
+                surface="card"
+              />
+            ),
+          )}
         </View>
 
         {/* d. The commitment, in the slot a draft card's composer takes. */}

@@ -44,9 +44,9 @@ describe('isConversationActive', () => {
 
 describe('formatConversationsSince', () => {
   // Explicit IANA timezone, consistently applied across this describe block
-  // (mirrors thread-cluster.test.ts's `UTC` constant for
-  // formatClusterTimestamp). The specific zone matters for the
-  // year-boundary test below — see its comment.
+  // (mirrors thread-cluster.test.ts's fixed zones for the day separators).
+  // The specific zone matters for the year-boundary test below — see its
+  // comment.
   const TIMEZONE = 'America/Los_Angeles';
 
   it('returns "first conversation" when count is 1', () => {
@@ -68,7 +68,7 @@ describe('formatConversationsSince', () => {
   });
 
   // formatConversationsSince takes an explicit IANA timezone (mirrors
-  // lib/thread-cluster.ts's formatClusterTimestamp) instead of reading the
+  // lib/thread-cluster.ts's day separators) instead of reading the
   // JS runtime's ambient local time, specifically so its output is
   // deterministic and testable regardless of what machine or CI runner
   // executes it. This pins firstConversationAt to

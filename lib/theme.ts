@@ -315,13 +315,15 @@ export const recognition = {
 // Thread render constants — ported from analog-guest's conversation-thread.tsx
 // (computeItems + render). `sequenceGapMs`: same-direction messages within this
 // window collapse into a chain without bubble tails between them.
-// `timestampGapMs`: insert a centered timestamp row when consecutive messages
-// span more than this. `nearBottomPx`: auto-scroll on Realtime insert only
-// when the operator is within this distance of the bottom (don't yank the
-// view mid-read). (TAC-290.)
+// `nearBottomPx`: auto-scroll on Realtime insert only when the operator is
+// within this distance of the bottom (don't yank the view mid-read).
+//
+// There is deliberately no gap constant for day separators. They mark calendar
+// days, so a message's own date is the only input. The `timestampGapMs` this
+// replaced started a fresh divider after every five-minute pause, which stacked
+// several of them on one day. (TAC-290, TAC-408.)
 export const thread = {
   sequenceGapMs: 60_000,
-  timestampGapMs: 5 * 60_000,
   nearBottomPx: 120,
 } as const;
 

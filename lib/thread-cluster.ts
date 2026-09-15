@@ -17,45 +17,24 @@ export type ThreadItem =
       position: BubblePosition;
     };
 
-// 5–11: morning, 12–16: afternoon, 17–20: evening, else: night. Mirrors
-// analog-guest/app/admin/(authed)/conversations/_components/conversation-thread.tsx
-function periodOf(hour: number): 'morning' | 'afternoon' | 'evening' | 'night' {
-  if (hour >= 5 && hour < 12) return 'morning';
-  if (hour >= 12 && hour < 17) return 'afternoon';
-  if (hour >= 17 && hour < 21) return 'evening';
-  return 'night';
-}
-
 /**
- * Formats a thread cluster header timestamp as "EEE MMM d · period" in the
- * given IANA timezone. Pilot v1 passes the device timezone because the API
- * doesn't yet plumb the venue's timezone; for operators physically at the
- * venue these are identical. Follow-up to add `venueTimezone` to the queue
- * payload.
+ * Formats an instant as its calendar day in the given IANA zone. `en-CA`
+ * yields "YYYY-MM-DD", so two instants fall on the same day exactly when
+ * their formatted values are equal — no date arithmetic, and no assumption
+ * that a day is 24 hours (it isn't, across a DST change).
+ *
+ * The formatter is built by the caller and reused: `computeItems` asks the day
+ * of every message in the thread, which runs to the server's cap of 200 rows
+ * (analog-guest's thread endpoint, per TAC-395's Contract), and constructing an
+ * `Intl.DateTimeFormat` per message is slow on Hermes.
  */
-export function formatClusterTimestamp(iso: string, timezone: string): string {
-  const date = new Date(iso);
-  // `formatToParts` lets us read DOW / month / day without locale-specific
-  // separators leaking into the output.
-  const parts = new Intl.DateTimeFormat('en-US', {
+function dayKeyFormatter(timezone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    hour12: false,
-  }).formatToParts(date);
-  const get = (type: string): string =>
-    parts.find((p) => p.type === type)?.value ?? '';
-  const weekday = get('weekday');
-  const month = get('month');
-  const day = get('day');
-  const hourStr = get('hour');
-  // `hour: 'numeric'` with hour12: false returns '0'–'23' in en-US, except
-  // midnight comes back as '24' in some Node Intl builds — normalize.
-  const rawHour = Number.parseInt(hourStr, 10);
-  const hour = Number.isFinite(rawHour) ? rawHour % 24 : 0;
-  return `${weekday} ${month} ${day} · ${periodOf(hour)}`;
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
 }
 
 function ms(iso: string): number {
@@ -64,16 +43,26 @@ function ms(iso: string): number {
 
 /**
  * Groups a chronological message array (oldest → newest, ASC by createdAt)
- * into rendered items: cluster-header timestamps every >5min gap (or before
- * the first message), and bubbles annotated with their position in the
- * same-direction chain. Sequence chains break when direction flips or when
- * consecutive same-direction messages are >60s apart.
+ * into rendered items: a day separator at each calendar-day boundary, and
+ * bubbles annotated with their position in the same-direction chain.
+ * Sequence chains break when direction flips or when consecutive
+ * same-direction messages are >60s apart.
+ *
+ * Separators mark days, not gaps. A quiet hour inside one day gets no
+ * separator, and no two separators are ever adjacent, because a bubble
+ * always follows the one that introduced its day. The day is the one the
+ * message falls on in `timezone`, which is not the same as the device's or
+ * UTC's — a late-evening Pacific message is already tomorrow in UTC.
+ *
+ * `nowMs` is threaded through to the label so "Today" is deterministic in
+ * tests; it defaults to the wall clock, which is what both screens use.
  *
  * Assumes input is already sorted ASC. Returns [] for empty input.
  */
 export function computeItems(
   messages: ThreadMessage[],
   timezone: string,
+  nowMs: number = Date.now(),
 ): ThreadItem[] {
   if (messages.length === 0) return [];
 
@@ -96,19 +85,20 @@ export function computeItems(
     return 'last';
   });
 
-  // Pass 2: interleave timestamp rows when the gap from the previous message
-  // exceeds timestampGapMs (always emit one before the first message).
+  // Pass 2: a separator above the first message of each calendar day.
+  const dayKey = dayKeyFormatter(timezone);
   const items: ThreadItem[] = [];
+  let previousDay: string | null = null;
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-    const needsTimestamp =
-      i === 0 || ms(msg.createdAt) - ms(messages[i - 1].createdAt) > thread.timestampGapMs;
-    if (needsTimestamp) {
+    const day = dayKey.format(new Date(msg.createdAt));
+    if (day !== previousDay) {
       items.push({
         kind: 'timestamp',
         key: `ts-${msg.id}`,
-        label: formatClusterTimestamp(msg.createdAt, timezone),
+        label: dayDividerLabel(msg.createdAt, timezone, nowMs, dayKey),
       });
+      previousDay = day;
     }
     items.push({
       kind: 'bubble',
@@ -121,41 +111,53 @@ export function computeItems(
 }
 
 /**
- * The redesign's date divider: `"Today · 7:14 PM"`.
+ * The separator's text: `"Today · 7:14 PM"`, `"Yesterday · 7:14 PM"`, or
+ * `"Wed Sep 9 · 7:14 PM"` for anything older.
  *
- * Distinct from `formatClusterTimestamp` above, which renders
- * `"Wed Sep 10 · evening"` for the mid-thread cluster headers. This one heads
- * the queue card's short bottom-anchored excerpt, where a relative day and an
- * exact clock time is what the operator needs — they are deciding whether a
- * four-minute-old question is still warm.
+ * One shape for every surface — the queue card, the heads-up card, the edit
+ * takeover and the Conversations thread all read this. It names a relative
+ * day and an exact clock time because the operator is deciding whether a
+ * four-minute-old question is still warm. No time-of-day words: a 9:39 AM
+ * message read "night" under the format this replaced. (TAC-408.)
  *
- * `nowMs` is explicit so "Today" is deterministic in tests. Timezone follows
- * the same v1 caveat as the rest of this module: the device's zone stands in
- * for the venue's until `venueTimezone` is plumbed through the queue payload.
+ * An older day carries no year, so on the Conversations thread — the one
+ * surface that shows a guest's whole history — the same date in two different
+ * years reads identically. Recorded rather than fixed: a year is a change to
+ * the ruled label shape.
+ *
+ * Every caller supplies the zone. The edit screen and the Conversations
+ * thread pass the venue's; the two cards still pass the device's, which
+ * TAC-414 is filed to fix.
  */
-export function formatDayDivider(
+function dayDividerLabel(
   iso: string,
   timezone: string,
-  nowMs: number = Date.now(),
+  nowMs: number,
+  dayKey: Intl.DateTimeFormat,
 ): string {
   const date = new Date(iso);
-  const dayKey = (d: Date): string =>
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(d);
-
-  const now = new Date(nowMs);
-  const yesterday = new Date(nowMs - 24 * 60 * 60_000);
+  const key = dayKey.format(date);
+  const todayKey = dayKey.format(new Date(nowMs));
+  // Yesterday is today's calendar date minus one day, decremented on the date
+  // itself and never by subtracting 24 hours from the instant. A day is 23 or
+  // 25 hours long across a DST change, so an instant 24 hours back lands two
+  // days earlier in the hour after a spring-forward — which labelled a
+  // two-day-old message "Yesterday" — and stays on today after a fall-back,
+  // where nothing could say "Yesterday" at all. `Date.UTC` carries the month
+  // and year rollover. (TAC-408.)
+  const [year, month, day] = todayKey.split('-').map(Number);
+  const yesterdayKey = new Date(Date.UTC(year, month - 1, day - 1))
+    .toISOString()
+    .slice(0, 10);
 
   let dayLabel: string;
-  if (dayKey(date) === dayKey(now)) {
+  if (key === todayKey) {
     dayLabel = 'Today';
-  } else if (dayKey(date) === dayKey(yesterday)) {
+  } else if (key === yesterdayKey) {
     dayLabel = 'Yesterday';
   } else {
+    // `formatToParts` lets us read DOW / month / day without locale-specific
+    // separators leaking into the output.
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       weekday: 'short',

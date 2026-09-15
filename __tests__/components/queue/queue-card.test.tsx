@@ -265,6 +265,62 @@ describe('QueueCard — conversation', () => {
     expect(screen.getByText(/^TODAY · \d{1,2}:\d{2}\s?(AM|PM)$/)).toBeTruthy();
   });
 
+  // The card's excerpt is the last few responses, so it can straddle midnight:
+  // a guest asks something late and follows up the next morning. Without a
+  // separator at the boundary the morning message sits under "Yesterday".
+  // Built from local date parts, because the card reads the device's zone and
+  // the runner's zone is not pinned. (TAC-408.)
+  const DIVIDER = / · \d{1,2}:\d{2}\s?(AM|PM)$/;
+
+  it('separates the days when the excerpt crosses midnight', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          recentContext: [
+            { ...thread[0], createdAt: new Date(2026, 8, 10, 23, 50).toISOString() },
+            { ...thread[1], createdAt: new Date(2026, 8, 11, 0, 10).toISOString() },
+          ],
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getAllByText(DIVIDER)).toHaveLength(2);
+  });
+
+  it('shows one separator for messages hours apart on the same day', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          recentContext: [
+            { ...thread[0], createdAt: new Date(2026, 8, 10, 8, 0).toISOString() },
+            { ...thread[1], createdAt: new Date(2026, 8, 10, 20, 30).toISOString() },
+          ],
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getAllByText(DIVIDER)).toHaveLength(1);
+  });
+
+  it('labels in the device zone, ignoring the venue zone', () => {
+    // The card deliberately doesn't read `venueTimezone` yet, which is why the
+    // claim that it matches the edit screen holds only within one zone. When
+    // TAC-414 moves every surface to the venue's zone this goes red, which is
+    // that ticket's starting point.
+    render(
+      <QueueCard
+        draft={makeDraft({
+          venueTimezone: 'Pacific/Kiritimati',
+          recentContext: [
+            { ...thread[0], createdAt: new Date(2026, 8, 10, 9, 39).toISOString() },
+          ],
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getByText('THU SEP 10 · 9:39 AM')).toBeTruthy();
+  });
+
   it('renders no divider when there is no context at all', () => {
     render(<QueueCard draft={makeDraft({ recentContext: [] })} height={HEIGHT} />);
     // The divider is "<day> · <time>". The composer caption has a middle dot
