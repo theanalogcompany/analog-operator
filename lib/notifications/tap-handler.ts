@@ -5,23 +5,27 @@ import { z } from 'zod';
  * What a tapped notification points at.
  *
  * Two pushes arrive here. A draft push (TAC-207) carries `{ draftId, guestId,
- * operatorId }` and routes by guest, as it always has. An arrival push for a
- * heads-up card (TAC-297) carries `{ commitmentId, guestId, operatorId }` and
- * routes to that exact commitment. This used to be one non-strict schema keyed
- * on `guestId` alone, so a commitment push parsed cleanly as a DRAFT tap with
- * its `commitmentId` silently stripped, and the app went looking for a draft
- * that did not exist: the operator was notified about a card they could not
- * open. (TAC-364.)
+ * operatorId }` and routes to the draft `draftId` names: since TAC-394 a guest
+ * can hold two pending drafts, so the guest alone no longer names the card
+ * (TAC-403). An arrival push for a heads-up card (TAC-297) carries
+ * `{ commitmentId, guestId, operatorId }` and routes to that exact commitment.
+ * This used to be one non-strict schema keyed on `guestId` alone, so a
+ * commitment push parsed cleanly as a DRAFT tap with its `commitmentId` silently
+ * stripped, and the app went looking for a draft that did not exist: the
+ * operator was notified about a card they could not open. (TAC-364.)
+ *
+ * A draft target without `draftId` comes from a push that carried none, and
+ * falls back to the guest. See `matchesTapTarget` in lib/queue-items.ts.
  */
 export type TapTarget =
-  | { kind: 'draft'; guestId: string }
+  | { kind: 'draft'; guestId: string; draftId?: string }
   | { kind: 'commitment'; guestId: string; commitmentId: string };
 
 // APNs custom data per TAC-207 settled-decision #7 and TAC-297. `guestId` is on
 // both pushes; `commitmentId` decides which kind of card was tapped; `draftId`
-// + `operatorId` are informational only. A malformed payload (including a
-// malformed `commitmentId`) is dropped, so a junk push never navigates the
-// operator anywhere.
+// names the draft a draft push is about; `operatorId` is informational only. A
+// malformed payload (including a malformed `commitmentId` or `draftId`) is
+// dropped, so a junk push never navigates the operator anywhere.
 const TapPayloadSchema = z.object({
   guestId: z.string().uuid(),
   commitmentId: z.string().uuid().optional(),
@@ -37,10 +41,9 @@ export function parseTapPayload(data: unknown): TapTarget | null {
     }
     return null;
   }
-  const { guestId, commitmentId } = parsed.data;
-  return commitmentId
-    ? { kind: 'commitment', guestId, commitmentId }
-    : { kind: 'draft', guestId };
+  const { guestId, commitmentId, draftId } = parsed.data;
+  if (commitmentId) return { kind: 'commitment', guestId, commitmentId };
+  return draftId ? { kind: 'draft', guestId, draftId } : { kind: 'draft', guestId };
 }
 
 let pendingTap: TapTarget | null = null;

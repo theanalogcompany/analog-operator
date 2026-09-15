@@ -55,18 +55,31 @@ export function buildQueueItems(
   return [...commitments.map(headsUpItem), ...drafts.map(draftItem)];
 }
 
+/**
+ * Whether a card is the one a notification tap refers to. A commitment push
+ * names its commitment, and a draft push names its draft by `draftId`. Only a
+ * push that carries no `draftId` falls back to the guest, which lifts whichever
+ * of their drafts the deck puts first (`sortByPriority` in hooks/use-queue.ts:
+ * strongest recognition first, then oldest).
+ *
+ * A `draftId` that matches no card never falls back to the guest. Since TAC-394
+ * a guest can hold two pending drafts, and that fallback is exactly how a tap
+ * would open the other one. (TAC-403.)
+ */
 export function matchesTapTarget(item: QueueItem, target: TapTarget): boolean {
   if (target.kind === 'commitment') {
     return item.kind === 'headsUp' && item.commitment.id === target.commitmentId;
   }
-  return item.kind === 'draft' && item.draft.guestId === target.guestId;
+  if (item.kind !== 'draft') return false;
+  return target.draftId
+    ? item.draft.messageId === target.draftId
+    : item.draft.guestId === target.guestId;
 }
 
 /**
- * Lift the card a notification tap refers to onto the top of the deck. A
- * commitment push surfaces that exact commitment; a draft push surfaces the
- * guest's draft, as it always has. When the card is not in the list (handled on
- * another device, or not loaded yet) the deck keeps its natural order.
+ * Lift the card a notification tap refers to onto the top of the deck, by
+ * `matchesTapTarget`. When the card is not in the list (handled on another
+ * device, or not loaded yet) the deck keeps its natural order.
  */
 export function surfaceTappedItem(
   items: readonly QueueItem[],

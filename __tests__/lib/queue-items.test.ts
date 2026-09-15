@@ -207,3 +207,56 @@ describe('surfaceTappedItem', () => {
     expect(surfaceTappedItem(items, null)).toEqual(items);
   });
 });
+
+// Since TAC-394 a guest can hold two pending drafts, so a draft push has to be
+// matched on the draft it names, not on the guest. Neither of Sam's cards starts
+// on top, so a matcher that matches nothing can't pass. (TAC-403.)
+describe('surfaceTappedItem — a draft push names one of the guest’s two drafts', () => {
+  const OTHER_ID = '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e';
+  const SAM_A_ID = '33c6f1e3-4b5a-4c7d-8e9f-9a0b1c2d3e4f';
+  const SAM_B_ID = '44d7a2f4-5c6b-4d8e-9fa0-ab1c2d3e4f5a';
+  const items = buildQueueItems(
+    [
+      makeDraft({ messageId: OTHER_ID }),
+      makeDraft({ messageId: SAM_A_ID, guestId: SAM }),
+      makeDraft({ messageId: SAM_B_ID, guestId: SAM }),
+    ],
+    [],
+  );
+  const deckAfter = (target: Parameters<typeof surfaceTappedItem>[1]) =>
+    surfaceTappedItem(items, target).map((item) => item.key);
+
+  it('lifts the second draft when the push names it', () => {
+    expect(deckAfter({ kind: 'draft', guestId: SAM, draftId: SAM_B_ID })).toEqual([
+      SAM_B_ID,
+      OTHER_ID,
+      SAM_A_ID,
+    ]);
+  });
+
+  it('lifts the first draft when the push names that one', () => {
+    expect(deckAfter({ kind: 'draft', guestId: SAM, draftId: SAM_A_ID })).toEqual([
+      SAM_A_ID,
+      OTHER_ID,
+      SAM_B_ID,
+    ]);
+  });
+
+  it('falls back to the guest’s first card only when the push carries no draftId', () => {
+    expect(deckAfter({ kind: 'draft', guestId: SAM })).toEqual([
+      SAM_A_ID,
+      OTHER_ID,
+      SAM_B_ID,
+    ]);
+  });
+
+  it('keeps the natural order when the named draft is not in the queue, rather than lifting the guest’s other card', () => {
+    expect(
+      deckAfter({
+        kind: 'draft',
+        guestId: SAM,
+        draftId: '6ba7b810-9dad-41d1-80b4-00c04fd430c8',
+      }),
+    ).toEqual([OTHER_ID, SAM_A_ID, SAM_B_ID]);
+  });
+});
