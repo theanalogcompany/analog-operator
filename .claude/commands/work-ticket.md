@@ -9,7 +9,7 @@ You are working on Linear ticket $ARGUMENTS for analog-operator. The operator ty
 
 1. **Re-read ticket state.** `Linear:get_issue` for body + status, `Linear:list_comments` for the full comment thread (createdAt order). Cache `botAuthorId` from any prior bot comment, or from your own `save_comment` response on first post.
 
-2. **Compute.** Marker-detection convention: throughout this spec, "body contains `[MARKER]`" means `body.includes('[MARKER]')` — substring match, NOT `startsWith`. Bot comments always begin with the `**[FROM CLAUDE CODE]**` prefix (per CLAUDE.md Comment protocol), so markers never sit at byte 0. Use `includes` uniformly across `[POLLING-STATE]`, `[POLLING-ACK]`, `[POLLING-TIMEOUT]`, `[POLLING-CLOSED]`, `[NEEDS-INPUT]`, `[HUMAN-REVIEW-REQUIRED]`.
+2. **Compute.** Marker-detection convention: throughout this spec, "body contains `[MARKER]`" means `body.includes('[MARKER]')` — substring match, NOT `startsWith`. Bot comments always begin with the `**[FROM CLAUDE CODE]**` prefix (per CLAUDE.md Comment protocol), so markers never sit at byte 0. Use `includes` uniformly across `[POLLING-STATE]`, `[POLLING-ACK]`, `[POLLING-TIMEOUT]`, `[POLLING-CLOSED]`, `[NEEDS-INPUT]`, `[NEEDS-ACTION]`, `[HUMAN-REVIEW-REQUIRED]`.
    - `botComments` — comments where `author.id === botAuthorId`
    - `lastBotComment` — most recent of `botComments` (null if none). **Used for `parentId` threading default and terminal-state detection only.**
    - `lastQuestionComment` — most recent bot comment whose body does NOT contain any of `[POLLING-STATE]`, `[POLLING-ACK]`, `[POLLING-TIMEOUT]`, or `[POLLING-CLOSED]` (null if none). **Used for routing decisions and as the `newReplies` baseline.** Excluding bookkeeping markers ensures phase resumption sees the actual question or plan post, not a `[POLLING-STATE]` writeback.
@@ -24,9 +24,10 @@ You are working on Linear ticket $ARGUMENTS for analog-operator. The operator ty
 | Condition | Action |
 |---|---|
 | `lastBotComment` body contains `[HUMAN-REVIEW-REQUIRED]` | Exit. No wakeup. |
+| `lastBotComment` body contains `[NEEDS-ACTION]` | Exit. No wakeup. Blocked on Jaipal executing something. |
 | `lastBotComment` body contains `[POLLING-TIMEOUT]` | Exit. No wakeup. |
 | `lastBotComment` body contains `[POLLING-CLOSED]` | Exit. No wakeup. Operator-driven wind-down. |
-| `lastBotComment` body contains a PR link (Phase 5 step 22 marker) | Exit. No wakeup. Manual merge gate. |
+| `lastBotComment` body contains a PR link (Phase 5 step 26 marker) | Exit. No wakeup. Manual merge gate. |
 | `botComments.length === 0` | Fresh run. Run Phase 0 → Phase 2. Post plan or `[NEEDS-INPUT]` or `[HUMAN-REVIEW-REQUIRED]`. If polling-eligible: write `[POLLING-STATE]` (iteration=1), ScheduleWakeup(60s), exit. If `[HUMAN-REVIEW-REQUIRED]`: exit, no wakeup. |
 | `lastQuestionComment` exists, `newReplies.length === 0`, `pollingState.iteration < 26` | Run Phase 0 (re-verify scope). If still safe: increment iteration, update `[POLLING-STATE]` in place, ScheduleWakeup(nextInterval per backoff), exit. |
 | `lastQuestionComment` exists, `newReplies.length === 0`, `pollingState.iteration >= 26` | Post `[POLLING-TIMEOUT]`. Exit. No wakeup. |
@@ -52,54 +53,79 @@ When the 3-way classification is **Proceed**, route by `lastQuestionComment`:
 - **`[NEEDS-INPUT]` AND `branchExists === false`** → Phase 2 question answered. Re-run Phase 1 audit (cheap, read-only) integrating the answer, re-post plan, return to polling.
 - **`[NEEDS-INPUT]` AND `branchExists === true`** → Phase 3 question answered. Resume build by reading `git status` + `git diff` on the branch to identify what's done vs what's left, then continue from there.
 
+On resuming from a ruling, remove the answered item from the ticket body's `## Open questions` block. If that empties the block, move the ticket from Needs Ruling to Todo and remove the `Needs Decision` label before continuing. This is the only circumstance in which you move a ticket to Todo, and only because a ruling is what cleared it.
+
 # Phase 0 — Verify scope (runs every invocation)
 1. `Linear:get_issue` for the ticket. Re-read body + status — surfaces mid-flow edits (e.g., scope changes, "actually this is high-stakes now").
-2. Re-read the relevant sections of CLAUDE.md — Workflow rules, Code conventions, Common gotchas. Cite which sections you consulted on the FIRST invocation; subsequent wakeup invocations may skip the citation to save context.
-3. Check the "Notes for Claude Code" block in the ticket body. If high-stakes (auth — Supabase session, JWT handling, deep link callbacks; any API call that sends a message via the analog-guest API — operator approve/edit/skip/undo, which reaches Sendblue downstream; writes to Expo SecureStore; push notification entitlements or APNs configuration), STOP. Post a `[HUMAN-REVIEW-REQUIRED]` Linear comment summarizing what you'd be touching and what the risks are. Exit immediately. No ScheduleWakeup.
+2. **Open-questions gate.** If the ticket body's `## Open questions` section has any content, this ticket is not buildable. If its status is Todo, move it to Needs Ruling, add the `Needs Decision` label, post a short comment naming the unanswered items, and exit with no ScheduleWakeup. Do not plan. Do not branch. A question in the body outranks a status that says otherwise.
+3. Re-read the relevant sections of CLAUDE.md — Workflow rules, Code conventions, Common gotchas. Cite which sections you consulted on the FIRST invocation; subsequent wakeup invocations may skip the citation to save context.
+4. Check the "Notes for Claude Code" block in the ticket body. If high-stakes (auth — Supabase session, JWT handling, deep link callbacks; any API call that sends a message via the analog-guest API — operator approve/edit/skip/undo, which reaches Sendblue downstream; writes to Expo SecureStore; push notification entitlements or APNs configuration), STOP. Post a `[HUMAN-REVIEW-REQUIRED]` Linear comment summarizing what you'd be touching and what the risks are. Set status to Needs Ruling with the `Needs Decision` label. Exit immediately. No ScheduleWakeup.
 
 # Phase 1 — Audit (read-only) — runs only on fresh start or post-`[NEEDS-INPUT]` Phase 2 resumption
-4. Use the Explore subagent to map the affected surface area. Read at least one existing file the new code will sit next to (per the audit-first rule). Read migrations touching relevant tables. Read existing tests for modules being modified.
-5. Identify existing utilities to reuse — don't reinvent. Check `lib/`, `components/`, `hooks/` for patterns that match. The directory list will grow as the app is scaffolded; until it does, this step may be near-empty. Run grep for any new function name you'd add to confirm it doesn't already exist.
-5a. **Cross-repo audit.** If the ticket has a `## Contract` section in its description, OR references a sibling ticket in `analog-guest`, fetch and read the sibling ticket (`Linear:get_issue` against the sibling ID) AND the Contract section before writing the plan. The plan in Phase 2 MUST cite the Contract verbatim where it touches contract surface — endpoint path, request shape, response shape, env var names and formats. If the plan needs to deviate from the Contract for codebase-convention reasons, that's a Phase 2 open question, not a Phase 3 silent fix. See CLAUDE.md "Cross-repo contracts" for the broader rules.
+5. Use the Explore subagent to map the affected surface area. Read at least one existing file the new code will sit next to (per the audit-first rule). Read migrations touching relevant tables. Read existing tests for modules being modified.
+6. Identify existing utilities to reuse — don't reinvent. Check `lib/`, `components/`, `hooks/` for patterns that match. The directory list will grow as the app is scaffolded; until it does, this step may be near-empty. Run grep for any new function name you'd add to confirm it doesn't already exist.
+7. **Cross-repo audit.** If the ticket has a `## Contract` section in its description, OR references a sibling ticket in `analog-guest`, fetch and read the sibling ticket (`Linear:get_issue` against the sibling ID) AND the Contract section before writing the plan. The plan in Phase 2 MUST cite the Contract verbatim where it touches contract surface — endpoint path, request shape, response shape, env var names and formats. If the plan needs to deviate from the Contract for codebase-convention reasons, that's a Phase 2 open question, not a Phase 3 silent fix. See CLAUDE.md "Cross-repo contracts" for the broader rules.
 
 # Phase 2 — Plan
-6. Output a written plan covering: scope, file paths to touch, function decomposition, sequence of operations, existing patterns being reused, edge cases, what you intentionally chose NOT to do, open questions.
-7. If the ticket's Testing section is blank or partial, propose automated coverage (unit tests, E2E, API smoke) as part of the plan. Match the categorization rules in the qa-runner subagent.
-8. If the plan has open questions:
-   - Post a `[NEEDS-INPUT]` Linear comment with questions numbered, threaded via `parentId = lastBotComment.id` if a prior bot comment exists.
-   - Set ticket status to "Awaiting Input."
-   - Write a `[POLLING-STATE]` comment (iteration=1), ScheduleWakeup(60s), exit.
-9. If the plan is clear:
-   - Post the plan as a Linear comment (no tag prefix), threaded via `parentId` if a prior bot comment exists.
-   - Write a `[POLLING-STATE]` comment (iteration=1), ScheduleWakeup(60s), exit.
+8. Output a written plan covering: scope, file paths to touch, function decomposition, sequence of operations, existing patterns being reused, edge cases, what you intentionally chose NOT to do, open questions.
+9. If the ticket's Testing section is blank or partial, propose automated coverage (unit tests, E2E, API smoke) as part of the plan. Match the categorization rules in the qa-runner subagent.
+10. If the ticket's `## Gate` section names no QA route, propose one in the plan — `QA: Script` if the gate is provable by a test or query, `QA: Device` if it needs Jaipal on a real device or at the venue. If it is currently device-only, say what would make it script-provable. Operator tickets skew device-heavy; say so plainly rather than proposing a script route that cannot exist.
+11. If the plan has open questions:
+    - Post a `[NEEDS-INPUT]` Linear comment with questions numbered and options stated, threaded via `parentId = lastBotComment.id` if a prior bot comment exists. State the options; do not recommend one.
+    - Add the same numbered questions to the ticket body's `## Open questions` block.
+    - Set ticket status to **Needs Ruling** and add the `Needs Decision` label.
+    - Write a `[POLLING-STATE]` comment (iteration=1), ScheduleWakeup(60s), exit.
+12. If the plan is clear:
+    - Post the plan as a Linear comment (no tag prefix), threaded via `parentId` if a prior bot comment exists.
+    - Write a `[POLLING-STATE]` comment (iteration=1), ScheduleWakeup(60s), exit.
 
 The implicit question on the plan post is "does this plan look right?" Advance to Phase 3 only on a substantive approval reply ("build", "approved, proceed", or equivalent). A reply with revisions counts as substantive — integrate, re-post the plan, return to polling.
 
+# Standing rulings
+
+These are pre-authorized. Decide and proceed without raising a question, and name the ruling in your comment so a pre-authorized decision is distinguishable from a silent one.
+
+- **SR-1 Contrast and accessibility figures.** WCAG arithmetic, not taste.
+- **SR-2 Copy that is factually wrong about system behaviour.** Correct it. Does not extend to copy in the agent's voice.
+- **SR-3 Test quality.** Mutation verification, real gate vs mock, assertion targets.
+
+Everything else is Jaipal's. In particular: anything in the agent's voice a guest can read, anything that changes what auto-sends or when, and anything where the answer is taste rather than fact. Note that SR-2 does not cover operator-app copy describing what a send will do — that is one edit away from the guest-facing surface and stays with Jaipal.
+
 # Phase 3 — Build (only after explicit substantive approval)
-10. **Sync local `main` before branching.** Skip if the branch already exists (resuming a build). Otherwise: `git checkout main && git fetch origin && git pull origin main --ff-only`. If the `--ff-only` pull fails — local `main` has diverged from `origin/main` — STOP. Post a `[HUMAN-REVIEW-REQUIRED]` Linear comment surfacing the divergence (include `git log --oneline HEAD..origin/main` and `git log --oneline origin/main..HEAD` so both directions are visible), then exit immediately. Do NOT auto-rebase, reset, or otherwise resolve — the divergence is a bug worth flagging. (Branching from stale local `main` is what produced the TAC-37 conflict storm.)
-11. Create the branch if not already present: `jaipal/TAC-XXX-short-description`.
-12. Implement the plan. Match existing patterns. `@/*` alias for imports. Errors as values: return `{ ok: true, data }` or `{ ok: false, error }`. Throw only at outer boundaries (top-level effects, event handlers). Zod at boundaries. No `any`. No new top-level directories without asking first.
-13. If a question surfaces mid-build that wasn't in the plan, post `[NEEDS-INPUT]` (threaded), update `[POLLING-STATE]`, ScheduleWakeup(60s), exit. Don't guess.
-14. **CLAUDE.md hygiene check.** Before exiting Build, evaluate whether this change introduces anything that should be in CLAUDE.md per the "Keeping this file current" rule. Specifically check for: new scripts in `package.json`, new migrations (with migration log entry), new library patterns or conventions, gotchas discovered during implementation, new directories, new env vars, new workflow rules, or version bumps to documented dependencies. If yes, update CLAUDE.md in the same commit as the code change. If no, note in the PR description: *"CLAUDE.md update considered: [what you checked, why no update needed]."* If you have not written a "CLAUDE.md update considered: …" line in the PR description by the time Phase 5 step 21 runs, the task is incomplete — go back and add it before opening the PR.
+13. **Sync local `main` before branching.** Skip if the branch already exists (resuming a build). Otherwise: `git checkout main && git fetch origin && git pull origin main --ff-only`. If the `--ff-only` pull fails — local `main` has diverged from `origin/main` — STOP. Post a `[HUMAN-REVIEW-REQUIRED]` Linear comment surfacing the divergence (include `git log --oneline HEAD..origin/main` and `git log --oneline origin/main..HEAD` so both directions are visible), set status to Needs Ruling with the `Needs Decision` label, then exit immediately. Do NOT auto-rebase, reset, or otherwise resolve — the divergence is a bug worth flagging. (Branching from stale local `main` is what produced the TAC-37 conflict storm.)
+14. Create the branch if not already present: `jaipal/TAC-XXX-short-description`.
+15. Implement the plan. Match existing patterns. `@/*` alias for imports. Errors as values: return `{ ok: true, data }` or `{ ok: false, error }`. Throw only at outer boundaries (top-level effects, event handlers). Zod at boundaries. No `any`. No new top-level directories without asking first.
+16. If a question surfaces mid-build that wasn't in the plan, post `[NEEDS-INPUT]` (threaded), add it to `## Open questions`, set status to Needs Ruling with the `Needs Decision` label, update `[POLLING-STATE]`, ScheduleWakeup(60s), exit. Don't guess. If the question blocks only one item of a multi-item ticket, ship the unblocked items and split the blocked item into its own ticket in Needs Ruling rather than stalling the whole ticket.
+17. **If something requires Jaipal to execute it** — a production migration, an env var, an Expo or APNs console change, a build or submit step, anything on a physical device — post `[NEEDS-ACTION]`, set status to Needs Ruling with the `Needs Action` label, and exit with no ScheduleWakeup. The comment must contain, and nothing may substitute for:
+    1. The exact command or SQL in a code block, runnable as-is. No placeholders, no "replace `<table>` with".
+    2. Where it runs — which database, which environment, which shell, which device.
+    3. The rollback in its own code block, runnable as-is. If you cannot write one, say so explicitly rather than omitting it.
+    4. One line: what should be true afterward, checkable in one query or one glance.
+
+    When Jaipal confirms it ran, verify against the live system — live schema inspection, a real API response, the actual build manifest — not against the migration file and not against his confirmation.
+18. **If you find a defect outside this ticket's scope**, post `[FINDING]` describing it. Do not file a ticket, do not fix it, do not widen scope. Maximum three per ticket; list any remainder as one-liners under a "not detailed" heading.
+19. **CLAUDE.md hygiene check.** Before exiting Build, evaluate whether this change introduces anything that should be in CLAUDE.md per the "Keeping this file current" rule. Specifically check for: new scripts in `package.json`, new migrations (with migration log entry), new library patterns or conventions, gotchas discovered during implementation, new directories, new env vars, new workflow rules, or version bumps to documented dependencies. If yes, update CLAUDE.md in the same commit as the code change. If no, note in the PR description: *"CLAUDE.md update considered: [what you checked, why no update needed]."* If you have not written a "CLAUDE.md update considered: …" line in the PR description by the time Phase 5 step 25 runs, the task is incomplete — go back and add it before opening the PR.
 
 # Phase 4 — Verify
-15. `npx tsc --noEmit` — must pass.
-16. `npm run lint` — must pass.
-17. Test gate (conditional on `package.json` state):
+20. `npx tsc --noEmit` — must pass.
+21. `npm run lint` — must pass.
+22. Test gate (conditional on `package.json` state):
     - If `package.json` does not exist, OR `package.json` exists but has no `"test"` script under `scripts`: emit an info-level note (`tests: not yet configured — jest-expo wired during TAC-112 Phase 1 scaffold`) and continue. Non-blocker.
     - If `package.json` has a `"test"` script: run `npm test`. All tests must pass. Report count delta vs main. Any failure is a blocker per the existing rules.
-18. If the diff touches any screen under `app/**` or any component under `components/**`, invoke the `qa-runner` subagent.
-19. Invoke the `code-reviewer` subagent on the diff. Address BLOCKER and MAJOR findings; explain skips on MINOR.
+23. If the diff touches any screen under `app/**` or any component under `components/**`, invoke the `qa-runner` subagent.
+24. Invoke the `code-reviewer` subagent on the diff. Address BLOCKER and MAJOR findings; explain skips on MINOR.
 
 # Phase 5 — Ship
-20. Commit. Subject: `TAC-XXX: <imperative lowercase subject>`. Body explains why if non-obvious.
-21. `gh pr create`. Title matches commit subject. Body summarizes changes + test count delta + any plan deviations + CLAUDE.md note (per Phase 3 step 14) + anything you'd push back on.
-22. Post a Linear comment with the PR link (threaded via `parentId`). Move ticket status to "Ready for QA."
-23. Exit. No ScheduleWakeup. Manual merge gate — operator runs `gh pr merge --squash --delete-branch` after reviewing the PR on GitHub.
+25. Commit. Subject: `TAC-XXX: <imperative lowercase subject>`. Body explains why if non-obvious.
+26. `gh pr create`. Title matches commit subject. Body summarizes changes + test count delta + any plan deviations + CLAUDE.md note (per Phase 3 step 19) + anything you'd push back on.
+27. Post a Linear comment with the PR link (threaded via `parentId`). Apply the QA route label (`QA: Script` or `QA: Device`) if it is not already set. **Do not set the status by hand.** Opening the PR moves the ticket to In Review automatically; merging moves it to Ready For QA automatically. Setting Ready For QA at PR-open time would describe unmerged code as awaiting its gate.
+28. Exit. No ScheduleWakeup. Manual merge gate — operator runs `gh pr merge --squash --delete-branch` after reviewing the PR on GitHub.
 
 # Polling protocol
 
-After posting any comment that requires a human response, ScheduleWakeup the next invocation rather than exiting permanently. Exceptions that exit immediately with no wakeup: `[HUMAN-REVIEW-REQUIRED]`, `[POLLING-CLOSED]`, `[POLLING-TIMEOUT]`, and PR-link comments at Phase 5.
+After posting any comment that requires a human response, ScheduleWakeup the next invocation rather than exiting permanently. Exceptions that exit immediately with no wakeup: `[HUMAN-REVIEW-REQUIRED]`, `[NEEDS-ACTION]`, `[POLLING-CLOSED]`, `[POLLING-TIMEOUT]`, and PR-link comments at Phase 5.
+
+`[NEEDS-ACTION]` does not poll. The blocking step is Jaipal at a laptop or holding a device, not answering a question from his phone — that is rarely a two-hour-window event, and polling for it burns iterations on a ticket that cannot move.
 
 ## Backoff
 
@@ -107,7 +133,7 @@ Iteration intervals (seconds): 60, 120, 240, 300, 300, 300, ... cap at 300.
 
 `TIMEOUT_LIMIT = 26` iterations, ≈ 2 hours cumulative (60 + 120 + 240 + 23 × 300 ≈ 7320s).
 
-When iteration reaches `TIMEOUT_LIMIT`, post `[POLLING-TIMEOUT]` and exit.
+When iteration reaches `TIMEOUT_LIMIT`, post `[POLLING-TIMEOUT]` and exit. Leave the ticket in Needs Ruling — it is still blocked on Jaipal, and the next ruling pass is how it gets unblocked.
 
 ## `[POLLING-STATE]` comment (single, edited in place)
 
@@ -173,10 +199,13 @@ Default: every bot comment posts with `parentId = lastBotComment.id` (or omitted
 - Plan gate (Phase 2 → 3) requires explicit substantive approval, delivered as a Linear reply caught by the polling loop. Do not advance on silence or on a non-substantive reply (chit-chat, holding-pattern). The substantive-answer judgment IS the gate.
 - The operator types `/work-ticket TAC-XXX` exactly once. Never instruct them to type `/loop`. Subsequent invocations come from the harness re-firing on ScheduleWakeup.
 - ScheduleWakeup is the only polling primitive — no `Bash sleep`, no until-loops chaining short sleeps. The harness blocks those.
-- No auto-merge (Phase 5 step 23). Manual merge gate stays manual; no wakeup after the PR-link comment.
+- No auto-merge (Phase 5 step 28). Manual merge gate stays manual; no wakeup after the PR-link comment.
+- **Build only from Todo.** A ticket with anything under `## Open questions` is not buildable regardless of what its status says.
+- **Never move a ticket to Todo**, except when a ruling has just cleared the last open question during Phase resumption. Promoting a ticket on your own judgment defeats the process.
+- **Never run a production migration.** Write the SQL and hand it over via `[NEEDS-ACTION]`.
 - No loyalty-program language anywhere — points, rewards, tier, earn, badges, progress bars are forbidden. Guests are recognized, not enrolled.
 - High-stakes uncertainty → `[HUMAN-REVIEW-REQUIRED]`, never `[NEEDS-INPUT]`. Exits immediately, no wakeup.
 - Wind-down is operator-driven. The agent never decides to wind down on its own — the substantive reply must indicate stopping. The 3-way classification (Proceed / Modify / Wind-down) is the only path to `[POLLING-CLOSED]`.
-- The agent never auto-closes the ticket. Status is set automatically only at Phase 5 step 22 (PR ship → "Ready for QA"). Wind-down, timeout, and human-review exits leave status untouched — operators close manually. The permission hook enforces this.
+- The agent never auto-closes the ticket. In Review and Ready For QA are set by Linear's PR automations, not by you. Wind-down, timeout, and human-review exits leave the status where it is. The permission hook enforces this.
 - CLAUDE.md hygiene is mandatory in every Build phase. Skipping = drift, drift = future pain.
-- **Cross-repo tickets cannot move to Done on unit-test pass alone.** Unit tests prove each side is internally consistent with its own assumption of the contract; they do not prove the assumptions match. Manual end-to-end UAT confirming the cross-repo behavior is mandatory before the operator marks the ticket Done — and that UAT is NOT deferred to the sibling ticket. The PR opened at Phase 5 step 21 must call out in its description that cross-repo UAT is pending and link the sibling ticket. See CLAUDE.md "Cross-repo contracts."
+- **Cross-repo tickets cannot move to Done on unit-test pass alone.** Unit tests prove each side is internally consistent with its own assumption of the contract; they do not prove the assumptions match. Manual end-to-end UAT confirming the cross-repo behavior is mandatory before the operator marks the ticket Done — and that UAT is NOT deferred to the sibling ticket. The PR opened at Phase 5 step 26 must call out in its description that cross-repo UAT is pending and link the sibling ticket. See CLAUDE.md "Cross-repo contracts."
