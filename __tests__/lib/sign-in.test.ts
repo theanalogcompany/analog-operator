@@ -78,6 +78,33 @@ describe('verifyPhoneOtp', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.kind).toBe('invalid_code');
   });
+
+  // The verify screen clears the field only on `invalid_code`, so this is the
+  // line between "retype it" and "your code was fine, try again". (TAC-399.)
+  it.each([
+    [403, 'Token has expired or is invalid', 'invalid_code'],
+    [0, 'Network request failed', 'network'],
+    [429, 'Too many requests', 'rate_limited'],
+    [500, 'Internal server error', 'unknown'],
+  ])('maps a %s verify failure to its kind', async (status, message, kind) => {
+    verifyOtp.mockResolvedValue({
+      data: { session: null },
+      error: { status, message },
+    });
+    const r = await verifyPhoneOtp('+15551234567', '123456');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe(kind);
+  });
+
+  it('gives a wrong code a message that is not a connection failure', async () => {
+    verifyOtp.mockResolvedValue({
+      data: { session: null },
+      error: { status: 403, message: 'Token has expired or is invalid' },
+    });
+    const r = await verifyPhoneOtp('+15551234567', '123456');
+    if (r.ok) throw new Error('expected a failure');
+    expect(r.error.message).toBe("Code didn't match. Try again or resend.");
+  });
 });
 
 describe('sendMagicLink', () => {
