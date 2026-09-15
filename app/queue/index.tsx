@@ -40,7 +40,9 @@ import {
 } from '@/lib/notifications/tap-handler';
 import {
   buildQueueItems,
+  draftItem,
   headsUpItemKey,
+  matchesTapTarget,
   surfaceTappedItem,
 } from '@/lib/queue-items';
 import { useQueueContext } from '@/lib/queue-context';
@@ -166,8 +168,12 @@ export default function QueueScreen() {
     return () => sub.remove();
   }, []);
 
+  // Spends the tap once its card is dispatched, by the same rule that lifted the
+  // card. Matching on guest here would let dispatching a guest's other draft
+  // spend a tap that names this one, and the tapped card would never rise when
+  // it loads. (TAC-403.)
   const clearSurfaceForDraft = (draft: PendingDraft): void => {
-    if (surfacedTarget?.kind === 'draft' && surfacedTarget.guestId === draft.guestId) {
+    if (surfacedTarget && matchesTapTarget(draftItem(draft), surfacedTarget)) {
       setSurfacedTarget(null);
     }
   };

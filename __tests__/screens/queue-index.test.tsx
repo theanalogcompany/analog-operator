@@ -176,12 +176,16 @@ const metrics = {
   insets: { top: 62, left: 0, right: 0, bottom: 34 },
 };
 
-function renderScreen() {
-  return render(
+function screenTree() {
+  return (
     <SafeAreaProvider initialMetrics={metrics}>
       <QueueScreen />
-    </SafeAreaProvider>,
+    </SafeAreaProvider>
   );
+}
+
+function renderScreen() {
+  return render(screenTree());
 }
 
 const draftWithTone = (
@@ -421,33 +425,80 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
     ]);
   });
 
-  it('restores natural FIFO order after the surfaced card is approved', () => {
+  // The same screen is re-rendered, never mounted a second time: a second mount
+  // finds the pending tap already drained, so it starts with nothing surfaced
+  // whether or not the approve spent the tap. The guest's later card is what an
+  // unspent tap would wrongly lift, so it is what makes this test able to fail.
+  // (TAC-403.)
+  it('restores natural FIFO order after the surfaced card is approved', async () => {
     mockQueue.drafts = [
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       draftFor(TARGET_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
     setPendingTap({ kind: 'draft', guestId: TARGET_GUEST_ID });
-    renderScreen();
+    const { rerender } = renderScreen();
     expect(stackDrafts()[0].guestId).toBe(TARGET_GUEST_ID);
 
-    // Simulate the operator approving the surfaced card. The screen calls
-    // optimisticallyRemove (here a no-op mock — we control drafts directly)
-    // and clears surfacedGuestId. We assert by feeding new drafts and
-    // re-rendering: natural FIFO order should be honored.
-    act(() => {
+    await act(async () => {
       lastCardStackProps!.onApprove(
         draftFor(TARGET_GUEST_ID, '22a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
       );
     });
 
-    // Reflect the optimistic removal in the mock queue.
+    // The approved card is gone (the mock queue doesn't remove it, so the test
+    // does), and the same guest has a later card behind another guest's.
     mockQueue.drafts = [
       draftFor(OTHER_GUEST_ID, '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
+      draftFor(TARGET_GUEST_ID, '33a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d'),
     ];
-    renderScreen();
-    expect(stackDrafts().map((d) => d.guestId)).toEqual([
-      OTHER_GUEST_ID,
+    rerender(screenTree());
+    expect(stackDrafts().map((d) => d.messageId)).toEqual([
+      '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      '33a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     ]);
+  });
+
+  // Since TAC-394 a guest can hold two pending drafts, and the push names one.
+  // Approving the guest's OTHER card must not spend a tap that names this one,
+  // or the card the operator tapped never rises when it loads. (TAC-403.)
+  it('keeps a tap for a guest’s second draft alive when their first draft is approved', async () => {
+    const FIRST = '44a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
+    const SECOND = '55a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
+    const OTHER = '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
+    mockQueue.drafts = [draftFor(TARGET_GUEST_ID, FIRST), draftFor(OTHER_GUEST_ID, OTHER)];
+    setPendingTap({ kind: 'draft', guestId: TARGET_GUEST_ID, draftId: SECOND });
+    const { rerender } = renderScreen();
+    // The named draft hasn't loaded yet, so the deck keeps its natural order.
+    expect(stackDrafts().map((d) => d.messageId)).toEqual([FIRST, OTHER]);
+
+    await act(async () => {
+      lastCardStackProps!.onApprove(draftFor(TARGET_GUEST_ID, FIRST));
+    });
+
+    mockQueue.drafts = [draftFor(OTHER_GUEST_ID, OTHER), draftFor(TARGET_GUEST_ID, SECOND)];
+    rerender(screenTree());
+    expect(stackDrafts().map((d) => d.messageId)).toEqual([SECOND, OTHER]);
+  });
+
+  // Every real draft push carries a draftId, so a tap has to be spent on its own
+  // card by draftId as well, not only through the guest fallback the FIFO test
+  // above uses. If the approved card comes back (the send failed, or it was
+  // undone), it takes its natural place. (TAC-403.)
+  it('spends a tap that names a draft once that draft is approved', async () => {
+    const NAMED = '66a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
+    const OTHER = '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
+    mockQueue.drafts = [draftFor(OTHER_GUEST_ID, OTHER), draftFor(TARGET_GUEST_ID, NAMED)];
+    setPendingTap({ kind: 'draft', guestId: TARGET_GUEST_ID, draftId: NAMED });
+    const { rerender } = renderScreen();
+    expect(stackDrafts().map((d) => d.messageId)).toEqual([NAMED, OTHER]);
+
+    await act(async () => {
+      lastCardStackProps!.onApprove(draftFor(TARGET_GUEST_ID, NAMED));
+    });
+
+    mockQueue.drafts = [draftFor(OTHER_GUEST_ID, OTHER), draftFor(TARGET_GUEST_ID, NAMED)];
+    rerender(screenTree());
+    expect(stackDrafts().map((d) => d.messageId)).toEqual([OTHER, NAMED]);
   });
 });
 

@@ -27,18 +27,21 @@ beforeEach(() => {
 });
 
 describe('parseTapPayload', () => {
-  it('returns guestId for a valid payload', () => {
+  it('returns guestId and draftId for a valid payload', () => {
     expect(
       parseTapPayload({
         guestId: VALID_GUEST_ID,
         draftId: VALID_DRAFT_ID,
         operatorId: VALID_GUEST_ID,
       }),
-    ).toEqual(DRAFT_TAP);
+    ).toStrictEqual({ kind: 'draft', guestId: VALID_GUEST_ID, draftId: VALID_DRAFT_ID });
   });
 
+  // `toStrictEqual`: `toEqual` treats a missing key and an `undefined` one as
+  // equal, so it would pass a parse that sets `draftId: undefined` instead of
+  // leaving the key off. (TAC-403.)
   it('accepts payload with only guestId (draftId + operatorId optional)', () => {
-    expect(parseTapPayload({ guestId: VALID_GUEST_ID })).toEqual(DRAFT_TAP);
+    expect(parseTapPayload({ guestId: VALID_GUEST_ID })).toStrictEqual(DRAFT_TAP);
   });
 
   it('returns null for missing guestId', () => {
@@ -173,10 +176,21 @@ describe('parseTapPayload — an arrival push is a commitment tap (TAC-364)', ()
     });
   });
 
-  it('still routes a draft push by guest', () => {
+  it('still routes a draft push as a draft tap, to the draft it names', () => {
     expect(
       parseTapPayload({ draftId: VALID_DRAFT_ID, guestId: VALID_GUEST_ID }),
-    ).toEqual({ kind: 'draft', guestId: VALID_GUEST_ID });
+    ).toStrictEqual({ kind: 'draft', guestId: VALID_GUEST_ID, draftId: VALID_DRAFT_ID });
+  });
+
+  // Neither Contract payload carries both ids. If one ever does, it is a
+  // commitment tap. The parser keeps `draftId` now, so the order of its checks
+  // is what decides. (TAC-403.)
+  it('routes a push carrying both ids to the commitment, not the draft', () => {
+    expect(parseTapPayload({ ...ARRIVAL_PUSH, draftId: VALID_DRAFT_ID })).toStrictEqual({
+      kind: 'commitment',
+      guestId: VALID_GUEST_ID,
+      commitmentId: COMMITMENT_ID,
+    });
   });
 
   it('drops a push whose commitmentId is malformed rather than treating it as a draft tap', () => {
@@ -195,5 +209,49 @@ describe('parseTapPayload — an arrival push is a commitment tap (TAC-364)', ()
       guestId: VALID_GUEST_ID,
       commitmentId: COMMITMENT_ID,
     });
+  });
+});
+
+// The draft push, shaped as TAC-403's `## Contract` gives it, unchanged since
+// TAC-207: `{ aps: {alert, badge, sound}, draftId, guestId, operatorId }`, where
+// `draftId` is the pending draft's `messages.id`, the queue's `messageId`. Since
+// TAC-394 a guest can hold two pending drafts, so the guest alone no longer
+// names the card and the tap has to keep `draftId`. (TAC-403.)
+describe('parseTapPayload — a draft push names its draft (TAC-403)', () => {
+  const OPERATOR_ID = '9b2e4c1a-7d3f-4e8b-a1c5-6f0d2e3b4a59';
+  const DRAFT_PUSH = {
+    aps: { alert: { title: '...', body: '...' }, badge: 1, sound: 'default' },
+    draftId: VALID_DRAFT_ID,
+    guestId: VALID_GUEST_ID,
+    operatorId: OPERATOR_ID,
+  };
+  const NAMED_DRAFT_TAP = { kind: 'draft', guestId: VALID_GUEST_ID, draftId: VALID_DRAFT_ID };
+
+  it('keeps the draftId the push names', () => {
+    expect(parseTapPayload(DRAFT_PUSH)).toStrictEqual(NAMED_DRAFT_TAP);
+  });
+
+  it('drops a push whose draftId is malformed rather than routing it by guest', () => {
+    expect(parseTapPayload({ ...DRAFT_PUSH, draftId: 'not-a-uuid' })).toBeNull();
+  });
+
+  it('carries the draftId through a cold launch', async () => {
+    getLastNotificationResponseAsyncMock.mockResolvedValueOnce({
+      notification: { request: { content: { data: DRAFT_PUSH } } },
+    });
+    await captureInitialTap();
+    expect(consumePendingTap()).toStrictEqual(NAMED_DRAFT_TAP);
+  });
+
+  it('carries the draftId through a warm launch', () => {
+    let captured: ((r: unknown) => void) | null = null;
+    addNotificationResponseReceivedListenerMock.mockImplementation((cb) => {
+      captured = cb;
+      return { remove: jest.fn() };
+    });
+    wireTapResponseListener();
+    expect(captured).not.toBeNull();
+    captured!({ notification: { request: { content: { data: DRAFT_PUSH } } } });
+    expect(consumePendingTap()).toStrictEqual(NAMED_DRAFT_TAP);
   });
 });
