@@ -178,17 +178,21 @@ Every question leads with a concrete case in plain language: three lines of
 situation, one line of what breaks, then the question with options. No
 identifiers, no file paths, no function names, no schema columns.
 
+The shape and the rules are shared. The example is not: each repo's copy of
+this file uses a case from its own domain, and that is the one line where the
+two copies differ.
+
 ```
-A guest texts "omw can you have my usual ready?" at 6pm.
-The venue closed at 5.
+An operator taps a push notification for a guest who has two
+cards waiting. The app opens the wrong one.
 
-Today: the agent replies "Got it, see you soon" and it
-auto-sends. The guest walks to a locked door.
+Today: it matches by guest, so it opens whichever card is
+first in the queue.
 
-The question: should a reply that confirms an arrival while
-the venue is closed always go to Jaipal's queue first?
-  A — yes, always
-  B — only when it also promises something
+The question: when two cards exist for one guest, which one
+should the tap open?
+  A — the one the notification was about
+  B — the most recent
 ```
 
 State the options. Do not recommend one.
@@ -241,6 +245,8 @@ why not.
 **A ticket marked `[HUMAN-REVIEW-REQUIRED]` never gets a plan from `/work-ticket`, in CI or run by hand, by design.** Phase 0 checks the ticket against the high-stakes list in `work-ticket.md` step 4 on every run, after it applies answers and before any plan. So each time Jaipal answers, the session moves the answered questions out of `## Open questions`, posts `[HUMAN-REVIEW-REQUIRED]` again, and exits. No reply moves the ticket past that point, however many times he answers.
 
 That is the intended behaviour, not a stuck ticket: high-stakes work never starts unattended. **The only route forward is a session Jaipal drives himself without `/work-ticket`**, where he approves the plan and watches the build. Running `/work-ticket` by hand does not get past it; the same check stops a local run the same way.
+
+**What that costs.** A `[HUMAN-REVIEW-REQUIRED]` ticket never gets a plan from `/work-ticket`, in CI or by hand, so the only route is a session Jaipal drives without the command. The agent runtime is on analog-guest's high-stakes list, and most of Gate Two touches the agent runtime: on 2026-09-16, 11 of the 17 open Gate Two tickets were agent-runtime work by their titles. So most of Gate Two is outside the automation entirely. The automation still audits those tickets and applies his answers to their open questions; it never plans or builds them. This is a deliberate trade, ruled 2026-09-16: no go-ahead reply overrides the check.
 
 ## On hitting a question
 
