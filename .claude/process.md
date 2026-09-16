@@ -178,9 +178,8 @@ Every question leads with a concrete case in plain language: three lines of
 situation, one line of what breaks, then the question with options. No
 identifiers, no file paths, no function names, no schema columns.
 
-The shape and the rules are shared. The example is not: each repo's copy of
-this file uses a case from its own domain, and that is the one line where the
-two copies differ.
+The shape and these rules are the same in every repo. The example is not:
+each repo's copy uses a case from its own domain.
 
 ```
 An operator taps a push notification for a guest who has two
@@ -246,7 +245,9 @@ why not.
 
 That is the intended behaviour, not a stuck ticket: high-stakes work never starts unattended. **The only route forward is a session Jaipal drives himself without `/work-ticket`**, where he approves the plan and watches the build. Running `/work-ticket` by hand does not get past it; the same check stops a local run the same way.
 
-**What that costs.** A `[HUMAN-REVIEW-REQUIRED]` ticket never gets a plan from `/work-ticket`, in CI or by hand, so the only route is a session Jaipal drives without the command. The agent runtime is on analog-guest's high-stakes list, and most of Gate Two touches the agent runtime: on 2026-09-16, 11 of the 17 open Gate Two tickets were agent-runtime work by their titles. So most of Gate Two is outside the automation entirely. The automation still audits those tickets and applies his answers to their open questions; it never plans or builds them. This is a deliberate trade, ruled 2026-09-16: no go-ahead reply overrides the check.
+**There is no go-ahead that lets `/work-ticket` continue past the check** (ruled 2026-09-16). Jaipal answering, or approving, or saying "plan it" on such a ticket does not change what the command does.
+
+**What that costs: most of Gate Two is outside the automation entirely.** Most of Gate Two touches the agent runtime, and every one of those tickets is planned and built in a session Jaipal drives himself. The automation still audits them and still records his answers, but it never plans or builds them.
 
 ## On hitting a question
 
