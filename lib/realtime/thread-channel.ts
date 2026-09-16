@@ -12,7 +12,34 @@ import { supabase } from '@/lib/supabase/client';
 // snake_case (`created_at`, `guest_id`); we lift the fields the consumer
 // cares about into our camelCase `ThreadMessage` type before invoking the
 // callbacks. Tolerant Zod: ignore unknown fields so additive server columns
-// (langfuse_trace_id, review_state, etc.) don't crash the channel.
+// (langfuse_trace_id, generation_id, etc.) don't crash the channel.
+//
+// `status` and `review_state` are `.nullable().optional()` ON PURPOSE. Do not
+// tighten them (TAC-411).
+//
+// Both are real columns and postgres_changes sends every column, so in
+// practice neither is absent. `status` is NOT NULL and constrained to
+// `received | draft | pending_review | approved | sending | sent | delivered |
+// failed | rejected` (the column's `'pending'` default is dead — the CHECK
+// constraint excludes it, so no row can hold it). `review_state` is nullable,
+// and NULL on every inbound row.
+//
+// The looseness is not about what the server sends; it is about which way
+// this module fails if that ever stops being true. Required fields would make
+// `parseRow` return null on such a row, `handle` return early, and a pending
+// draft ALREADY ON SCREEN stay there silently — which is the exact defect
+// this ticket exists to kill. Loose lets the row reach `countsAsThreadRow`,
+// fail it, and emit a removal. Failing toward removal is the correct
+// direction: a counting message wrongly dropped reappears on the next fetch,
+// whereas a pending draft wrongly kept reads to the operator as already sent
+// and the guest gets no reply. Same reasoning as `filterByVenue` returning []
+// rather than the unfiltered list on a null selection (CLAUDE.md, Venue
+// scoping).
+//
+// The remaining fields are still required, so the early-return hole survives
+// for them: a row with a malformed `created_at`, or no `venue_id`, is dropped
+// before the condition and removes nothing. That is narrower than the status
+// fields (those two are the ones the condition reads) but it is not closed.
 const MessageRowSchema = z.object({
   id: z.string(),
   venue_id: z.string(),
@@ -20,8 +47,54 @@ const MessageRowSchema = z.object({
   direction: z.string(),
   body: z.string(),
   created_at: z.string(),
+  status: z.string().nullable().optional(),
+  review_state: z.string().nullable().optional(),
 });
 type MessageRow = z.infer<typeof MessageRowSchema>;
+
+/**
+ * The outbound statuses that mean the message reached the guest.
+ *
+ * `sending` counts: Sendblue's callbacks arrive out of order and can leave a
+ * message the guest did receive sitting at `sending` (TAC-395 Contract,
+ * "Which messages count"). Mirrors `DELIVERED_OUTBOUND_STATUSES` in
+ * analog-guest's `lib/agent/group-responses.ts`, which is the server-side
+ * binding of the same list.
+ */
+const DELIVERED_OUTBOUND_STATUSES = ['sending', 'sent', 'delivered'];
+
+/**
+ * Whether a live `messages` row belongs in an open thread.
+ *
+ * Transcribed from TAC-395's `## Contract`, "Which messages count" — a row
+ * counts when BOTH hold:
+ *
+ *   1. `body <> ''`
+ *   2. `direction = 'inbound' OR (review_state IS DISTINCT FROM 'pending'
+ *       AND status IN ('sending', 'sent', 'delivered'))`
+ *
+ * Inbound is decided by `direction` alone: every inbound row has a NULL
+ * `review_state`, so testing `review_state` on all rows would drop every
+ * inbound message. `review_state !== 'pending'` reproduces SQL's
+ * `IS DISTINCT FROM` for both null and undefined.
+ *
+ * Exported and pure so the decision is testable without driving a Realtime
+ * channel — the TAC-312 lesson: when a bug escapes, the layer that was
+ * mocked is the test file you were missing.
+ */
+export function countsAsThreadRow(row: {
+  direction: string;
+  body: string;
+  status?: string | null;
+  review_state?: string | null;
+}): boolean {
+  if (row.body === '') return false;
+  if (row.direction === 'inbound') return true;
+  return (
+    row.review_state !== 'pending' &&
+    DELIVERED_OUTBOUND_STATUSES.includes(row.status ?? '')
+  );
+}
 
 function rowToMessage(row: MessageRow): ThreadMessage | null {
   // Direction must be one of the literal-union values — anything else means
@@ -44,7 +117,8 @@ function parseRow(raw: unknown): MessageRow | null {
 
 export type ThreadChannelEvent =
   | { type: 'message_inserted'; message: ThreadMessage }
-  | { type: 'message_updated'; message: ThreadMessage };
+  | { type: 'message_updated'; message: ThreadMessage }
+  | { type: 'message_removed'; id: string };
 
 export type ThreadChannel = {
   unsubscribe: () => void;
@@ -56,6 +130,10 @@ export type ThreadChannelOptions = {
   accessToken: string;
   onInsert: (message: ThreadMessage) => void;
   onUpdate: (message: ThreadMessage) => void;
+  /** A row that stopped counting (or never counted) leaves the thread by id.
+   *  The server does not filter this channel — see the Realtime section of
+   *  TAC-395's Contract. (TAC-411.) */
+  onRemove: (id: string) => void;
 };
 
 /**
@@ -75,6 +153,7 @@ export function createThreadChannel(opts: ThreadChannelOptions): ThreadChannel {
     const unsub = subscribeThreadFixture((event) => {
       if (event.type === 'message_inserted') opts.onInsert(event.message);
       else if (event.type === 'message_updated') opts.onUpdate(event.message);
+      else if (event.type === 'message_removed') opts.onRemove(event.id);
     });
     return { unsubscribe: unsub };
   }
@@ -99,8 +178,26 @@ export function createThreadChannel(opts: ThreadChannelOptions): ThreadChannel {
     // may have multiple open conversations on the same venue. Only emit if
     // the row matches the open guest.
     if (row.guest_id !== opts.guestId) return;
+
+    // The server does not filter this channel; the app applies the Contract's
+    // condition to every live row (TAC-395 Contract, Realtime). A row that
+    // stops counting — a send that later fails, a body blanked, an approved
+    // reply regenerated back into `pending` — leaves the thread by id rather
+    // than lingering until the screen is reopened. (TAC-411.)
+    if (!countsAsThreadRow(row)) {
+      opts.onRemove(row.id);
+      return;
+    }
+
+    // `rowToMessage` returns null only for a direction outside the literal
+    // union, which cannot be rendered as a bubble. That is also a row that
+    // does not belong in the thread, so it removes rather than being dropped
+    // silently before the decision.
     const message = rowToMessage(row);
-    if (!message) return;
+    if (!message) {
+      opts.onRemove(row.id);
+      return;
+    }
     if (kind === 'INSERT') opts.onInsert(message);
     else opts.onUpdate(message);
   };

@@ -514,6 +514,78 @@ describe('EditScreen', () => {
     });
     expect(screen.getAllByText('live message')).toHaveLength(1);
   });
+
+  // TAC-411. The reported defect: with this screen open, the guest texts
+  // again, the agent regenerates the pending draft in place, and the UPDATE
+  // put it in the thread above the composer looking sent. The channel now
+  // resolves such a row to a removal; this is the screen honouring it without
+  // being reopened.
+  it('drops a bubble when useThreadRealtime fires onRemove', async () => {
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+          direction: 'inbound',
+          body: 'the guest asked something',
+          createdAt: '2026-05-14T16:00:00.000Z',
+        },
+        {
+          id: '33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a',
+          direction: 'outbound',
+          body: 'a reply that later stopped counting',
+          createdAt: '2026-05-14T16:01:00.000Z',
+        },
+      ],
+    });
+    let captured: { onRemove: (id: string) => void } | null = null;
+    (useThreadRealtime as jest.Mock).mockImplementation((opts) => {
+      captured = opts;
+    });
+
+    render(<EditScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('a reply that later stopped counting')).toBeTruthy();
+    });
+
+    act(() => {
+      captured!.onRemove('33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a');
+    });
+
+    expect(screen.queryByText('a reply that later stopped counting')).toBeNull();
+    expect(screen.getByText('the guest asked something')).toBeTruthy();
+  });
+
+  it('leaves the thread alone when onRemove names an id it never held', async () => {
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+          direction: 'inbound',
+          body: 'the guest asked something',
+          createdAt: '2026-05-14T16:00:00.000Z',
+        },
+      ],
+    });
+    let captured: { onRemove: (id: string) => void } | null = null;
+    (useThreadRealtime as jest.Mock).mockImplementation((opts) => {
+      captured = opts;
+    });
+
+    render(<EditScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('the guest asked something')).toBeTruthy();
+    });
+
+    // A pending draft for this guest that was never rendered — including the
+    // guest's OTHER pending card (TAC-394). Nothing to remove, nothing breaks.
+    act(() => {
+      captured!.onRemove('44d7a2f4-5c6b-4d8e-9a0f-1c2d3e4f5a6b');
+    });
+
+    expect(screen.getByText('the guest asked something')).toBeTruthy();
+  });
 });
 
 
@@ -836,4 +908,238 @@ describe('EditScreen: chrome (TAC-388)', () => {
       expect(isInside(thread, pinned)).toBe(false);
     },
   );
+});
+
+// ---------------------------------------------------------------------------
+// TAC-411 — the zero-bubble takeover.
+//
+// TAC-395 made this newly reachable. A guest whose only inbound was media-only
+// carries `body: ''` (analog-guest's webhook inserts `payload.content ?? ''`,
+// and the messages CHECK allows it when media_urls or reaction_type is set),
+// which fails the Contract's condition 1. So both `recentContext` and the
+// thread endpoint come back empty for them, and the thread area sat blank —
+// indistinguishable from a screen that failed to load.
+//
+// Same copy as the Conversations thread, ruled 2026-09-15: the two surfaces
+// answer the same question and must not answer it differently.
+// ---------------------------------------------------------------------------
+describe('EditScreen — zero-bubble thread (TAC-411)', () => {
+  const EMPTY_COPY = 'Nothing has reached this guest yet.';
+
+  it('shows the empty state when recentContext and the thread are both empty', async () => {
+    mockQueue.drafts = [makeDraft({ recentContext: [] })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: [] });
+
+    render(<EditScreen />);
+
+    await waitFor(() => expect(screen.getByText(EMPTY_COPY)).toBeTruthy());
+  });
+
+  it('shows it on a fetch failure too, when there is no recentContext to fall back on', async () => {
+    // The fallback path keeps recentContext; with none, the result is the same
+    // empty thread, and the operator is owed the same explanation.
+    mockQueue.drafts = [makeDraft({ recentContext: [] })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: false,
+      error: { kind: 'NETWORK', message: 'offline' },
+    });
+
+    render(<EditScreen />);
+
+    await waitFor(() => expect(screen.getByText(EMPTY_COPY)).toBeTruthy());
+  });
+
+  it('does NOT show it when the thread has bubbles', async () => {
+    // The default draft carries one recentContext entry.
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+          direction: 'inbound',
+          body: 'is the patio open',
+          createdAt: '2026-05-14T16:00:00.000Z',
+        },
+      ],
+    });
+
+    render(<EditScreen />);
+
+    await waitFor(() => expect(screen.getByText('is the patio open')).toBeTruthy());
+    expect(screen.queryByText(EMPTY_COPY)).toBeNull();
+  });
+
+  it('does NOT show it for an empty-bodied bubble, which still renders', async () => {
+    // Ruling 1 on this ticket: empty-body `recentContext` entries are left
+    // alone and still draw a (blank) bubble. That is a bubble, so the thread
+    // is not empty and the empty state must not claim it is.
+    mockQueue.drafts = [
+      makeDraft({
+        recentContext: [
+          {
+            id: '22b5e0d2-3a4f-4b6c-9d7e-8f9a0b1c2d3e',
+            direction: 'inbound',
+            body: '',
+            createdAt: '2026-05-14T16:00:00.000Z',
+          },
+        ],
+      }),
+    ];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: false,
+      error: { kind: 'NETWORK', message: 'offline' },
+    });
+
+    render(<EditScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('takeover-thread-clip')).toBeTruthy());
+    expect(screen.queryByText(EMPTY_COPY)).toBeNull();
+  });
+
+  it('backs the line, because the takeover sits on a card ground', async () => {
+    // White 32px is large text, so the bar is 3:1 — and on Honey the line
+    // measures 2.62:1 unbacked. The Conversations thread sits on clay and
+    // passes no `backed`; this surface must. (SR-1; see ground-contrast.)
+    mockQueue.drafts = [makeDraft({ recentContext: [] })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: [] });
+
+    render(<EditScreen />);
+
+    await waitFor(() => expect(screen.getByText(EMPTY_COPY)).toBeTruthy());
+    expect(screen.getByTestId('empty-state-backing')).toBeTruthy();
+  });
+
+  it('withholds the claim while the fetch is still out', async () => {
+    // "Nothing has reached this guest yet" is a claim, and before the fetch
+    // answers we do not have it. Without this gate the screen asserts it on
+    // mount and then replaces it with bubbles — a flash of a false statement
+    // about a guest. Never resolving the promise holds the screen in
+    // `kind: 'loading'`.
+    mockQueue.drafts = [makeDraft({ recentContext: [] })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    (getThread as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+    render(<EditScreen />);
+
+    // The screen has mounted — the composer is up — and the thread area is
+    // still empty, but says nothing about why.
+    expect(screen.getByTestId('takeover-thread-clip')).toBeTruthy();
+    expect(screen.queryByText(EMPTY_COPY)).toBeNull();
+  });
+
+  // The decline handoff's `recentContext: []` is a placeholder meaning
+  // "unknown", not the server's answer — and its guest is by construction one
+  // the agent already promised something to. Claiming nothing reached them,
+  // above an apology addressed to them, is the false statement this copy
+  // exists to avoid.
+  describe('the decline handoff\'s fabricated seed', () => {
+    const DECLINE_ID = '77e9c4b6-7e8d-4fa0-9c2b-3e4f5a6b7c8d';
+
+    afterEach(() => {
+      __resetDeclineHandoffForTests();
+    });
+
+    it('makes no claim when the fetch FAILS and the seed is the staged one', async () => {
+      mockQueue.drafts = [];
+      stageDeclineHandoff(
+        makeDraft({ messageId: DECLINE_ID, draftBody: 'sorry about that', recentContext: [] }),
+      );
+      mockRouter.params = { messageId: DECLINE_ID };
+      (getThread as jest.Mock).mockResolvedValue({
+        ok: false,
+        error: { kind: 'NETWORK', message: 'offline' },
+      });
+
+      render(<EditScreen />);
+
+      await waitFor(() => expect(screen.getByDisplayValue('sorry about that')).toBeTruthy());
+      expect(screen.queryByText(EMPTY_COPY)).toBeNull();
+    });
+
+    it('DOES claim when the fetch succeeds and the server says the thread is empty', async () => {
+      // Same staged seed, but now the emptiness is the server's answer rather
+      // than our placeholder, so the claim is supported.
+      mockQueue.drafts = [];
+      stageDeclineHandoff(
+        makeDraft({ messageId: DECLINE_ID, draftBody: 'sorry about that', recentContext: [] }),
+      );
+      mockRouter.params = { messageId: DECLINE_ID };
+      (getThread as jest.Mock).mockResolvedValue({ ok: true, data: [] });
+
+      render(<EditScreen />);
+
+      await waitFor(() => expect(screen.getByText(EMPTY_COPY)).toBeTruthy());
+    });
+  });
+
+  it('claims when a live removal empties the thread', async () => {
+    // Where the two halves of this ticket meet: the channel decides the last
+    // counting message stopped counting, and the screen is left with nothing.
+    // The claim is true here — it just became true.
+    //
+    // `recentContext: []` matters: the default draft carries one entry, and
+    // `reconcileFetchedThread` keeps it alongside the fetched row, so removing
+    // the fetched row would leave the thread non-empty. Caught by this test
+    // failing on the first run.
+    mockQueue.drafts = [makeDraft({ recentContext: [] })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: '33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a',
+          direction: 'outbound',
+          body: 'the only message that counted',
+          createdAt: '2026-05-14T16:01:00.000Z',
+        },
+      ],
+    });
+    let captured: { onRemove: (id: string) => void } | null = null;
+    (useThreadRealtime as jest.Mock).mockImplementation((opts) => {
+      captured = opts;
+    });
+
+    render(<EditScreen />);
+    await waitFor(() =>
+      expect(screen.getByText('the only message that counted')).toBeTruthy(),
+    );
+    expect(screen.queryByText(EMPTY_COPY)).toBeNull();
+
+    act(() => {
+      captured!.onRemove('33c6f1e3-4b5a-4c7d-9d8f-0b1c2d3e4f5a');
+    });
+
+    expect(screen.getByText(EMPTY_COPY)).toBeTruthy();
+  });
+
+  it('shows both empty states at once when the draft is blank too', async () => {
+    // A blank-body draft for a media-only guest hits both. They are different
+    // claims about different things and must not be collapsed into one.
+    mockQueue.drafts = [makeDraft({ recentContext: [], draftBody: '' })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: [] });
+
+    render(<EditScreen />);
+
+    await waitFor(() => expect(screen.getByText(EMPTY_COPY)).toBeTruthy());
+    expect(screen.getByPlaceholderText('Type your answer to send to the guest')).toBeTruthy();
+  });
+
+  it('does not confuse an empty THREAD with an empty DRAFT', async () => {
+    // A blank `draftBody` has its own composer placeholder (TAC-310) and says
+    // nothing about whether the guest has been reached. A draft with a body
+    // and no thread still gets the empty state.
+    mockQueue.drafts = [makeDraft({ recentContext: [], draftBody: 'a real draft' })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: [] });
+
+    render(<EditScreen />);
+
+    await waitFor(() => expect(screen.getByText(EMPTY_COPY)).toBeTruthy());
+    expect(screen.getByDisplayValue('a real draft')).toBeTruthy();
+  });
 });

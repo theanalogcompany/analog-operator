@@ -9,6 +9,8 @@ export type UseThreadRealtimeOptions = {
   guestId: string;
   onInsert: (message: ThreadMessage) => void;
   onUpdate: (message: ThreadMessage) => void;
+  /** A live row that no longer counts leaves the thread by id. (TAC-411.) */
+  onRemove: (id: string) => void;
 };
 
 /**
@@ -21,7 +23,7 @@ export type UseThreadRealtimeOptions = {
 export function useThreadRealtime(opts: UseThreadRealtimeOptions): void {
   const session = useSession();
   const accessToken = session.session?.access_token ?? null;
-  const { venueId, guestId, onInsert, onUpdate } = opts;
+  const { venueId, guestId, onInsert, onUpdate, onRemove } = opts;
 
   useEffect(() => {
     // Empty venueId/guestId means the host screen rendered without a draft
@@ -40,10 +42,11 @@ export function useThreadRealtime(opts: UseThreadRealtimeOptions): void {
       accessToken,
       onInsert,
       onUpdate,
+      onRemove,
     });
 
     return () => {
       channel.unsubscribe();
     };
-  }, [accessToken, venueId, guestId, onInsert, onUpdate]);
+  }, [accessToken, venueId, guestId, onInsert, onUpdate, onRemove]);
 }

@@ -15,10 +15,10 @@ beforeEach(() => {
 });
 
 describe('lib/api/conversations in fixture mode', () => {
-  it('listConversations returns the 14-guest fixture seed', async () => {
+  it('listConversations returns the 15-guest fixture seed', async () => {
     const result = await listConversations();
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.data).toHaveLength(14);
+    if (result.ok) expect(result.data).toHaveLength(15);
   });
 
   it('getGuestThread returns that guest\'s messages', async () => {
@@ -82,6 +82,42 @@ describe('lib/api/conversations HTTP shape', () => {
     expect(init.method).toBe('GET');
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data).toEqual([row]);
+  });
+
+  // TAC-411 / TAC-395 Contract, conversations list: "A guest with no counting
+  // message is still listed, with `lastMessagePreview` set to `""`". This is a
+  // wire claim, so it belongs in this live-mode block — fixture mode
+  // short-circuits before `authedFetch` and cannot observe a payload at all
+  // (CLAUDE.md, cross-repo rule #5 corollary). The payload below is
+  // transcribed from the Contract's own illustrative example.
+  it('parses a conversation whose lastMessagePreview is the empty string', async () => {
+    const row = {
+      guestId: '77777777-7777-4777-8777-777777777777',
+      venueId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      venueSlug: 'mock-sextant-coffee-roasters',
+      venueTimezone: 'America/Los_Angeles',
+      agentName: 'Sana',
+      name: null,
+      phoneFallback: '+15551110055',
+      recognitionState: null,
+      lastMessageAt: '2026-09-15T17:00:04.000Z',
+      lastMessageDirection: 'outbound',
+      lastMessagePreview: '',
+      conversationCount: 1,
+      firstConversationAt: '2026-09-15T17:00:04.000Z',
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ conversations: [row] }), { status: 200 }),
+    );
+    const result = await listConversations();
+    expect(result.ok).toBe(true);
+    // An empty preview must survive the schema rather than failing the whole
+    // list to PARSE — every other guest's row rides on the same response.
+    if (result.ok) {
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].lastMessagePreview).toBe('');
+      expect(result.data[0].lastMessageDirection).toBe('outbound');
+    }
   });
 
   it('getGuestThread GETs /api/operator/guests/:guestId/thread and unwraps { messages }', async () => {

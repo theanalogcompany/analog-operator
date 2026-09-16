@@ -50,6 +50,44 @@ describe('ConversationRow', () => {
     expect(screen.getByText(/Guest —/)).toBeTruthy();
   });
 
+  // TAC-411. An empty preview means no message has reached this guest, so
+  // `lastMessageDirection` came from an unsent draft — naming a speaker would
+  // claim someone said something nobody received.
+  describe('empty preview', () => {
+    const EMPTY = { ...BASE, lastMessagePreview: '' };
+
+    it('renders no speaker and no dash', () => {
+      render(<ConversationRow conversation={EMPTY} onPress={() => {}} banded />);
+      expect(screen.queryByText(/Sana/)).toBeNull();
+      expect(screen.queryByText(/Guest/)).toBeNull();
+      expect(screen.queryByText(/—/)).toBeNull();
+    });
+
+    it('names no speaker for an inbound-direction empty preview either', () => {
+      render(
+        <ConversationRow
+          conversation={{ ...EMPTY, lastMessageDirection: 'inbound' }}
+          onPress={() => {}}
+          banded
+        />,
+      );
+      expect(screen.queryByText(/Guest/)).toBeNull();
+      expect(screen.queryByText(/—/)).toBeNull();
+    });
+
+    it('holds the preview line\'s height so the row keeps its rhythm', () => {
+      render(<ConversationRow conversation={EMPTY} onPress={() => {}} banded />);
+      const spacer = screen.getByTestId('conversation-row-no-preview');
+      expect(spacer.props.style).toMatchObject({ height: 18, marginTop: 6 });
+    });
+
+    it('still renders the name, badge and time', () => {
+      render(<ConversationRow conversation={EMPTY} onPress={() => {}} banded />);
+      expect(screen.getByText('MAYA R.')).toBeTruthy();
+      expect(screen.getByLabelText('Recognition: Returning')).toBeTruthy();
+    });
+  });
+
   it('fires onPress when tapped', () => {
     const onPress = jest.fn();
     render(<ConversationRow conversation={BASE} onPress={onPress} banded />);

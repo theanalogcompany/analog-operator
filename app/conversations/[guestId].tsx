@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GroundScreen } from '@/components/ground/ground-screen';
 import { ThreadBubbleList } from '@/components/thread/thread-bubble-list';
+import { EmptyState } from '@/components/queue/empty-state';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
@@ -50,6 +51,18 @@ function mergeMessage(current: ThreadMessage[], next: ThreadMessage): ThreadMess
     }
   }
   return [next, ...current];
+}
+
+// Drop a message that stopped counting. The channel decides — see
+// `countsAsThreadRow` in lib/realtime/thread-channel.ts — and this only
+// applies the verdict, so a row the operator is looking at leaves without
+// the screen being reopened. Returns `current` untouched when the id isn't
+// present, so React skips the re-render. Copied from app/queue/edit.tsx's
+// function of the same name/behavior. (TAC-411.)
+function removeMessage(current: ThreadMessage[], id: string): ThreadMessage[] {
+  const idx = current.findIndex((m) => m.id === id);
+  if (idx < 0) return current;
+  return [...current.slice(0, idx), ...current.slice(idx + 1)];
 }
 
 // When the fetched thread arrives, merge any Realtime messages that landed
@@ -123,11 +136,19 @@ export default function ConversationThreadScreen() {
     }));
   }, []);
 
+  const handleRemove = useCallback((id: string) => {
+    setThreadState((prev) => ({
+      kind: prev.kind,
+      messages: removeMessage(prev.messages, id),
+    }));
+  }, []);
+
   useThreadRealtime({
     venueId: guest?.venueId ?? '',
     guestId: params.guestId ?? '',
     onInsert: handleInsert,
     onUpdate: handleUpdate,
+    onRemove: handleRemove,
   });
 
   // Falls back to the device timezone when the venue hasn't got one on file
@@ -143,8 +164,20 @@ export default function ConversationThreadScreen() {
   // list already had cached for that guest's last message... must not show
   // a blank screen on fetch failure." This synthetic message never goes
   // through ThreadMessageSchema, so its id doesn't need to be a real UUID.
+  //
+  // An EMPTY preview builds no bubble. It means no message has reached this
+  // guest, so their `lastMessageDirection` comes from an unsent draft and a
+  // bubble here would show the operator a message nobody has received — the
+  // defect this ticket exists to fix, rebuilt on the client. The empty state
+  // below covers the screen instead. (TAC-411; TAC-395 Contract, "What it
+  // may not assume".)
   const effectiveMessages = useMemo(() => {
-    if (threadState.kind === 'error' && threadState.messages.length === 0 && guest) {
+    if (
+      threadState.kind === 'error' &&
+      threadState.messages.length === 0 &&
+      guest &&
+      guest.lastMessagePreview !== ''
+    ) {
       return [
         {
           id: `fallback-${guest.guestId}`,
@@ -158,6 +191,20 @@ export default function ConversationThreadScreen() {
   }, [threadState, guest]);
 
   const items = useMemo(() => computeItems(effectiveMessages, timezone), [effectiveMessages, timezone]);
+
+  // A thread with nothing in it is a real state, not only an error one: after
+  // TAC-395 the server returns `{ "messages": [] }` for a guest whose only
+  // messages are unsent drafts, so success and failure land in the same place
+  // and should read the same. Held back while the fetch is still out, because
+  // "nothing has reached this guest" is a claim and we don't know it yet.
+  //
+  // On `kind: 'error'` we do not know it from this fetch either — the claim
+  // there rests on the conversations list instead: an empty `lastMessagePreview`
+  // means the server found no counting message for this guest when it built
+  // the list, which is the same question the thread endpoint answers. A guest
+  // WITH a preview still gets the cached-bubble fallback above, so the error
+  // branch only reaches here for a guest the list already said was empty.
+  const showEmptyState = threadState.kind !== 'loading' && effectiveMessages.length === 0;
 
   if (!guest) {
     return (
@@ -285,7 +332,11 @@ export default function ConversationThreadScreen() {
           paddingBottom: 10,
         }}
       >
-        <ThreadBubbleList items={items} surface="thread" />
+        {showEmptyState ? (
+          <EmptyState variant="thread" />
+        ) : (
+          <ThreadBubbleList items={items} surface="thread" />
+        )}
       </ScrollView>
 
       {/* No composer. This screen is read-only by design — replying happens in

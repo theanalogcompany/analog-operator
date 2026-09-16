@@ -55,6 +55,15 @@ const mockUseThreadRealtime = useThreadRealtime as jest.Mock;
 
 beforeEach(() => {
   mockRouter.back.mockClear();
+  // Reset here, not at the end of the test that reassigns it: an early
+  // failure there would otherwise leak the wrong guest into the next tests
+  // and make them fail for a reason that has nothing to do with them.
+  mockConversations = {
+    conversations: [GUEST],
+    status: 'ready',
+    error: null,
+    reload: jest.fn(),
+  };
   mockUseThreadRealtime.mockReset();
   mockGetGuestThread.mockReset();
   mockGetGuestThread.mockResolvedValue({
@@ -255,5 +264,162 @@ describe('ConversationThreadScreen', () => {
     // silently dropped by a wholesale overwrite of threadState.
     expect(screen.getByText('Arrived before the fetch resolved')).toBeTruthy();
     expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TAC-411 — a row that stops counting leaves an open thread without the
+// screen being reopened, and an empty preview builds no bubble.
+// ---------------------------------------------------------------------------
+describe('ConversationThreadScreen — live removals (TAC-411)', () => {
+  it('drops a message from the open thread when the channel removes its id', async () => {
+    let captured: UseThreadRealtimeOptions | null = null;
+    mockUseThreadRealtime.mockImplementation((opts: UseThreadRealtimeOptions) => {
+      captured = opts;
+    });
+
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() =>
+      expect(screen.getByText('Done — got you down for two at 7:30.')).toBeTruthy(),
+    );
+
+    // The channel decided this row no longer counts — a late Sendblue ERROR
+    // moved it to `failed`, or it was regenerated back into `pending`.
+    act(() => {
+      captured!.onRemove('2');
+    });
+
+    expect(screen.queryByText('Done — got you down for two at 7:30.')).toBeNull();
+    // The rest of the thread is untouched.
+    expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy();
+  });
+
+  it('ignores a removal for an id the thread never held', async () => {
+    let captured: UseThreadRealtimeOptions | null = null;
+    mockUseThreadRealtime.mockImplementation((opts: UseThreadRealtimeOptions) => {
+      captured = opts;
+    });
+
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy());
+
+    act(() => {
+      captured!.onRemove('a-draft-that-was-never-shown');
+    });
+
+    expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy();
+    expect(screen.getByText('Done — got you down for two at 7:30.')).toBeTruthy();
+  });
+
+  it('never shows a pending draft that arrives while the thread is open', async () => {
+    // The channel applies the Contract's condition, so a pending draft reaches
+    // the screen as a removal, never as an insert. This pins that the screen
+    // does not render one by some other route.
+    let captured: UseThreadRealtimeOptions | null = null;
+    mockUseThreadRealtime.mockImplementation((opts: UseThreadRealtimeOptions) => {
+      captured = opts;
+    });
+
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy());
+
+    act(() => {
+      captured!.onRemove('pending-draft-id');
+    });
+
+    expect(screen.queryByText(/on the house/)).toBeNull();
+  });
+});
+
+describe('ConversationThreadScreen — empty preview (TAC-411)', () => {
+  const EMPTY_PREVIEW_GUEST: ConversationSummary = {
+    ...GUEST,
+    lastMessagePreview: '',
+  };
+
+  it('builds no fallback bubble when the fetch fails and the preview is empty', async () => {
+    mockConversations = {
+      conversations: [EMPTY_PREVIEW_GUEST],
+      status: 'ready',
+      error: null,
+      reload: jest.fn(),
+    };
+    mockGetGuestThread.mockReset();
+    mockGetGuestThread.mockResolvedValue({
+      ok: false,
+      error: { kind: 'NETWORK', message: 'offline' },
+    });
+
+    render(withSafeArea(<ThreadScreen />));
+
+    await waitFor(() =>
+      expect(screen.getByText('Nothing has reached this guest yet.')).toBeTruthy(),
+    );
+    // The bubble the old fallback would have built carried the guest's
+    // direction and an empty body — a message nobody received.
+    expect(screen.queryByText('Done — got you down for two at 7:30.')).toBeNull();
+  });
+
+  it('does NOT back the line, because this surface sits on clay', async () => {
+    // Clay clears 3:1 unbacked, so no pill — the same call the date dividers
+    // make for `surface="thread"`. (SR-1; see ground-contrast.)
+    mockGetGuestThread.mockReset();
+    mockGetGuestThread.mockResolvedValue({ ok: true, data: [] });
+
+    render(withSafeArea(<ThreadScreen />));
+
+    await waitFor(() =>
+      expect(screen.getByText('Nothing has reached this guest yet.')).toBeTruthy(),
+    );
+    expect(screen.queryByTestId('empty-state-backing')).toBeNull();
+  });
+
+  it('shows the same empty state when the fetch SUCCEEDS with no messages', async () => {
+    // After TAC-395 the server returns { "messages": [] } for a guest whose
+    // only messages are unsent drafts, so success and failure land together.
+    mockGetGuestThread.mockReset();
+    mockGetGuestThread.mockResolvedValue({ ok: true, data: [] });
+
+    render(withSafeArea(<ThreadScreen />));
+
+    await waitFor(() =>
+      expect(screen.getByText('Nothing has reached this guest yet.')).toBeTruthy(),
+    );
+  });
+
+  it('withholds the claim while the fetch is still out', async () => {
+    // Same gate as the edit takeover: the empty state is a claim about the
+    // guest, and an unresolved fetch has not established it.
+    mockConversations = {
+      conversations: [EMPTY_PREVIEW_GUEST],
+      status: 'ready',
+      error: null,
+      reload: jest.fn(),
+    };
+    mockGetGuestThread.mockReset();
+    mockGetGuestThread.mockReturnValue(new Promise(() => {}));
+
+    render(withSafeArea(<ThreadScreen />));
+
+    // Header is up, so the screen rendered; the thread area stays silent.
+    expect(screen.getByText('MAYA R.')).toBeTruthy();
+    expect(screen.queryByText('Nothing has reached this guest yet.')).toBeNull();
+  });
+
+  it('still builds the fallback bubble when the preview is NOT empty', async () => {
+    // The design spec's "must not show a blank screen on fetch failure" still
+    // holds for every guest who has a counting message.
+    mockGetGuestThread.mockReset();
+    mockGetGuestThread.mockResolvedValue({
+      ok: false,
+      error: { kind: 'NETWORK', message: 'offline' },
+    });
+
+    render(withSafeArea(<ThreadScreen />));
+
+    await waitFor(() =>
+      expect(screen.getByText('Done — got you down for two at 7:30.')).toBeTruthy(),
+    );
+    expect(screen.queryByText('Nothing has reached this guest yet.')).toBeNull();
   });
 });
