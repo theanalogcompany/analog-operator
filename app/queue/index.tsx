@@ -36,6 +36,7 @@ import { setBadgeCount } from '@/lib/notifications/badge';
 import {
   type TapTarget,
   consumePendingTap,
+  readTapDiagnostic,
   subscribeToTaps,
 } from '@/lib/notifications/tap-handler';
 import {
@@ -105,6 +106,12 @@ export default function QueueScreen() {
   // Scoped to the venue: cards seen at one venue must not inflate another's
   // denominator after a switch. (TAC-382.)
   const progress = useSessionProgress(visibleIds, venue.selectedVenueId);
+
+  // DIAGNOSTIC — TAC-419, build 51 only. REVERT AFTER CONFIRMATION.
+  // Read on every render rather than once on mount: on a cold launch the tap
+  // is parsed before the queue resolves, and this screen re-renders when it
+  // does, so a mount-only read would show the state from before the parse.
+  const tapDiagnostic = readTapDiagnostic();
 
   const top = displayItems[0];
   // The ground encodes what kind of decision the top card is, so the operator
@@ -316,6 +323,31 @@ export default function QueueScreen() {
     // returns and however fast. See `entranceGround`. (TAC-384.)
     <GroundScreen name={groundName} entranceGround="resting">
       <TopNav />
+
+      {/* DIAGNOSTIC — TAC-419, build 51 only. REVERT AFTER CONFIRMATION.
+          The tap payload's fate, on screen, because the alternative is a
+          `console.warn` that needs a Mac with the device attached and
+          Console.app filtered. The same instinct as root-error-boundary
+          rendering its crash text rather than logging it. */}
+      {tapDiagnostic ? (
+        <View
+          style={{
+            marginHorizontal: 16,
+            marginBottom: 8,
+            padding: 10,
+            borderRadius: 8,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+          }}
+        >
+          <Text
+            allowFontScaling={false}
+            selectable
+            style={{ color: '#FFFFFF', fontSize: 11, lineHeight: 15 }}
+          >
+            {`TAC-419 ${tapDiagnostic}`}
+          </Text>
+        </View>
+      ) : null}
 
       {queue.status === 'loading' ? (
         <View className="flex-1 items-center justify-center">
