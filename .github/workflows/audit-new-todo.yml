@@ -74,9 +74,14 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Authorization: $LINEAR_API_KEY" \
             -d "$(jq -nc --arg repo "$REPO_NAME" '{
-              query: "query($repo: String!) { issues(first: 100, filter: { team: { key: { eq: \"TAC\" } }, state: { name: { eq: \"Todo\" } }, labels: { some: { name: { eq: $repo } } } }) { nodes { id identifier description priority labels { nodes { name } } comments { nodes { body } } } } }",
+              query: "query($repo: String!) { issues(first: 100, filter: { team: { key: { eq: \"TAC\" } }, state: { name: { eq: \"Todo\" } }, labels: { some: { name: { eq: $repo } } } }) { nodes { id identifier description priority labels { nodes { name } } comments(first: 250) { nodes { body } } } } }",
               variables: { repo: $repo }
             }')")
+
+          if ! echo "$RESPONSE" | jq -e '.data.issues.nodes' > /dev/null; then
+            echo "::error::Linear query failed: $RESPONSE"
+            exit 1
+          fi
 
           # The repo rule from .claude/process.md. Kept identical in
           # build-ready.yml.

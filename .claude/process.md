@@ -147,10 +147,14 @@ earlier comment where that reading misses it.
 | `[AUDIT]` | Output of `/audit-ticket`, or a run that failed to finish one | Read-only pass. Its presence stops the audit automation picking the ticket up again |
 | `[AUDIT-SKIPPED]` | The audit automation can't tell which repo works the ticket | Add `Needs Decision`. Deliberately not `[AUDIT]`, so the ticket is audited once fixed |
 | `[BUILD-SKIPPED]` | The ticket carries two repo labels, or its Repo: line and labels disagree | Add `Needs Decision`. Never start the build |
+| `[SLACK]` | The Slack sync posted the ticket; edited in place as it syncs | Bookkeeping, not a turn |
+| `[RESUME-CLAIM]` | The build workflow is about to resume the ticket after a ruling | Bookkeeping, not a turn. Two claims on the same ruling and the workflow stops retrying it |
 
 A comment that does **not** carry `[FROM CLAUDE CODE]` is human input. When
 the newest comment on a ticket is human input, the ticket is unblocked and a
-session may resume it.
+session may resume it. **Bookkeeping comments (`[SLACK]`, `[RESUME-CLAIM]`)
+never count as the newest comment.** They record what a workflow did, and
+counting them would bury the reply they were posted around.
 
 **Only a comment that asks something waits for a reply**: one whose marker
 is `[NEEDS-INPUT]`, `[PLAN]`, `[HUMAN-REVIEW-REQUIRED]` or `[NEEDS-ACTION]`,
@@ -209,8 +213,8 @@ edits the ticket by hand.
 **A failure to match is loud, by rule.** When a reply leaves any question
 open, the session posts `[NEEDS-INPUT]` naming each question still open and
 why the reply didn't settle it. `[NEEDS-INPUT]` reaches Slack, where he
-answered. More generally, **a session never exits a ticket carrying `Needs
-Decision` without a comment when the newest comment is his.** A quiet exit
+answered. More generally, **a session never exits a ticket carrying a
+`Blocked On` label without a comment when the newest comment is his.** A quiet exit
 there leaves the ticket looking exactly like one still waiting for him. The
 only silent exit is when the newest comment is already the agent's, which
 already says why the ticket is waiting.
@@ -231,8 +235,9 @@ Stop that thread. Do not guess, do not pick the likelier answer and note the
 assumption, do not widen scope to route around it.
 
 If the question blocks only one item of several, ship the unblocked items and
-split the blocked item into its own ticket, **created in Todo** with the
-question under its `## Open questions`. The audit then moves it to Ready with
+split the blocked item into its own ticket, **created in Todo** with one repo
+label, a Repo: line naming that repo, and the question under its
+`## Open questions`. The audit then moves it to Ready with
 `Needs Decision`, so only the audit ever sets Ready. The parent carries on.
 
 ## Contracts
