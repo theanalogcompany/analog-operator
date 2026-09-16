@@ -8,6 +8,7 @@ import {
   type Ground,
 } from '@/lib/grounds';
 import {
+  display,
   dividerBacking,
   groundText,
   layout,
@@ -299,6 +300,72 @@ describe('the edit takeover date dividers', () => {
  * the edge needs a lighter one. Pinned, so a change to a ground or the fill
  * forces someone to read the figures again.
  */
+/**
+ * The empty thread state, on both surfaces. (TAC-411.)
+ *
+ * `EmptyState variant="thread"` is a single 32px Fraunces line in white,
+ * centred in the thread area. The Conversations thread draws it on clay, which
+ * the block above already clears at 4.5:1 anywhere; the edit takeover draws it
+ * on the card's bucket ground, which is the tight case — white on Honey misses
+ * 4.5:1 below roughly y=288.
+ *
+ * 32px is large text under WCAG 2 (>= 24px regular), so the governing figure
+ * is **3:1**, not 4.5:1 — the same reason the takeover's date dividers needed a
+ * backing at 8.5px and this does not. The line is centred in a flex region
+ * whose extent moves with the header and the composer, so this checks the
+ * whole frame rather than one y: wherever the layout puts it, it holds.
+ */
+describe('the empty thread state', () => {
+  const XS = span(40, W - 40, 20);
+  const YS = span(layout.mockTopInsetPx, H, 120);
+  const backing = parseColor(dividerBacking.color);
+
+  function minTitle(ground: Ground, backed: boolean): number {
+    const a = backed ? backing[3] : 0;
+    let min = Infinity;
+    for (const y of YS) {
+      for (const x of XS) {
+        const [r, g, b] = composite(ground, x, y);
+        const under: RGB = [
+          r * (1 - a) + backing[0] * a,
+          g * (1 - a) + backing[1] * a,
+          b * (1 - a) + backing[2] * a,
+        ];
+        min = Math.min(min, whiteOn(under));
+      }
+    }
+    return min;
+  }
+
+  // The takeover: backed, on every card ground.
+  it.each(CARD_GROUND_NAMES)(
+    '%s keeps the backed empty-thread line at 3:1 anywhere on the screen',
+    (name) => {
+      expect(minTitle(GROUNDS[name], true)).toBeGreaterThanOrEqual(3);
+    },
+  );
+
+  // The Conversations thread: unbacked, on clay. Same rule as the dividers —
+  // clay clears the bar on its own, so it gets no pill.
+  it('clay keeps the line at 3:1 with no backing, which is why that surface has none', () => {
+    expect(minTitle(GROUNDS.resting, false)).toBeGreaterThanOrEqual(3);
+  });
+
+  // Guards the guard. Without the backing the line measures 2.62:1 on Honey,
+  // so if the grounds ever change such that no surface needs it, this says so
+  // rather than the pill staying on with nothing behind it.
+  it('needs the backing: Honey misses 3:1 without it', () => {
+    expect(minTitle(GROUNDS.midThread, false)).toBeLessThan(3);
+  });
+
+  // Guards the reasoning, not just the number: if the line ever stops being
+  // large text, 3:1 is the wrong bar and this block measures the wrong thing.
+  // 24px is WCAG's threshold at regular weight.
+  it('is only allowed 3:1 because the line is large text', () => {
+    expect(display.emptyTitle.size).toBeGreaterThanOrEqual(24);
+  });
+});
+
 describe('the help pill', () => {
   function contrast(a: RGB, b: RGB): number {
     const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);

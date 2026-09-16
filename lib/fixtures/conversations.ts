@@ -36,6 +36,18 @@ interface SeedMessage {
   direction: 'inbound' | 'outbound';
   body: string;
   minsAgo: number;
+  /**
+   * A row that exists but never reached the guest: a pending draft, a skipped
+   * draft, or an approved reply whose send never happened.
+   *
+   * It is deliberately NOT a thread message — `buildRecord` keeps it out of
+   * `messages[]` — but it still drives `lastMessageAt`, `lastMessageDirection`
+   * and the counts, exactly as TAC-395's Contract specifies for the
+   * conversations list (21:55 ruling, option (i)). That is the only way to
+   * seed a guest with `lastMessagePreview: ""`, which cannot otherwise be
+   * expressed: the preview is derived from a message body. (TAC-411.)
+   */
+  unsent?: true;
 }
 
 interface SeedGuest {
@@ -91,7 +103,10 @@ function seedGuests(): SeedGuest[] {
         { direction: 'inbound', body: 'Hi! Is the patio open tonight?', minsAgo: 10 },
         { direction: 'outbound', body: "Yes — patio's open until 9. Want me to hold a corner table?", minsAgo: 6 },
         { direction: 'inbound', body: 'Yes please! Two of us at 7:30 if you can swing it.', minsAgo: 4 },
-        { direction: 'outbound', body: 'Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.', minsAgo: 2 },
+        // Verbatim the pending draftBody at lib/fixtures/queue.ts:135-136 —
+        // seeded here as a sent message before TAC-411. Unsent: it is a draft
+        // awaiting review, so the thread must not show it.
+        { direction: 'outbound', body: 'Done — got you down for two at 7:30. The corner spot by the olive tree. See you tonight.', minsAgo: 2, unsent: true },
       ],
     },
     {
@@ -103,7 +118,12 @@ function seedGuests(): SeedGuest[] {
       firstConversationDaysAgo: 0,
       messages: [
         { direction: 'inbound', body: 'do you guys do gluten free pasta', minsAgo: 20 },
-        { direction: 'outbound', body: 'We do — we keep a gluten-free penne behind the bar and run it through clean water. Just let your server know.', minsAgo: 15 },
+        // Reworded in TAC-411: the previous text was verbatim the pending
+        // draftBody at lib/fixtures/queue.ts:165-166, so the same sentence sat
+        // in the queue composer and in a sent Conversations bubble at once.
+        // Not marked unsent — it is mid-thread and the exchange continues past
+        // it, so removing it would leave the next inbound answering nothing.
+        { direction: 'outbound', body: 'We do keep a gluten-free penne, cooked in its own water. Tell your server when you sit down.', minsAgo: 15 },
         { direction: 'inbound', body: 'amazing, booking for 8', minsAgo: 12 },
         { direction: 'outbound', body: "See you at 8. I'll note the gluten-free penne on the ticket.", minsAgo: 9 },
         { direction: 'inbound', body: 'perfect thank you, see you at 8', minsAgo: 6 },
@@ -135,7 +155,8 @@ function seedGuests(): SeedGuest[] {
         { direction: 'outbound', body: 'so glad — we play with that recipe quarterly, this batch had the flax.', minsAgo: 14395 },
         { direction: 'inbound', body: "Bringing my parents tomorrow — they're only in town one night.", minsAgo: 40 },
         { direction: 'inbound', body: 'Any chance you have the rosemary loaf coming out around 7?', minsAgo: 25 },
-        { direction: 'outbound', body: "We'll time a loaf for 7 — and there'll be a slice of the buckwheat cake for the table on us, since tomorrow's the day. Looking forward to meeting them.", minsAgo: 18 },
+        // Verbatim the pending draftBody at lib/fixtures/queue.ts:202-203.
+        { direction: 'outbound', body: "We'll time a loaf for 7 — and there'll be a slice of the buckwheat cake for the table on us, since tomorrow's the day. Looking forward to meeting them.", minsAgo: 18, unsent: true },
       ],
     },
     {
@@ -252,6 +273,31 @@ function seedGuests(): SeedGuest[] {
         { direction: 'outbound', body: "It's open right now and nobody's booked it. Come by.", minsAgo: 31 },
       ],
     },
+    // The empty-preview case, and the only guest here with NO counting
+    // message (TAC-411). She sent a photo of the pastry case with no text —
+    // an empty body, which fails the Contract's condition 1 — and the agent's
+    // reply to it is still pending review, which fails condition 2. So her
+    // thread is empty, her preview is "", and her row sorts by the unsent
+    // draft's time with `lastMessageDirection: 'outbound'`, exactly the
+    // Contract's "usually outbound" case. Seeded so fixture mode renders the
+    // speakerless row and the empty thread without a backend.
+    {
+      guestId: 'c0ffffff-ffff-4fff-8fff-ffffffffffff',
+      name: 'Iris M.',
+      phoneFallback: '+15551110055',
+      recognitionState: 'new',
+      conversationCount: 1,
+      firstConversationDaysAgo: 0,
+      messages: [
+        { direction: 'inbound', body: '', minsAgo: 9 },
+        {
+          direction: 'outbound',
+          body: 'That’s our cardamom bun, out of the oven at 8 most mornings. Want me to set one aside?',
+          minsAgo: 7,
+          unsent: true,
+        },
+      ],
+    },
     {
       guestId: 'c0eeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
       name: 'Phoebe B.',
@@ -272,14 +318,56 @@ interface ConversationRecord extends ConversationSummary {
   messages: ThreadMessage[];
 }
 
+/**
+ * Mirrors what the server returns per TAC-395's Contract, conversations list.
+ * Two branches, and they are NOT the same rule with a different preview:
+ *
+ * - **A guest with at least one counting message:** `lastMessageAt`,
+ *   `lastMessageDirection` AND `lastMessagePreview` all describe their newest
+ *   COUNTING message. An unsent draft newer than it changes nothing on the
+ *   row — the row does not jump to the draft's time.
+ * - **A guest with none** (only unsent drafts): `lastMessagePreview` is `""`,
+ *   and `lastMessageAt` / `lastMessageDirection` come from their newest
+ *   non-empty message whatever its state — so the row still sorts, and shows
+ *   as active, by the unsent draft's time, with the direction usually
+ *   `outbound` (21:55 ruling, option (i)).
+ *
+ * `messages[]` (the thread) holds only counting messages in both branches.
+ * `conversationCount` and `firstConversationAt` stay hand-seeded here rather
+ * than derived; the Contract's computation rules for them are the server's.
+ * (TAC-411.)
+ */
 function buildRecord(seed: SeedGuest, now: number): ConversationRecord {
-  const messages: ThreadMessage[] = seed.messages.map((m) => ({
+  const at = (m: SeedMessage): string =>
+    new Date(now - m.minsAgo * 60_000).toISOString();
+
+  // Both of the Contract's conditions: an empty body never counts either
+  // (a reaction, or a photo-only text), which is what lets a guest have no
+  // counting message at all despite having texted.
+  const counting = seed.messages.filter((m) => !m.unsent && m.body !== '');
+  const messages: ThreadMessage[] = counting.map((m) => ({
     id: fixtureUuid(),
     direction: m.direction,
     body: m.body,
-    createdAt: new Date(now - m.minsAgo * 60_000).toISOString(),
+    createdAt: at(m),
   }));
-  const last = messages[messages.length - 1];
+
+  // Newest by position: SeedGuest.messages is oldest-first by contract.
+  const nonEmpty = seed.messages.filter((m) => m.body !== '');
+  const newestCounting = counting[counting.length - 1];
+  // `noUncheckedIndexedAccess` is off, so both index reads type as
+  // SeedMessage and the compiler cannot see this. A seed guest with no
+  // non-empty message at all has nothing to date the row from; the server
+  // never lists one (migration 043 filters `body <> ''` before grouping), so
+  // fail loudly at seed time rather than emit a row that cannot exist.
+  const describes = newestCounting ?? nonEmpty[nonEmpty.length - 1];
+  if (!describes) {
+    throw new Error(
+      `Fixture seed guest ${seed.guestId} has no non-empty message; ` +
+        'every guest needs at least one to date and sort their row.',
+    );
+  }
+
   const venue = seed.venue ?? SEXTANT;
   return {
     guestId: seed.guestId,
@@ -290,9 +378,9 @@ function buildRecord(seed: SeedGuest, now: number): ConversationRecord {
     name: seed.name,
     phoneFallback: seed.phoneFallback,
     recognitionState: seed.recognitionState,
-    lastMessageAt: last.createdAt,
-    lastMessageDirection: last.direction,
-    lastMessagePreview: last.body,
+    lastMessageAt: at(describes),
+    lastMessageDirection: describes.direction,
+    lastMessagePreview: newestCounting ? newestCounting.body : '',
     conversationCount: seed.conversationCount,
     firstConversationAt: new Date(
       now - seed.firstConversationDaysAgo * 24 * 60 * 60_000,

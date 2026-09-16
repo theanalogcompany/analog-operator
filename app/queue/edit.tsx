@@ -17,6 +17,7 @@ import { type Edge, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { showToast } from '@/components/auth/toast';
 import { Ground } from '@/components/ground/ground';
 import { GroundScreen } from '@/components/ground/ground-screen';
+import { EmptyState } from '@/components/queue/empty-state';
 import { queueCardDisplayName } from '@/components/queue/queue-card';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
 import { ReviewDetail } from '@/components/queue/review-detail';
@@ -79,6 +80,17 @@ function mergeMessage(
     }
   }
   return [next, ...current];
+}
+
+// Drop a message that stopped counting. The channel decides — see
+// `countsAsThreadRow` in lib/realtime/thread-channel.ts — and this only
+// applies the verdict, so a row the operator is looking at leaves without
+// the screen being reopened. Returns `current` untouched when the id isn't
+// present, so React skips the re-render. (TAC-411.)
+function removeMessage(current: ThreadMessage[], id: string): ThreadMessage[] {
+  const idx = current.findIndex((m) => m.id === id);
+  if (idx < 0) return current;
+  return [...current.slice(0, idx), ...current.slice(idx + 1)];
 }
 
 // When the fetched thread arrives, merge any Realtime messages that landed
@@ -215,6 +227,13 @@ export default function EditScreen() {
     }));
   }, []);
 
+  const handleRemove = useCallback((id: string) => {
+    setThreadState((prev) => ({
+      kind: prev.kind,
+      messages: removeMessage(prev.messages, id),
+    }));
+  }, []);
+
   // Open the Realtime channel for this guest-at-venue while the screen is
   // mounted. Hook is a no-op when there's no draft (early-return below
   // handles the not-found UI; calling hooks conditionally is invalid React,
@@ -224,6 +243,7 @@ export default function EditScreen() {
     guestId: draft?.guestId ?? '',
     onInsert: handleInsert,
     onUpdate: handleUpdate,
+    onRemove: handleRemove,
   });
 
   const handleScroll = useCallback(
@@ -252,6 +272,36 @@ export default function EditScreen() {
     () => computeItems(threadState.messages, timezone),
     [threadState.messages, timezone],
   );
+
+  // A takeover with no bubbles at all became reachable with TAC-395: a guest
+  // whose only inbound was media-only carries an empty body, which fails the
+  // Contract's condition 1, so both `recentContext` and the thread endpoint
+  // come back with nothing for them. Before this the thread area just sat
+  // blank, which reads as a screen that failed to load rather than a guest
+  // nobody has reached. Same copy and same component as the Conversations
+  // thread — the two surfaces answer the same question and should not answer
+  // it differently. Held back while the fetch is out, because "nothing has
+  // reached this guest" is a claim we don't have yet.
+  //
+  // Note this is NOT the empty-DRAFT case: a blank `draftBody` still renders
+  // its own placeholder in the composer below (TAC-310), and says nothing
+  // about the thread. (TAC-411.)
+  //
+  // The error branch needs one more guard, and it is not symmetric with the
+  // loading one. On error the screen keeps its `recentContext` seed, and for a
+  // draft out of the queue cache that seed IS the server's answer to this same
+  // question — same condition-1 filter — so an empty one supports the claim.
+  // A DECLINE HANDOFF's seed is not: `buildDeclineHandoffDraft` hardcodes
+  // `recentContext: []` as a placeholder meaning "unknown", for a guest the
+  // agent has by construction already promised something to. Claiming nothing
+  // reached them, above an apology addressed to them, is the same false
+  // statement this copy was chosen to avoid. So on error we only claim when
+  // the seed came from the server. (TAC-411; see lib/decline-handoff.ts.)
+  const seedIsFabricated = draft !== null && draft === handoff;
+  const showEmptyThread =
+    threadState.kind !== 'loading' &&
+    threadState.messages.length === 0 &&
+    !(threadState.kind === 'error' && seedIsFabricated);
 
   if (!draft) {
     return (
@@ -478,7 +528,11 @@ export default function EditScreen() {
                 paddingVertical: 8,
               }}
             >
-              <ThreadBubbleList items={items} surface="card" />
+              {showEmptyThread ? (
+                <EmptyState variant="thread" backed />
+              ) : (
+                <ThreadBubbleList items={items} surface="card" />
+              )}
             </ScrollView>
           </View>
 

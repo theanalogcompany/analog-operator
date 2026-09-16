@@ -76,21 +76,34 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
           {formatConversationTime(conversation.lastMessageAt)}
         </TrackedCaps>
       </View>
-      <Text
-        allowFontScaling={false}
-        numberOfLines={1}
-        className="font-inter-tight"
-        style={{
-          // Aligns under the name rather than under the activity dot.
-          marginTop: 6,
-          paddingLeft: 14,
-          fontSize: bodyType.preview.size,
-          lineHeight: bodyType.preview.lineHeight,
-          color: groundText.body,
-        }}
-      >
-        {`${speaker} — ${conversation.lastMessagePreview}`}
-      </Text>
+      {conversation.lastMessagePreview === '' ? (
+        // No message has reached this guest, so there is no speaker to name.
+        // `lastMessageDirection` here comes from an unsent draft (TAC-395
+        // Contract, conversations list), so printing "Sana — " would claim
+        // someone said something nobody has received. The height is held so
+        // the row keeps its two-line rhythm against its banded neighbours.
+        // (TAC-411, ruled 2026-09-15.)
+        <View
+          testID="conversation-row-no-preview"
+          style={{ marginTop: 6, height: bodyType.preview.lineHeight }}
+        />
+      ) : (
+        <Text
+          allowFontScaling={false}
+          numberOfLines={1}
+          className="font-inter-tight"
+          style={{
+            // Aligns under the name rather than under the activity dot.
+            marginTop: 6,
+            paddingLeft: 14,
+            fontSize: bodyType.preview.size,
+            lineHeight: bodyType.preview.lineHeight,
+            color: groundText.body,
+          }}
+        >
+          {`${speaker} — ${conversation.lastMessagePreview}`}
+        </Text>
+      )}
     </Pressable>
   );
 }
