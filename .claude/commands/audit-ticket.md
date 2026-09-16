@@ -66,12 +66,13 @@ that proves it.
 **3. QUESTIONS** — numbered, one decision each, each written in the format
 under "Asking Jaipal a question" in `.claude/process.md`: a concrete case in
 plain language first, then the question with options. No identifiers, no file
-paths, no function names. Do not recommend. Do not answer your own question.
-Do not rank them.
+paths, no function names, no schema columns. Do not recommend. Do not answer
+your own question. Do not rank them.
 
-A question that cannot be written that way is not a decision for Jaipal.
-Decide it, and list it at the end of this section under **Decided without
-asking**, one line each with the reason.
+**A question that cannot be written that way is not a decision for Jaipal —
+it is an implementation detail.** Decide it yourself, and list it at the end
+of this section under **Decided without asking**, one line each with the
+reason, so he can overrule it.
 
 **Cap at seven.** If the ticket raises more than seven distinct decisions,
 that is itself the finding: the ticket is too large to rule on and should be
@@ -89,8 +90,9 @@ branch. Do not assume an answer in order to keep going.
 
 # After posting — the ticket always leaves Todo
 
-An audited ticket never stays in Todo. Todo means unaudited, and leaving it
-there means nothing picks the ticket up and the board lies about why.
+An audited ticket never stays in Todo. Todo means not yet looked at, and
+leaving it there means nothing picks the ticket up and the board lies about
+why.
 
 **Questions found** → set the ticket to **Ready**, add the `Needs Decision`
 label, and copy the questions into the ticket body's `## Open questions`

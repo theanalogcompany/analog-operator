@@ -18,13 +18,18 @@ Every ticket we create sets its status explicitly.
 | Status | Meaning |
 |---|---|
 | Backlog | Uncommitted. Not yet triaged. |
-| Todo | Committed, **not yet audited**. An automation audits it on its next scheduled run, which can be hours away (TAC-429). Never build from here. |
+| Todo | Committed, **not yet audited**. The audit automation picks it up on its next scheduled run. Never build from here. |
 | Ready | Audited, buildable. **The only status a build starts from.** |
 | In Progress | Claude Code has it. Set automatically on PR open. |
 | Ready For QA | Merged and deployed. Gate not yet passed. Set automatically on merge. |
 | Done | Gate passed in production. Only Jaipal sets this. |
 | Canceled | Not being done. |
 | Duplicate | Covered by another ticket. |
+
+**"The next scheduled run" can be hours.** GitHub runs our scheduled
+workflows 2–5 hours apart whatever their cron says, and has since 2026-08-27
+(TAC-428). Nothing in this process promises a time. Say "picked up on the
+next scheduled run", never "within 15 minutes".
 
 ## Blocked on Jaipal is a label, not a status
 
@@ -154,7 +159,9 @@ A comment that does **not** carry `[FROM CLAUDE CODE]` is human input. When
 the newest comment on a ticket is human input, the ticket is unblocked and a
 session may resume it. **Bookkeeping comments (`[SLACK]`, `[RESUME-CLAIM]`)
 never count as the newest comment.** They record what a workflow did, and
-counting them would bury the reply they were posted around.
+counting them would bury the reply they were posted around. The build
+automation resumes only Ready and In Progress tickets; a reply on a ticket in
+any other status is recorded but starts nothing.
 
 **Only a comment that asks something waits for a reply**: one whose marker
 is `[NEEDS-INPUT]`, `[PLAN]`, `[HUMAN-REVIEW-REQUIRED]` or `[NEEDS-ACTION]`,
@@ -169,26 +176,26 @@ and `## Open questions`.
 
 Every question leads with a concrete case in plain language: three lines of
 situation, one line of what breaks, then the question with options. No
-identifiers, no file paths, no function names.
+identifiers, no file paths, no function names, no schema columns.
 
 ```
-An operator taps a push notification for a guest who has two
-cards waiting. The app opens the wrong one.
+A guest texts "omw can you have my usual ready?" at 6pm.
+The venue closed at 5.
 
-Today: it matches by guest, so it opens whichever card is
-first in the queue.
+Today: the agent replies "Got it, see you soon" and it
+auto-sends. The guest walks to a locked door.
 
-The question: when two cards exist for one guest, which one
-should the tap open?
-  A — the one the notification was about
-  B — the most recent
+The question: should a reply that confirms an arrival while
+the venue is closed always go to Jaipal's queue first?
+  A — yes, always
+  B — only when it also promises something
 ```
 
 State the options. Do not recommend one.
 
 **If a question cannot be written that way, it is not a decision for
-Jaipal.** Decide it yourself, and say in the same comment that you did and
-why.
+Jaipal.** It is an implementation detail. Decide it yourself, and say in the
+same comment that you did and why.
 
 ## When Jaipal answers
 
@@ -229,6 +236,12 @@ Phase 0 of `work-ticket.md`, name one ticket, answer it, and check within a
 few hours that its questions left the block or a `[NEEDS-INPUT]` explains
 why not.
 
+## High-stakes tickets never get a plan from /work-ticket
+
+**A ticket marked `[HUMAN-REVIEW-REQUIRED]` never gets a plan from `/work-ticket`, in CI or run by hand, by design.** Phase 0 checks the ticket against the high-stakes list in `work-ticket.md` step 4 on every run, after it applies answers and before any plan. So each time Jaipal answers, the session moves the answered questions out of `## Open questions`, posts `[HUMAN-REVIEW-REQUIRED]` again, and exits. No reply moves the ticket past that point, however many times he answers.
+
+That is the intended behaviour, not a stuck ticket: high-stakes work never starts unattended. **The only route forward is a session Jaipal drives himself without `/work-ticket`**, where he approves the plan and watches the build. Running `/work-ticket` by hand does not get past it; the same check stops a local run the same way.
+
 ## On hitting a question
 
 Stop that thread. Do not guess, do not pick the likelier answer and note the
@@ -248,15 +261,18 @@ status code, env vars with format notes. CLAUDE.md's "Cross-repo contracts"
 covers building against one. Three rules cover writing one:
 
 1. **Every `## Contract` carries a `### What this doesn't settle`
-   subsection**, an H3 under the Contract as TAC-395 does for
-   `### What it may not assume`. Silence in a spec reads as permission and
-   gets implemented. State the silence.
+   subsection**, an H3 under the Contract, next to
+   `### What it may not assume` as TAC-395 does. Silence in a spec reads as
+   permission and gets implemented. Three times on TAC-395 the spec was
+   applied to a case it said nothing about, and the code would have been
+   exactly correct and exactly wrong. State the silence.
 2. **Any Contract line saying "apply X to all of Y" states what Y
-   surprisingly contains**: empty values, NULLs, rows in states nobody
-   pictures.
+   surprisingly contains**: empty bodies, NULL columns, rows in states nobody
+   pictures. All three TAC-395 cases came from there.
 3. **A `## Contract` means cross-repo only when the other side is not built
-   yet.** A Contract describing a side that has already shipped documents
-   it; the ticket stays single-repo.
+   yet.** A Contract against work that has already shipped documents it; the
+   ticket stays single-repo. TAC-298 has a Contract with already-shipped
+   tickets and is operator-only.
 
 ## Standing rulings
 
