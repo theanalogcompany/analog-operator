@@ -107,18 +107,22 @@ the audit. It just fails later and more expensively.
 **A Repo: line naming a repo the ticket is not labelled for is the same
 defect, and it used to fail silently.** `owner` picks the first named repo
 that *is* labelled and says nothing about the rest, so that repo built the
-ticket and the other never saw it — no comment, no label, nothing. Both
-workflows now refuse it with `[BUILD-SKIPPED]` and `Needs Decision`, and both
-repos flag it, so it cannot be invisible to both. TAC-439 is the worked
-example: one `analog-guest` label, a Repo: line naming both, and
+ticket and the other never saw it — no comment, no label, nothing. The repo
+that owns it now refuses it with `[BUILD-SKIPPED]` and `Needs Decision`
+instead of building it. The other repo still cannot flag it — each workflow
+queries Linear filtered on its own repo label, so a ticket not labelled for
+it never reaches that workflow at all. That invisibility is the defect, which
+is why the refusal has to come from the repo that *can* see it. TAC-439 is
+the worked example: one `analog-guest` label, a Repo: line naming both, and
 analog-operator's automation never selecting it.
 
 The labels say where the work lands. The **Repo:** line says where it starts.
 The audit and the build both narrow by label and decide by the Repo: line:
 
 - **A Repo: line naming at least one labelled repo:** the first repo it names
-  that the ticket is labelled for works it. Naming an extra, unlabelled repo
-  is not a defect.
+  that the ticket is labelled for works it — but only if every repo it names
+  is labelled. Naming an extra, unlabelled repo is a defect (above), because
+  that repo's automation never sees the ticket.
 - **No Repo: line, one repo label:** that repo works it.
 - **No Repo: line, two repo labels** is a ticket-writing defect. The audit
   automation posts `[AUDIT-SKIPPED]` saying so, adds `Needs Decision`, and
@@ -127,9 +131,11 @@ The audit and the build both narrow by label and decide by the Repo: line:
   defect, handled the same way. Nothing else would ever pick the ticket up.
 - **No repo label:** no automation sees the ticket.
 
-The build adds one rule: **a ticket with two repo labels is never built**,
-even when its Repo: line picks a repo. The repo that would have built it
-posts `[BUILD-SKIPPED]` instead, adds `Needs Decision`, and does not start it:
+The build adds two rules. **A ticket with two repo labels is never built**,
+even when its Repo: line picks a repo. **A ticket whose Repo: line names a
+repo it is not labelled for is never built either**, even though a repo can
+be picked. In both cases the repo that would have built it posts
+`[BUILD-SKIPPED]`, adds `Needs Decision`, and does not start it:
 
 ```
 [BUILD-SKIPPED] TAC-XXX

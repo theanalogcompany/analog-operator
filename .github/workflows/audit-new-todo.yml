@@ -112,7 +112,6 @@ jobs:
           # build-ready.yml.
           RULES='
             def repo_labels: [.labels.nodes[].name | select(startswith("analog-"))];
-            # Every analog-* name on the Repo: line, in order. [] with no line.
             def repo_line_names:
               [(.description // "") | capture("(?:^|\\n)[ \\t>*_]*Repos?[*_]*[ \\t]*:(?<line>[^\\n]*)"; "i") | .line]
               | if length == 0 then []
@@ -245,7 +244,7 @@ jobs:
           show_full_output: ${{ inputs.full_output == true }}
           claude_args: |
             --max-turns 150
-            --allowedTools "Read,Write,Grep,Glob,Bash(curl:*),Bash(jq:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh workflow list:*),Bash(gh api:*),Bash(gh --version),Bash(node:*),Bash(python3:*)"
+            --allowedTools "Read,Write,Grep,Glob,Bash(curl:*),Bash(jq:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh workflow list:*),Bash(gh --version)"
             --disallowedTools "Bash(npx supabase:*),Bash(npm exec:*),Bash(npx prisma:*),Bash(npx drizzle-kit:*),Bash(psql:*),Bash(supabase:*)"
           prompt: |
             You are auditing a Linear ticket for the repo ${{ github.event.repository.name }}.

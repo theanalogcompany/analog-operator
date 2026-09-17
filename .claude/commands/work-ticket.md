@@ -63,7 +63,7 @@ When the classification is **Proceed**, route by `lastQuestionComment`. Phase 0 
 - **`[NEEDS-INPUT]` AND `branchExists === false`** → Phase 2 question answered. Re-run Phase 1 audit integrating the answer, and re-post the plan per Phase 2.
 - **`[NEEDS-INPUT]` AND `branchExists === true`** → Phase 3 question answered. Read `git status` and `git diff` on the branch to establish what is done and what is left, then continue.
 - **`[NEEDS-ACTION]`** → Jaipal says it ran. Verify it against the live system as step 17 requires, remove `Needs Action`, and continue where the build stopped.
-- **`[HUMAN-REVIEW-REQUIRED]`** → the plan is approved for a session Jaipal drives himself. Post one line confirming that and naming the branch the build should use. **Never advance to Phase 3.** Leave `Needs Decision` on until he starts that session.
+- **`[HUMAN-REVIEW-REQUIRED]` carrying a plan** → handled by Phase 0 step 4, which runs first; this row exists so the routing is not silent about it. **Never advance to Phase 3.** An `[HUMAN-REVIEW-REQUIRED]` that carries no plan is a different thing — step 13's diverged-`main` stop and a mid-build high-stakes uncertainty both use the marker — and a reply to one of those resumes the build where it stopped, exactly like `[NEEDS-INPUT]` with `branchExists === true`.
 
 Leave the status alone throughout. `Needs Decision` comes off in Phase 0 when no question is left open, or on the `[PLAN]` route when the plan is approved.
 
@@ -74,7 +74,7 @@ Leave the status alone throughout. `Needs Decision` comes off in Phase 0 when no
    **a. Status and repo.**
    - The ticket must be in **Ready** or **In Progress**. A ticket in **Todo** has not been audited yet — say so and exit; the audit automation reaches it on its next scheduled run, which can be hours away.
    - It must be this repo's, by "Which repo works a ticket" in `.claude/process.md`. If it is another repo's, say which repo to run in and exit.
-   - It must carry exactly one repo label: cross-repo work is two tickets, one per repo, linked. A ticket with two repo labels, or a Repo: line naming no labelled repo, is not buildable. Post `[BUILD-SKIPPED]` in the form `.claude/process.md` gives and add `Needs Decision`, unless the ticket already carries both. Then exit.
+   - It must carry exactly one repo label, and its `Repo:` line must name no repo beyond the one it is labelled for: cross-repo work is two tickets, one per repo, linked. A ticket with two repo labels, a `Repo:` line naming no labelled repo, or a `Repo:` line naming a repo the ticket is **not** labelled for, is not buildable. The last case is the one that used to pass: a repo can be picked, so the build started, and the unlabelled half was never built by anyone. Post `[BUILD-SKIPPED]` in the form `.claude/process.md` gives and add `Needs Decision`, unless the ticket already carries both. Then exit.
 
    **b. Apply new answers.** An open question is a numbered item with text under `## Open questions`; the template's empty `1.`, HTML comments, and italic notes such as *None* or *Ruled …* are not. If `newReplies` is non-empty and the block holds open questions, apply the replies before (c) reads the block, by the rules under "When Jaipal answers" in `.claude/process.md`:
    - A reply answers a question when it gives the decision that question asks for: its number with an option or a stated choice ("1 A", "2: the most recent"), or, when only one question is open, an option or a choice alone.
@@ -90,7 +90,7 @@ Leave the status alone throughout. `Needs Decision` comes off in Phase 0 when no
 
    A ticket that fails the gate gets no plan and no branch. Exit, after the polling bookkeeping of the branch-table row that sent you here, if that row has any.
 3. Re-read the relevant sections of CLAUDE.md — Workflow rules, Code conventions, Common gotchas. Cite which sections you consulted on the FIRST invocation.
-4. Check the "Notes for Claude Code" block against the high-stakes list in CLAUDE.md ("High-stakes flags"). **Do not stop here.** Note that the ticket is high-stakes and carry that into Phase 2: the plan is written in full, posted as `[HUMAN-REVIEW-REQUIRED]` instead of `[PLAN]`, `Needs Decision` goes on, and the run never advances to Phase 3 on any reply. If an `[HUMAN-REVIEW-REQUIRED]` plan is already on the ticket and Jaipal has replied to it, post one line saying the plan stands and the build needs a session he drives, then exit — do not re-post the plan.
+4. Check the "Notes for Claude Code" block against the high-stakes list in CLAUDE.md ("High-stakes flags"). **Do not stop here.** Note that the ticket is high-stakes and carry that into Phase 2: the plan is written in full, posted as `[HUMAN-REVIEW-REQUIRED]` instead of `[PLAN]`, `Needs Decision` goes on, and the run never advances to Phase 3 on any reply. If an `[HUMAN-REVIEW-REQUIRED]` plan is already on the ticket and Jaipal has replied to it, post one line saying the plan stands and the build needs a session he drives, then exit — do not re-post the plan. **That line carries the `[HUMAN-REVIEW-REQUIRED]` marker and re-adds `Needs Decision` if step 2b removed it.** Both matter: the marker makes the branch table treat the ticket as terminal, and the label keeps it out of the next run's selection. Without them the ticket is Ready and unblocked with a bot comment last, so every scheduled run re-audits it and posts the same line again.
 
 # Phase 1 — Audit (read-only) — fresh start, answered `[AUDIT]` questions, or post-`[NEEDS-INPUT]` Phase 2 resumption
 5. Use the Explore subagent to map the affected surface area. Read at least one existing file the new code will sit next to. Read migrations touching relevant tables. Read existing tests for modules being modified.
@@ -107,7 +107,7 @@ Leave the status alone throughout. `Needs Decision` comes off in Phase 0 when no
     - Add `Needs Decision`. Leave the status alone.
     - Where a harness exists, write `[POLLING-STATE]` (iteration=1) and ScheduleWakeup(60s). In CI, exit.
 12. If the plan is clear:
-    - Post it prefixed `[PLAN]`.
+    - Post it prefixed `[PLAN]` — or `[HUMAN-REVIEW-REQUIRED]` if step 4 flagged the ticket as high-stakes, which changes the marker and nothing else on this step.
     - Add `Needs Decision` and leave the status alone. A plan awaiting approval is a decision Jaipal owes, and it belongs where he looks.
     - Where a harness exists, write `[POLLING-STATE]` (iteration=1) and ScheduleWakeup(60s) so a fast reply is caught. In CI, exit; the poll resumes it.
 
@@ -149,7 +149,9 @@ Everything else is Jaipal's: anything in the agent's voice a guest can read, any
 
 # Phase 5 — Ship
 
-**One rule, CI and local alike** (ruled 2026-09-17): audit → `[PLAN]` → Jaipal's reply → build → commit → push → draft PR → stop. The run **never merges** and **never pushes to `main`**; branch protection enforces both server-side in each repo, and the rule is written here so a session does not attempt what the server will refuse. A per-ticket "Do not self-commit" line in a Notes block overrides this for that ticket only.
+**One rule, CI and local alike** (ruled 2026-09-17): audit → `[PLAN]` → Jaipal's reply → build → commit → push → draft PR → stop. The run **never merges** and **never pushes to `main`**.
+
+Those two are not equally enforced, and the difference matters. Branch protection on `main` blocks the push: the ruleset carries `non_fast_forward`, `deletion` and a required PR with the `check` status, and no bypass actors. **It does not block the merge** — `required_approving_review_count` is `0`, so a PR whose check is green is mergeable by anyone who can call the API. Not merging is therefore a rule this run keeps, not one the server keeps for it. The allowlist is the backstop: `gh pr merge` and `gh pr ready` are not in it. A per-ticket "Do not self-commit" line in a Notes block overrides this for that ticket only.
 
 25. Commit. Subject: `TAC-XXX: <imperative lowercase subject>`. Body explains why if non-obvious.
 26. Push the branch, then `gh pr create --draft`. Title matches the commit subject, so it carries the ticket ID. Body: changes + test count delta + plan deviations + the CLAUDE.md note + anything you would push back on. Draft is deliberate — the PR is how the work reaches Jaipal, not a request for review by a bot.
@@ -223,7 +225,7 @@ Status untouched. The agent never sets a ticket to Done; the permission hook den
 - **Anything that needs Jaipal gets the right `Blocked On` label immediately**, and the status stays where it is. Never wait silently on a ticket that still looks available. A plan awaiting approval counts. A PR awaiting merge does not.
 - **Never run a production migration.** Write the SQL and hand it over via `[NEEDS-ACTION]`.
 - No loyalty-program language anywhere — points, rewards, tier, earn, badges, progress bars are forbidden. Guests are recognized, not enrolled.
-- High-stakes uncertainty → `[HUMAN-REVIEW-REQUIRED]`, never `[NEEDS-INPUT]`.
+- Uncertainty about whether a high-stakes change is *safe* → `[HUMAN-REVIEW-REQUIRED]`, never `[NEEDS-INPUT]`. An ordinary open question on a high-stakes ticket is still a question and still `[NEEDS-INPUT]` — the ticket's plan is what carries `[HUMAN-REVIEW-REQUIRED]`, not every comment on it. (Both are now reachable: before TAC-439 a high-stakes ticket never got as far as Phase 2.)
 - **A high-stakes ticket is planned but never built by an automated run.** No approval, however explicit, moves it to Phase 3. The plan is the deliverable; the build is Jaipal's own session.
 - **An automated run may modify `.github/workflows/*` and `.claude/*` on a branch.** It commits and pushes them like any other change and opens a draft PR; Jaipal reviews at merge. It never merges and never pushes to `main`.
 - Wind-down is operator-driven. The agent never decides to wind down on its own.

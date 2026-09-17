@@ -263,15 +263,21 @@ jobs:
             | map(select(
                 ((owner == $repo and (repo_labels | length) >= 2)
                   or (owner | startswith("defect:"))
-                  # half-routed: flagged by the repo that owns it AND by the
-                  # repo named but not labelled, so it is never invisible to
-                  # both. The build_skipped guard below stops the second one
-                  # repeating it once the first has landed. (TAC-439)
-                  or (owner == $repo and (named_unlabelled | length) > 0)
-                  or (named_unlabelled | any(. == $repo)))
+                  # Half-routed, flagged by the repo that owns it. The other
+                  # repo cannot flag it: the query above filters on this
+                  # repo's label, so a ticket not labelled for it never
+                  # reaches this jq at all. That invisibility IS the defect
+                  # being reported. (TAC-439)
+                  or (owner == $repo and (named_unlabelled | length) > 0))
                 and ((build_skipped and has_label("Needs Decision")) | not)
               ))
-            | map({ id, identifier, hasNeedsDecision: has_label("Needs Decision"), labels: (repo_labels | sort), named: repo_line_names, unlabelled: named_unlabelled })
+            | map({ id, identifier, hasNeedsDecision: has_label("Needs Decision"), labels: (repo_labels | sort), named: repo_line_names, unlabelled: named_unlabelled,
+                    # half-routed only: a repo CAN be picked, and another named
+                    # repo cannot. Distinct from defect:unlabelled, where no
+                    # named repo is labelled and nothing builds it at all.
+                    halfRouted: ((repo_labels | length) == 1
+                      and (named_unlabelled | length) > 0
+                      and ((owner | startswith("defect:")) | not)) })
           ')
 
           TICKETS=$(echo "$SELECTED" | jq -r 'map(.identifier) | join(" ")')
@@ -338,7 +344,7 @@ jobs:
             NAME=$(echo "$row" | jq -r .identifier)
             # The two-label wording is .claude/process.md's, word for word.
             TEXT=$(echo "$row" | jq -r '
-              if ((.unlabelled // []) | length) > 0 and (.labels | length) < 2
+              if (.halfRouted // false)
               then "This ticket can'"'"'t be built. Its Repo: line names \(.unlabelled | join(" and ")), which the ticket carries no label for, so only \(.labels | join(" and ")) would ever build it and the other half would never be built. Nothing would have said so: the build picks the labelled repo and moves on.\n\nSplit it: one ticket per repo, each with its own repo label and a Repo: line naming only that repo, linked to each other. If the work really is one repo'"'"'s, drop the other name from the Repo: line. Replying here will not unblock it."
               elif (.labels | length) >= 2
               then "This ticket can'"'"'t be built. It carries the \(.labels | join(" and ")) labels, and cross-repo work is two tickets, one per repo, linked. Built as one ticket, only one repo would build it and the other half would never be built.\n\nSplit it: one ticket per repo, each with its own repo label and Repo: line, linked to each other. Replying here will not unblock it: the ticket needs splitting."
@@ -372,7 +378,7 @@ jobs:
           show_full_output: ${{ inputs.full_output == true }}
           claude_args: |
             --max-turns 120
-            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(npm run lint:*),Bash(npm run typecheck:*),Bash(npm test:*),Bash(npx tsc:*),Bash(npx jest:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git fetch:*),Bash(git pull:*),Bash(git checkout -b:*),Bash(git checkout main),Bash(git switch:*),Bash(git branch --list:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git restore:*),Bash(git stash:*),Bash(gh pr:*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh workflow list:*),Bash(gh api:*),Bash(gh --version),Bash(curl:*),Bash(jq:*),Bash(rg:*),Bash(node:*),Bash(python3:*)"
+            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(npm run lint:*),Bash(npm run typecheck:*),Bash(npm run validate:*),Bash(npm test:*),Bash(npx tsc:*),Bash(npx jest:*),Bash(npx expo install:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git fetch:*),Bash(git pull:*),Bash(git checkout -b:*),Bash(git checkout main),Bash(git switch:*),Bash(git branch --list:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git restore:*),Bash(git stash:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh workflow list:*),Bash(gh --version),Bash(curl:*),Bash(jq:*),Bash(rg:*)"
             --disallowedTools "Bash(npx supabase:*),Bash(npm exec:*),Bash(npx prisma:*),Bash(npx drizzle-kit:*),Bash(psql:*),Bash(supabase:*)"
           prompt: |
             You are working Linear tickets for the repo ${{ github.event.repository.name }}.
