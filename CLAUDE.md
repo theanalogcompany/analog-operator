@@ -95,7 +95,9 @@ This app and `analog-guest` ship features together — operator endpoints land s
 
 ## High-stakes flags
 
-(Carried over from analog-guest convention.) If a ticket touches any of these, the comment marker becomes `[HUMAN-REVIEW-REQUIRED]` instead of `[NEEDS-INPUT]`:
+**Shared rule, identical in both repos.** A ticket touching anything on this repo's list below is planned in full and posted as `[HUMAN-REVIEW-REQUIRED]` carrying that plan, never `[PLAN]`, and an automated run never builds it — the build is a session Jaipal drives. Everything else, agent-runtime work included, takes the ordinary `[PLAN]` path and is built, pushed and opened as a draft PR. See `.claude/process.md`, "High-stakes tickets get a plan, never an unattended build".
+
+**The list is per-repo on purpose.** It names what can reach a guest, move money, or destroy data *in this repo*; a list naming things this repo does not have would be dead text. analog-operator's list, which ruling 2 of TAC-439 left unchanged:
 
 - Auth (Supabase session, JWT handling, deep link callbacks)
 - Anything that sends a message via the API (operator approve/edit/skip/undo → reaches Sendblue downstream)

@@ -145,7 +145,7 @@ earlier comment where that reading misses it.
 | Marker | When | Then |
 |---|---|---|
 | `[NEEDS-INPUT]` | A question blocks the work | Add it to `## Open questions`, add `Needs Decision`. Status unchanged |
-| `[HUMAN-REVIEW-REQUIRED]` | The work touches a high-stakes area | Same, and do not plan or branch |
+| `[HUMAN-REVIEW-REQUIRED]` | The work touches the high-stakes list | Carries the full plan. Add `Needs Decision`. Plan, never branch — the build is a session Jaipal drives |
 | `[NEEDS-ACTION]` | Something only Jaipal can run | Add `Needs Action`. Status unchanged. Format below is mandatory |
 | `[PLAN]` | A plan awaiting approval | Add `Needs Decision`. Approval is a decision like any other |
 | `[FINDING]` | A defect outside this ticket | Describe it. Never file a ticket. Max three per ticket |
@@ -253,15 +253,17 @@ Phase 0 of `work-ticket.md`, name one ticket, answer it, and check within a
 few hours that its questions left the block or a `[NEEDS-INPUT]` explains
 why not.
 
-## High-stakes tickets never get a plan from /work-ticket
+## High-stakes tickets get a plan, never an unattended build
 
-**A ticket marked `[HUMAN-REVIEW-REQUIRED]` never gets a plan from `/work-ticket`, in CI or run by hand, by design.** Phase 0 checks the ticket against the high-stakes list in `work-ticket.md` step 4 on every run, after it applies answers and before any plan. So each time Jaipal answers, the session moves the answered questions out of `## Open questions`, posts `[HUMAN-REVIEW-REQUIRED]` again, and exits. No reply moves the ticket past that point, however many times he answers.
+**Superseded 2026-09-17 (TAC-439).** The rule here previously read "a ticket marked `[HUMAN-REVIEW-REQUIRED]` never gets a plan from `/work-ticket`, in CI or run by hand, by design", and there was "no go-ahead that lets `/work-ticket` continue past the check" (ruled 2026-09-16). That is no longer the rule. It was withdrawn because it short-circuited before a plan was ever written, so the tickets needing the most human judgement produced the least for a human to judge: every run on TAC-436, TAC-401, TAC-376, TAC-386, TAC-325 and TAC-438 read the flag, commented and stopped.
 
-That is the intended behaviour, not a stuck ticket: high-stakes work never starts unattended. **The only route forward is a session Jaipal drives himself without `/work-ticket`**, where he approves the plan and watches the build. Running `/work-ticket` by hand does not get past it; the same check stops a local run the same way.
+**The high-stakes list is a build gate, not a plan gate.** A ticket on the list is audited and planned in full like any other. The plan is posted as `[HUMAN-REVIEW-REQUIRED]` rather than `[PLAN]`, carrying the whole plan, and the ticket gets `Needs Decision`. The marker says one thing: **approving this plan does not authorize an automated build.**
 
-**There is no go-ahead that lets `/work-ticket` continue past the check** (ruled 2026-09-16). Jaipal answering, or approving, or saying "plan it" on such a ticket does not change what the command does.
+**No reply moves such a ticket to Phase 3.** Jaipal answering, approving, or saying "build it" does not change what the command does — the build happens in a session he drives himself, where he watches it. A run that finds an approved `[HUMAN-REVIEW-REQUIRED]` plan says so in one line and exits; it does not re-post the plan on every poll.
 
-**What that costs: most of Gate Two is outside the automation entirely.** Most of Gate Two touches the agent runtime, and every one of those tickets is planned and built in a session Jaipal drives himself. The automation still audits them and still records his answers, but it never plans or builds them.
+**Everything not on the list takes the ordinary path**, agent-runtime work included: audit, `[PLAN]`, `Needs Decision`, and after his approval a build that commits to the ticket branch, pushes it and opens a draft PR (Phase 5).
+
+**Guest-facing copy is approved as wording, not as intent.** A plan that changes copy a guest can read must quote the new wording verbatim and wait for approval of that wording specifically. An approval of the plan's shape is not an approval of its words.
 
 ## On hitting a question
 
