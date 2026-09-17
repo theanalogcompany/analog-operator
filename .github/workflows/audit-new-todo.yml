@@ -112,7 +112,6 @@ jobs:
           # build-ready.yml.
           RULES='
             def repo_labels: [.labels.nodes[].name | select(startswith("analog-"))];
-            # Every analog-* name on the Repo: line, in order. [] with no line.
             def repo_line_names:
               [(.description // "") | capture("(?:^|\\n)[ \\t>*_]*Repos?[*_]*[ \\t]*:(?<line>[^\\n]*)"; "i") | .line]
               | if length == 0 then []
@@ -122,7 +121,11 @@ jobs:
               repo_labels as $labels
               | repo_line_names as $named
               | ([$named[] | select(. as $n | $labels | any(. == $n))] | first) as $pick
-              | if $pick != null then $pick
+              # A line naming more than one repo is a defect whatever the
+              # labels say: the repo it is NOT labelled for never sees the
+              # ticket at all, so a silent pick here is a silent half-build.
+              | if ($named | length) > 1 then "defect:multi-repo-line"
+                elif $pick != null then $pick
                 elif ($named | length) > 0 then "defect:unlabelled"
                 elif ($labels | length) == 1 then $labels[0]
                 elif ($labels | length) == 0 then "none"
@@ -236,7 +239,8 @@ jobs:
           show_full_output: ${{ inputs.full_output == true }}
           claude_args: |
             --max-turns 150
-            --allowedTools "Read,Write,Grep,Glob,Bash(curl:*),Bash(jq:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(gh run list:*),Bash(gh run view:*)"
+            --allowedTools "Read,Write,Grep,Glob,Bash(curl:*),Bash(jq:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh workflow list:*),Bash(gh --version)"
+            --disallowedTools "Bash(npx supabase:*),Bash(npm exec:*),Bash(npx prisma:*),Bash(npx drizzle-kit:*),Bash(psql:*),Bash(supabase:*)"
           prompt: |
             You are auditing a Linear ticket for the repo ${{ github.event.repository.name }}.
 
@@ -253,8 +257,10 @@ jobs:
             These are denied however you arrange them: expanding an
             environment variable ($LINEAR_API_KEY or ${LINEAR_API_KEY}),
             command substitution ($(...) or backticks), variable assignment
-            (NAME=...), output redirection (>), and heredocs (<<). This
-            workflow's own shell steps use those forms; you cannot. Pass the
+            (NAME=...), output redirection of any kind (>, >>, 2> and
+            2>&1 — you cannot capture or silence stderr, so let it
+            print), and heredocs (<<). This workflow's own shell steps
+            use those forms; you cannot. Pass the
             key with curl's own --variable and --expand-header, exactly as
             below. Use exactly these two forms.
 
@@ -350,7 +356,7 @@ jobs:
                     | "\(.tool_name): \(.tool_input.command // .tool_input.file_path // (.tool_input | tostring))"
                     | gsub("\\s+"; " ") | gsub("`"; "\u02cb")
                     | (if ($key | length) > 0 then (split($key) | join("***")) else . end)
-                    | .[0:200] ]
+                    | .[0:2000] ]
                 }' "$EXECUTION_FILE")
           else
             SESSION='{"ended":"without a session record","turns":0,"denials":0,"denied":[]}'
