@@ -61,6 +61,7 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "globalSetup": "<rootDir>/jest.node-version.js",
     "setupFiles": [
       "<rootDir>/jest.setup.js"
     ],
