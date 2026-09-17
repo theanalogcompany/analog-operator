@@ -1,10 +1,10 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { render, screen, waitFor } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthFrame } from '@/components/auth/auth-frame';
 import { __resetEntranceStateForTests } from '@/lib/entrance';
-import { EntranceProvider } from '@/lib/entrance-context';
+import { EntranceProvider, useEntrance } from '@/lib/entrance-context';
 import { entrance } from '@/lib/theme';
 
 /**
@@ -70,35 +70,45 @@ describe('AuthFrame: the mark', () => {
    * once the entrance ends would put a second mark on screen. Pinned here so
    * the consequence is stated, not discovered.
    */
-  it('stays hidden on a sign-in screen reached later in the same launch', () => {
-    jest.useFakeTimers();
-    try {
-      function Root({ signedOut }: { signedOut: boolean }) {
-        return (
-          <SafeAreaProvider initialMetrics={metrics}>
-            <EntranceProvider>
-              {signedOut ? (
-                <AuthFrame title="Welcome back" subtitle="Sign in again.">
-                  <Text>phone field</Text>
-                </AuthFrame>
-              ) : (
-                <Text>queue</Text>
-              )}
-            </EntranceProvider>
-          </SafeAreaProvider>
-        );
-      }
-      const { rerender } = render(<Root signedOut={false} />);
-      act(() => {
-        jest.advanceTimersByTime(entrance.totalMs);
-      });
-      rerender(<Root signedOut />);
-      expect(screen.queryByLabelText('Analog')).toBeNull();
-      expect(screen.getByTestId('auth-mark-slot')).toBeTruthy();
-    } finally {
-      jest.useRealTimers();
+  it('stays hidden on a sign-in screen reached later in the same launch', async () => {
+    // Real timers, and a wait on the provider's own `running` flag, rather than
+    // `jest.useFakeTimers()` + `advanceTimersByTime`. That version hung forever
+    // on Node 22, which is CI's `.nvmrc`, and passed on Node 25: the event loop
+    // kept turning without the test finishing, so no Jest timeout fired and CI's
+    // Test step ran until GitHub cancelled the job at six hours. (TAC-427.)
+    //
+    // Waiting for `running` to go false is the point, not a delay: the claim is
+    // that the mark stays hidden AFTER the entrance has ended, so the test proves
+    // the entrance ended before it signs out. An AuthFrame keyed on `running`
+    // instead of `mode` would show the mark here and fail.
+    function EntranceState() {
+      return <Text>{useEntrance().running ? 'entrance running' : 'entrance ended'}</Text>;
     }
-  });
+    function Root({ signedOut }: { signedOut: boolean }) {
+      return (
+        <SafeAreaProvider initialMetrics={metrics}>
+          <EntranceProvider>
+            <EntranceState />
+            {signedOut ? (
+              <AuthFrame title="Welcome back" subtitle="Sign in again.">
+                <Text>phone field</Text>
+              </AuthFrame>
+            ) : (
+              <Text>queue</Text>
+            )}
+          </EntranceProvider>
+        </SafeAreaProvider>
+      );
+    }
+    const { rerender } = render(<Root signedOut={false} />);
+    expect(screen.getByText('entrance running')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('entrance ended')).toBeTruthy(), {
+      timeout: entrance.totalMs + 3_000,
+    });
+    rerender(<Root signedOut />);
+    expect(screen.queryByLabelText('Analog')).toBeNull();
+    expect(screen.getByTestId('auth-mark-slot')).toBeTruthy();
+  }, 15_000);
 
   it('shows when the provider was not the cold launch', () => {
     renderFrame({ withEntrance: true }).unmount();
