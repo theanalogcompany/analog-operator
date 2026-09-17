@@ -26,5 +26,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # A hung suite fails here in minutes instead of running until GitHub
+      # cancels the job at six hours, which is what TAC-427's hang did on every
+      # run for three days. A clean suite finishes in well under a minute.
       - name: Test
+        timeout-minutes: 10
         run: npm test -- --ci --passWithNoTests
