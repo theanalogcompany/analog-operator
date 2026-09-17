@@ -372,7 +372,8 @@ jobs:
           show_full_output: ${{ inputs.full_output == true }}
           claude_args: |
             --max-turns 120
-            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(npm:*),Bash(npx:*),Bash(git:*),Bash(gh pr:*),Bash(curl:*),Bash(jq:*),Bash(rg:*)"
+            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(npm run lint:*),Bash(npm run typecheck:*),Bash(npm test:*),Bash(npx tsc:*),Bash(npx jest:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git fetch:*),Bash(git pull:*),Bash(git checkout -b:*),Bash(git checkout main),Bash(git switch:*),Bash(git branch --list:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git restore:*),Bash(git stash:*),Bash(gh pr:*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh workflow list:*),Bash(gh api:*),Bash(gh --version),Bash(curl:*),Bash(jq:*),Bash(rg:*),Bash(node:*),Bash(python3:*)"
+            --disallowedTools "Bash(npx supabase:*),Bash(npm exec:*),Bash(npx prisma:*),Bash(npx drizzle-kit:*),Bash(psql:*),Bash(supabase:*)"
           prompt: |
             You are working Linear tickets for the repo ${{ github.event.repository.name }}.
 
@@ -391,8 +392,10 @@ jobs:
             These are denied however you arrange them: expanding an
             environment variable ($LINEAR_API_KEY or ${LINEAR_API_KEY}),
             command substitution ($(...) or backticks), variable assignment
-            (NAME=...), output redirection (>), and heredocs (<<). This
-            workflow's own shell steps use those forms; you cannot. Pass the
+            (NAME=...), output redirection of any kind (>, >>, 2> and
+            2>&1 — you cannot capture or silence stderr, so let it
+            print), and heredocs (<<). This workflow's own shell steps
+            use those forms; you cannot. Pass the
             key with curl's own --variable and --expand-header, exactly as
             below. Use exactly these two forms.
 
