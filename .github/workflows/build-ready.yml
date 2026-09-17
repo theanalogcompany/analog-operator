@@ -168,21 +168,16 @@ jobs:
               repo_labels as $labels
               | repo_line_names as $named
               | ([$named[] | select(. as $n | $labels | any(. == $n))] | first) as $pick
-              | if $pick != null then $pick
+              # A line naming more than one repo is a defect whatever the
+              # labels say: the repo it is NOT labelled for never sees the
+              # ticket at all, so a silent pick here is a silent half-build.
+              | if ($named | length) > 1 then "defect:multi-repo-line"
+                elif $pick != null then $pick
                 elif ($named | length) > 0 then "defect:unlabelled"
                 elif ($labels | length) == 1 then $labels[0]
                 elif ($labels | length) == 0 then "none"
                 else "defect:no-repo-line"
                 end;
-            # Repos the Repo: line names that the ticket is NOT labelled
-            # for. Non-empty means the ticket is half-routed: owner picks
-            # the labelled one and the other repo never sees it, so one
-            # half is silently never built. A ticket-writing defect, the
-            # same class as two repo labels (TAC-439). Kept identical in
-            # the sibling workflow.
-            def named_unlabelled:
-              repo_labels as $labels
-              | [ repo_line_names[] | select(. as $n | $labels | any(. == $n) | not) ];
             def has_label($name): [.labels.nodes[].name] | any(. == $name);
             # Provenance is the prefix; a comment marker is the first marker
             # after it (.claude/process.md). $m may be an alternation.
@@ -200,11 +195,8 @@ jobs:
             ($now | fromdateiso8601) as $nowSec
             | .data.issues.nodes
 
-            # this repo only, one repo label, and no repo named on the
-            # Repo: line that the ticket isn't labelled for (TAC-439)
-            | map(select(owner == $repo
-                and (repo_labels | length) == 1
-                and (named_unlabelled | length) == 0))
+            # this repo only, and only a ticket with one repo label
+            | map(select(owner == $repo and (repo_labels | length) == 1))
 
             | map(
                 [.labels.nodes[].name] as $labels
@@ -262,22 +254,10 @@ jobs:
             .data.issues.nodes
             | map(select(
                 ((owner == $repo and (repo_labels | length) >= 2)
-                  or (owner | startswith("defect:"))
-                  # Half-routed, flagged by the repo that owns it. The other
-                  # repo cannot flag it: the query above filters on this
-                  # repo's label, so a ticket not labelled for it never
-                  # reaches this jq at all. That invisibility IS the defect
-                  # being reported. (TAC-439)
-                  or (owner == $repo and (named_unlabelled | length) > 0))
+                  or (owner | startswith("defect:")))
                 and ((build_skipped and has_label("Needs Decision")) | not)
               ))
-            | map({ id, identifier, hasNeedsDecision: has_label("Needs Decision"), labels: (repo_labels | sort), named: repo_line_names, unlabelled: named_unlabelled,
-                    # half-routed only: a repo CAN be picked, and another named
-                    # repo cannot. Distinct from defect:unlabelled, where no
-                    # named repo is labelled and nothing builds it at all.
-                    halfRouted: ((repo_labels | length) == 1
-                      and (named_unlabelled | length) > 0
-                      and ((owner | startswith("defect:")) | not)) })
+            | map({ id, identifier, hasNeedsDecision: has_label("Needs Decision"), labels: (repo_labels | sort), named: repo_line_names })
           ')
 
           TICKETS=$(echo "$SELECTED" | jq -r 'map(.identifier) | join(" ")')
@@ -344,8 +324,8 @@ jobs:
             NAME=$(echo "$row" | jq -r .identifier)
             # The two-label wording is .claude/process.md's, word for word.
             TEXT=$(echo "$row" | jq -r '
-              if (.halfRouted // false)
-              then "This ticket can'"'"'t be built. Its Repo: line names \(.unlabelled | join(" and ")), which the ticket carries no label for, so only \(.labels | join(" and ")) would ever build it and the other half would never be built. Nothing would have said so: the build picks the labelled repo and moves on.\n\nSplit it: one ticket per repo, each with its own repo label and a Repo: line naming only that repo, linked to each other. If the work really is one repo'"'"'s, drop the other name from the Repo: line. Replying here will not unblock it."
+              if (.named | length) > 1
+              then "This ticket can'"'"'t be built. Its Repo: line names \(.named | join(" and ")), and cross-repo work is two tickets, one per repo, linked. A line naming more than one repo is a defect whatever the labels say: the repo it is not labelled for never sees this ticket, so nothing there picks it up and nothing there says why.\n\nSplit it: one ticket per repo, each with its own repo label and a Repo: line naming only that repo, linked to each other. Replying here will not unblock it: the ticket needs splitting."
               elif (.labels | length) >= 2
               then "This ticket can'"'"'t be built. It carries the \(.labels | join(" and ")) labels, and cross-repo work is two tickets, one per repo, linked. Built as one ticket, only one repo would build it and the other half would never be built.\n\nSplit it: one ticket per repo, each with its own repo label and Repo: line, linked to each other. Replying here will not unblock it: the ticket needs splitting."
               else "This ticket can'"'"'t be built. Its Repo: line names \(.named | join(" and ")), and the ticket carries no label for \(if (.named | length) == 1 then "it" else "any of them" end).\n\nFix the Repo: line or the repo label so they agree. Replying here will not unblock it."

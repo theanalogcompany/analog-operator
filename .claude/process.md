@@ -90,39 +90,42 @@ would never be built, and merging that one PR would still move the whole
 ticket to Ready For QA. It is the same defect as a missing Repo: line is for
 the audit. It just fails later and more expensively.
 
-**Two kinds of sibling pair, with different rules.**
+**Two kinds of sibling pair, and they need different rules.**
 
-- A **contract pair** is a server endpoint and its client (TAC-207 ↔ TAC-288).
-  Order is absolute: the `analog-guest` half deploys and is verified with
-  `curl` against the `## Contract` block before the client half is touched.
-  Cross-repo UAT is a Done gate for both. See CLAUDE.md, "Cross-repo
-  contracts".
-- A **mirror pair** is the same text landing in both repos with no runtime
-  dependency (TAC-396 ↔ TAC-437, TAC-441 ↔ TAC-442). Order is irrelevant and
-  there is nothing to curl. Its gate is that the shared blocks are
-  character-identical; the per-repo blocks are listed in the ticket and are
-  expected to differ. A mirror pair has no `## Contract` section, and the
-  contract rules do not apply to it.
+- **Contract pair.** A server endpoint and its client (TAC-207 ↔ TAC-288).
+  Order is absolute: the server ships, deploys, and is curl-verified against
+  the `## Contract` before the client half starts. CLAUDE.md's "Cross-repo
+  contracts" covers it.
+- **Mirror pair.** The same text lands in both repos with no runtime
+  dependency (TAC-396 ↔ TAC-437, TAC-441 ↔ TAC-442). Order is irrelevant,
+  and the Contract rules actively misfit it: there is no endpoint, no curl,
+  nothing to ship first. Its gate is that the shared blocks are identical
+  and every per-repo block is listed explicitly with what differs and why —
+  **never whole-file identity**, because several blocks are required to
+  differ. The worked question example in this file is one; the high-stakes
+  list in `work-ticket.md` step 4 is another.
 
-**A Repo: line naming a repo the ticket is not labelled for is the same
-defect, and it used to fail silently.** `owner` picks the first named repo
-that *is* labelled and says nothing about the rest, so that repo built the
-ticket and the other never saw it — no comment, no label, nothing. The repo
-that owns it now refuses it with `[BUILD-SKIPPED]` and `Needs Decision`
-instead of building it. The other repo still cannot flag it — each workflow
-queries Linear filtered on its own repo label, so a ticket not labelled for
-it never reaches that workflow at all. That invisibility is the defect, which
-is why the refusal has to come from the repo that *can* see it. TAC-439 is
-the worked example: one `analog-guest` label, a Repo: line naming both, and
-analog-operator's automation never selecting it.
+**How the second half learns the first has landed: the sibling ticket's own
+status.** Linear's GitHub automation moves it to In Progress on PR open and
+Ready For QA on merge, so "has the other half shipped" is answerable without
+any cross-repo access — which is just as well, because there is none. A run
+is bound to its own repo: the GitHub App token it holds reaches exactly one
+repo, and nothing sends a `repository_dispatch` to the other. The branch
+name and any curl verification belong in the Phase 5 comment, because
+nothing else carries them across.
 
 The labels say where the work lands. The **Repo:** line says where it starts.
 The audit and the build both narrow by label and decide by the Repo: line:
 
-- **A Repo: line naming at least one labelled repo:** the first repo it names
-  that the ticket is labelled for works it — but only if every repo it names
-  is labelled. Naming an extra, unlabelled repo is a defect (above), because
-  that repo's automation never sees the ticket.
+- **A Repo: line naming exactly one repo, and the ticket is labelled for
+  it:** that repo works it.
+- **A Repo: line naming more than one repo** is a ticket-writing defect,
+  whatever the labels say. Cross-repo work is two tickets, one per repo,
+  linked. The repo the ticket is labelled for posts `[BUILD-SKIPPED]` (or
+  `[AUDIT-SKIPPED]`), adds `Needs Decision`, and does not guess. Naming a
+  second repo used not to be a defect, and that is what let TAC-439 sit
+  labelled `analog-guest` with a line naming both: guest picked it up
+  silently and operator never saw it at all.
 - **No Repo: line, one repo label:** that repo works it.
 - **No Repo: line, two repo labels** is a ticket-writing defect. The audit
   automation posts `[AUDIT-SKIPPED]` saying so, adds `Needs Decision`, and
@@ -131,11 +134,9 @@ The audit and the build both narrow by label and decide by the Repo: line:
   defect, handled the same way. Nothing else would ever pick the ticket up.
 - **No repo label:** no automation sees the ticket.
 
-The build adds two rules. **A ticket with two repo labels is never built**,
-even when its Repo: line picks a repo. **A ticket whose Repo: line names a
-repo it is not labelled for is never built either**, even though a repo can
-be picked. In both cases the repo that would have built it posts
-`[BUILD-SKIPPED]`, adds `Needs Decision`, and does not start it:
+The build adds one rule: **a ticket with two repo labels is never built**,
+even when its Repo: line picks a repo. The repo that would have built it
+posts `[BUILD-SKIPPED]` instead, adds `Needs Decision`, and does not start it:
 
 ```
 [BUILD-SKIPPED] TAC-XXX
@@ -157,40 +158,6 @@ Only an edit to the ticket fixes any of these defects. A reply doesn't,
 because the automations read the Repo: line and the labels, not the
 comments.
 
-## Shared and per-repo blocks
-
-This file, `work-ticket.md`, `audit-ticket.md`, CLAUDE.md and the two ticket
-workflows exist in both repos. They are **not** whole-file identical, and the
-gate on a mirror pair is not a whole-file `diff`. Some blocks must match
-character for character; others differ on purpose. Both lists are here so the
-next person diffing the repos knows which is which (TAC-439).
-
-**Shared — character-identical, and what a mirror-pair gate diffs:**
-
-- this file's "High-stakes tickets get a plan, never an unattended build"
-- this file's "Which repo works a ticket", including the sibling-pair
-  distinction and the half-routed refusal
-- this file's marker table
-- `work-ticket.md` Phase 0 step 4, the `[HUMAN-REVIEW-REQUIRED]` row under
-  "Phase resumption", Phase 5's one-rule note, and the hard rules
-- CLAUDE.md's "High-stakes flags" framing paragraphs, **not** the list
-- the repo-rule defs in both workflows (`repo_labels`, `repo_line_names`,
-  `owner`, `named_unlabelled`)
-
-**Per-repo — expected to differ, and why:**
-
-| Block | Differs because |
-|---|---|
-| CLAUDE.md's high-stakes list | It names what can reach a guest, move money or destroy data *in that repo*. analog-operator has no Stripe and no migrations; analog-guest has no SecureStore or APNs. A shared list would be dead text in one of them |
-| `work-ticket.md` step 6's lib paths | `lib/voice-training/`, `lib/agent/` and the rest do not exist in analog-operator |
-| `work-ticket.md` step 10's QA-route guidance | Operator tickets skew device-heavy; guest tickets skew script-provable |
-| `work-ticket.md` step 22's test gate | analog-operator runs jest, analog-guest runs vitest |
-| this file's worked question example | One is a push-notification case, one a closed-venue auto-send case |
-| the allowlists in both workflows | They follow each repo's own test and build commands |
-
-A block that needs to differ and is not listed here is a drift, not an
-exemption. Add it to the table with its reason, or make it shared.
-
 ## Comments
 
 Every comment on a ticket is authored under Jaipal's Linear account,
@@ -208,7 +175,7 @@ earlier comment where that reading misses it.
 | Marker | When | Then |
 |---|---|---|
 | `[NEEDS-INPUT]` | A question blocks the work | Add it to `## Open questions`, add `Needs Decision`. Status unchanged |
-| `[HUMAN-REVIEW-REQUIRED]` | The work touches the high-stakes list | Carries the full plan. Add `Needs Decision`. Plan, never branch — the build is a session Jaipal drives |
+| `[HUMAN-REVIEW-REQUIRED]` | A hard-stop plan has been approved | Remove `Needs Decision`. The build is a session Jaipal drives. Posted once, after the plan, never instead of it |
 | `[NEEDS-ACTION]` | Something only Jaipal can run | Add `Needs Action`. Status unchanged. Format below is mandatory |
 | `[PLAN]` | A plan awaiting approval | Add `Needs Decision`. Approval is a decision like any other |
 | `[FINDING]` | A defect outside this ticket | Describe it. Never file a ticket. Max three per ticket |
@@ -316,17 +283,45 @@ Phase 0 of `work-ticket.md`, name one ticket, answer it, and check within a
 few hours that its questions left the block or a `[NEEDS-INPUT]` explains
 why not.
 
-## High-stakes tickets get a plan, never an unattended build
+## High-stakes work: a plan gate, and a narrower hard stop
 
-**Superseded 2026-09-17 (TAC-439).** The rule here previously read "a ticket marked `[HUMAN-REVIEW-REQUIRED]` never gets a plan from `/work-ticket`, in CI or run by hand, by design", and there was "no go-ahead that lets `/work-ticket` continue past the check" (ruled 2026-09-16). That is no longer the rule. It was withdrawn because it short-circuited before a plan was ever written, so the tickets needing the most human judgement produced the least for a human to judge: every run on TAC-436, TAC-401, TAC-376, TAC-386, TAC-325 and TAC-438 read the flag, commented and stopped.
+A high-stakes ticket gets a plan. It does not get an unattended build.
 
-**The high-stakes list is a build gate, not a plan gate.** A ticket on the list is audited and planned in full like any other. The plan is posted as `[HUMAN-REVIEW-REQUIRED]` rather than `[PLAN]`, carrying the whole plan, and the ticket gets `Needs Decision`. The marker says one thing: **approving this plan does not authorize an automated build.**
+Phase 0 of `work-ticket.md` sorts every ticket into one of three tiers on
+every run, after it applies answers and before any plan.
 
-**No reply moves such a ticket to Phase 3.** Jaipal answering, approving, or saying "build it" does not change what the command does — the build happens in a session he drives himself, where he watches it. A run that finds an approved `[HUMAN-REVIEW-REQUIRED]` plan says so in one line and exits; it does not re-post the plan on every poll.
+**Hard stop.** The narrow list in `work-ticket.md` step 4: auth, Stripe, the
+Sendblue webhook handlers, and migrations on `messages`,
+`engagement_events` or `voice_corpus`. The session audits, plans, posts
+`[PLAN]` with `Needs Decision`, and exits. On approval it does **not**
+build: it posts `[HUMAN-REVIEW-REQUIRED]` saying the plan is approved and
+the build is a session Jaipal drives, removes `Needs Decision`, and exits.
 
-**Everything not on the list takes the ordinary path**, agent-runtime work included: audit, `[PLAN]`, `Needs Decision`, and after his approval a build that commits to the ticket branch, pushes it and opens a draft PR (Phase 5).
+**Plan gate.** Everything else the repo calls high-stakes. In
+`analog-operator` that set is empty: step 4's list is the hard stop in full,
+so a ticket here is hard stop or ordinary. The tier is still described,
+because this block is shared with `analog-guest`, where it holds the agent
+runtime contract. The session audits, plans, posts `[PLAN]` with
+`Needs Decision`, and exits. A human reply resumes it on the next scheduled
+run, exactly as every other plan does. It then builds, commits, pushes, and
+opens a draft PR, and stops. Jaipal reviews and merges.
 
-**Guest-facing copy is approved as wording, not as intent.** A plan that changes copy a guest can read must quote the new wording verbatim and wait for approval of that wording specifically. An approval of the plan's shape is not an approval of its words.
+**Ordinary.** Unchanged, and now the same flow as the plan gate.
+
+**Guest-facing copy is its own gate.** A plan that changes wording a guest
+can read shows the new wording verbatim and waits for approval of that
+wording specifically. Approving a plan's shape is not approving its copy.
+
+`[HUMAN-REVIEW-REQUIRED]` means one thing: this ticket's build is a session
+Jaipal drives. It is posted once, after a hard-stop plan is approved, never
+instead of a plan, and it is terminal for the automation — a reply after it
+starts nothing.
+
+**Superseded, the 2026-09-16 ruling.** It said no go-ahead lets
+`/work-ticket` past the high-stakes check, and it described the shape the
+check then had correctly: the check fired before any plan, so each answer
+produced another stop and the human never got anything to approve. The check
+now fires after the plan, so the ruling no longer holds.
 
 ## On hitting a question
 

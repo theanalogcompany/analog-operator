@@ -32,7 +32,7 @@ function extractRules(source: string): string {
 }
 
 /** The repo-rule defs both workflows must carry identically. */
-const SHARED_DEFS = ['repo_labels', 'repo_line_names', 'owner', 'named_unlabelled'] as const;
+const SHARED_DEFS = ['repo_labels', 'repo_line_names', 'owner'] as const;
 
 function extractDef(rules: string, name: string): string {
   const start = rules.indexOf(`def ${name}:`);
@@ -79,52 +79,50 @@ describe('ticket workflows', () => {
   });
 
   // The two copies drifting is the failure TAC-439 exists to prevent, and
-  // process.md's "Shared and per-repo blocks" declares these four identical.
-  // A claim like that is checkable, so it is checked rather than asserted.
+  // process.md's mirror-pair rule ("Which repo works a ticket") says the
+  // shared blocks must be identical. A claim like that is checkable, so it is
+  // checked rather than asserted. These defs are also shared with
+  // analog-guest, which nothing here can check: a run reaches only its own
+  // repo, so that half is a copy-verbatim discipline, not a test.
   it.each(SHARED_DEFS)('the %s def is identical in both workflows', (name) => {
     const auditRules = extractRules(auditSrc);
     expect(extractDef(auditRules, name)).toBe(extractDef(rules, name));
   });
 
-  describe('owner and named_unlabelled', () => {
-    const cases: Array<{ name: string; t: Ticket; owner: string; unlabelled: string[] }> = [
+  describe('owner', () => {
+    const cases: Array<{ name: string; t: Ticket; owner: string }> = [
       {
         name: 'single label, Repo: line naming only it — the ordinary ticket',
         t: { labels: ['analog-operator'], repoLine: '`analog-operator`' },
         owner: 'analog-operator',
-        unlabelled: [],
       },
       {
-        // TAC-439's own shape: this is the defect the ticket was filed for.
-        name: 'single label, Repo: line naming both repos — half-routed',
+        // TAC-439's own shape. A line naming two repos is a defect whatever
+        // the labels say; before this, owner silently picked analog-guest and
+        // analog-operator never saw the ticket.
+        name: 'Repo: line naming two repos — defect, whatever the labels say',
         t: { labels: ['analog-guest'], repoLine: '`analog-guest` and `analog-operator`' },
-        owner: 'analog-guest',
-        unlabelled: ['analog-operator'],
+        owner: 'defect:multi-repo-line',
       },
       {
         name: 'two repo labels — the pre-existing defect, unchanged',
         t: { labels: ['analog-guest', 'analog-operator'], repoLine: '`analog-guest`' },
         owner: 'analog-guest',
-        unlabelled: [],
       },
       {
-        name: 'Repo: line naming no labelled repo — defect:unlabelled, not half-routed',
+        name: 'Repo: line naming one repo the ticket is not labelled for',
         t: { labels: ['analog-operator'], repoLine: '`analog-guest`' },
         owner: 'defect:unlabelled',
-        unlabelled: ['analog-guest'],
       },
       {
         name: 'prose mentioning the sibling stays off the Repo: line',
         t: { labels: ['analog-operator'], repoLine: "`analog-operator`\n\nThe analog-guest half is TAC-428." },
         owner: 'analog-operator',
-        unlabelled: [],
       },
     ];
 
-    it.each(cases)('$name', ({ t, owner, unlabelled }) => {
-      const doc = JSON.stringify(ticket(t));
-      expect(evalOn(rules, `${doc} | owner`, t)).toBe(owner);
-      expect(evalOn(rules, `${doc} | named_unlabelled`, t)).toEqual(unlabelled);
+    it.each(cases)('$name', ({ t, owner }) => {
+      expect(evalOn(rules, `${JSON.stringify(ticket(t))} | owner`, t)).toBe(owner);
     });
   });
 
@@ -134,40 +132,31 @@ describe('ticket workflows', () => {
     const selects = (t: Ticket, repo: string) =>
       evalOn(
         rules,
-        `${JSON.stringify(ticket(t))} | (owner == $repo and (repo_labels|length) == 1 and (named_unlabelled|length) == 0)`,
+        `${JSON.stringify(ticket(t))} | (owner == $repo and (repo_labels|length) == 1)`,
         t,
         repo,
       );
-    const halfRouted = (t: Ticket) =>
-      evalOn(
-        rules,
-        `${JSON.stringify(ticket(t))} | ((repo_labels|length) == 1 and (named_unlabelled|length) > 0 and ((owner|startswith("defect:"))|not))`,
-        t,
-      );
+    const refused = (t: Ticket) =>
+      evalOn(rules, `${JSON.stringify(ticket(t))} | (owner | startswith("defect:"))`, t);
 
     const ordinary: Ticket = { labels: ['analog-operator'], repoLine: '`analog-operator`' };
-    const half: Ticket = { labels: ['analog-guest'], repoLine: '`analog-guest` and `analog-operator`' };
+    const half: Ticket = { labels: ['analog-guest'], repoLine: '`analog-guest` and `analog-operator`' }; // multi-repo line
     const unlabelled: Ticket = { labels: ['analog-operator'], repoLine: '`analog-guest`' };
 
     it('builds an ordinary ticket', () => {
       expect(selects(ordinary, 'analog-operator')).toBe(true);
-      expect(halfRouted(ordinary)).toBe(false);
+      expect(refused(ordinary)).toBe(false);
     });
 
-    it('refuses a half-routed ticket in the repo that owns it, and never builds it', () => {
+    it('refuses a multi-repo-line ticket and builds it in neither repo', () => {
       expect(selects(half, 'analog-guest')).toBe(false);
-      expect(halfRouted(half)).toBe(true);
-    });
-
-    it('does not let the unlabelled repo build a half-routed ticket either', () => {
       expect(selects(half, 'analog-operator')).toBe(false);
+      expect(refused(half)).toBe(true);
     });
 
-    // The half-routed message says "only <repo> would ever build it", which is
-    // false of defect:unlabelled, where nothing builds it at all. Keeping the
-    // two apart is what stops the wrong message being posted.
-    it('does not treat a defect:unlabelled ticket as half-routed', () => {
-      expect(halfRouted(unlabelled)).toBe(false);
+    it('still refuses a Repo: line naming no labelled repo', () => {
+      expect(selects(unlabelled, 'analog-operator')).toBe(false);
+      expect(refused(unlabelled)).toBe(true);
     });
   });
 });
