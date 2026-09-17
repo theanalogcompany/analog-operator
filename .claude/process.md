@@ -90,6 +90,29 @@ would never be built, and merging that one PR would still move the whole
 ticket to Ready For QA. It is the same defect as a missing Repo: line is for
 the audit. It just fails later and more expensively.
 
+**Two kinds of sibling pair, with different rules.**
+
+- A **contract pair** is a server endpoint and its client (TAC-207 ↔ TAC-288).
+  Order is absolute: the `analog-guest` half deploys and is verified with
+  `curl` against the `## Contract` block before the client half is touched.
+  Cross-repo UAT is a Done gate for both. See CLAUDE.md, "Cross-repo
+  contracts".
+- A **mirror pair** is the same text landing in both repos with no runtime
+  dependency (TAC-396 ↔ TAC-437, TAC-441 ↔ TAC-442). Order is irrelevant and
+  there is nothing to curl. Its gate is that the shared blocks are
+  character-identical; the per-repo blocks are listed in the ticket and are
+  expected to differ. A mirror pair has no `## Contract` section, and the
+  contract rules do not apply to it.
+
+**A Repo: line naming a repo the ticket is not labelled for is the same
+defect, and it used to fail silently.** `owner` picks the first named repo
+that *is* labelled and says nothing about the rest, so that repo built the
+ticket and the other never saw it — no comment, no label, nothing. Both
+workflows now refuse it with `[BUILD-SKIPPED]` and `Needs Decision`, and both
+repos flag it, so it cannot be invisible to both. TAC-439 is the worked
+example: one `analog-guest` label, a Repo: line naming both, and
+analog-operator's automation never selecting it.
+
 The labels say where the work lands. The **Repo:** line says where it starts.
 The audit and the build both narrow by label and decide by the Repo: line:
 

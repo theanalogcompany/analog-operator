@@ -33,6 +33,12 @@ If the ticket has two repo labels and no Repo: line, a Repo: line naming no
 repo it is labelled for, or no repo label at all, say so and stop. That is a
 defect in the ticket, not something to guess past.
 
+If its Repo: line names a repo the ticket is **not** labelled for, audit it
+from the repo it is labelled for, and say under WRONG that it needs splitting.
+The build refuses this case outright, so saying it now is cheaper than the
+build refusing it later. It is a defect even though a repo can be chosen: the
+unlabelled half would never be built and, before TAC-439, nothing said so.
+
 A ticket is audited once, by one session, regardless of how many repos it
 touches. Audit it from the repo chosen above, and state in the report what
 could not be verified from there.

@@ -128,6 +128,15 @@ jobs:
                 elif ($labels | length) == 0 then "none"
                 else "defect:no-repo-line"
                 end;
+            # Repos the Repo: line names that the ticket is NOT labelled
+            # for. Non-empty means the ticket is half-routed: owner picks
+            # the labelled one and the other repo never sees it, so one
+            # half is silently never built. A ticket-writing defect, the
+            # same class as two repo labels (TAC-439). Kept identical in
+            # the sibling workflow.
+            def named_unlabelled:
+              repo_labels as $labels
+              | [ repo_line_names[] | select(. as $n | $labels | any(. == $n) | not) ];
             def audited: [.comments.nodes[].body] | map(test("\\[AUDIT(-CLAIM)?\\]")) | any;
             def only($t): if $t == "" then . else map(select(.identifier == $t)) end;
             def has_label($name): [.labels.nodes[].name] | any(. == $name);
