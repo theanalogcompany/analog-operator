@@ -11,7 +11,8 @@
  * behavior you are claiming" entry is about. (TAC-439.)
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 
@@ -52,12 +53,27 @@ function ticket({ labels, repoLine }: Ticket) {
   };
 }
 
+/**
+ * The jq program goes to a real file, never `-f /dev/stdin`.
+ * `execFileSync`'s `input` hands the child a pipe and closes the write end
+ * before jq runs. macOS opens `/dev/stdin` against that pipe happily; Linux
+ * resolves it through `/proc/self/fd/0` and fails with ENXIO —
+ * `jq: Could not open /dev/stdin: No such device or address`. So the first
+ * version of this file passed on a Mac and failed every jq-backed case in
+ * CI. A temp file has no platform-dependent behaviour to get wrong.
+ */
 function evalOn(rules: string, expr: string, _t: Ticket, repo = 'analog-operator'): unknown {
-  const out = execFileSync('jq', ['-n', '-c', '--arg', 'repo', repo, '-f', '/dev/stdin'], {
-    input: `${rules}\n${expr}`,
-    encoding: 'utf8',
-  });
-  return JSON.parse(out);
+  const dir = mkdtempSync(join(tmpdir(), 'tac439-jq-'));
+  const program = join(dir, 'program.jq');
+  try {
+    writeFileSync(program, `${rules}\n${expr}`, 'utf8');
+    const out = execFileSync('jq', ['-n', '-c', '--arg', 'repo', repo, '-f', program], {
+      encoding: 'utf8',
+    });
+    return JSON.parse(out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 describe('ticket workflows', () => {
