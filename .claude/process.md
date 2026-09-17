@@ -151,6 +151,40 @@ Only an edit to the ticket fixes any of these defects. A reply doesn't,
 because the automations read the Repo: line and the labels, not the
 comments.
 
+## Shared and per-repo blocks
+
+This file, `work-ticket.md`, `audit-ticket.md`, CLAUDE.md and the two ticket
+workflows exist in both repos. They are **not** whole-file identical, and the
+gate on a mirror pair is not a whole-file `diff`. Some blocks must match
+character for character; others differ on purpose. Both lists are here so the
+next person diffing the repos knows which is which (TAC-439).
+
+**Shared — character-identical, and what a mirror-pair gate diffs:**
+
+- this file's "High-stakes tickets get a plan, never an unattended build"
+- this file's "Which repo works a ticket", including the sibling-pair
+  distinction and the half-routed refusal
+- this file's marker table
+- `work-ticket.md` Phase 0 step 4, the `[HUMAN-REVIEW-REQUIRED]` row under
+  "Phase resumption", Phase 5's one-rule note, and the hard rules
+- CLAUDE.md's "High-stakes flags" framing paragraphs, **not** the list
+- the repo-rule defs in both workflows (`repo_labels`, `repo_line_names`,
+  `owner`, `named_unlabelled`)
+
+**Per-repo — expected to differ, and why:**
+
+| Block | Differs because |
+|---|---|
+| CLAUDE.md's high-stakes list | It names what can reach a guest, move money or destroy data *in that repo*. analog-operator has no Stripe and no migrations; analog-guest has no SecureStore or APNs. A shared list would be dead text in one of them |
+| `work-ticket.md` step 6's lib paths | `lib/voice-training/`, `lib/agent/` and the rest do not exist in analog-operator |
+| `work-ticket.md` step 10's QA-route guidance | Operator tickets skew device-heavy; guest tickets skew script-provable |
+| `work-ticket.md` step 22's test gate | analog-operator runs jest, analog-guest runs vitest |
+| this file's worked question example | One is a push-notification case, one a closed-venue auto-send case |
+| the allowlists in both workflows | They follow each repo's own test and build commands |
+
+A block that needs to differ and is not listed here is a drift, not an
+exemption. Add it to the table with its reason, or make it shared.
+
 ## Comments
 
 Every comment on a ticket is authored under Jaipal's Linear account,
