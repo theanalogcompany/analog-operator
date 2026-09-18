@@ -71,6 +71,9 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "<rootDir>/.claude/"
-    ]
+    ],
+    "transform": {
+      "\\.mjs$": "babel-jest"
+    }
   }
 }
