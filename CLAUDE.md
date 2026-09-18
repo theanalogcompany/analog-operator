@@ -113,6 +113,10 @@ The list is per-repo on purpose: it names what can reach a guest, move money, or
   3. **An empty or blank value is skipped.** It would otherwise reach `split("")` and break every line apart.
   4. **Nothing to redact against means nothing is posted.** If the step finds no secret, because `git show` failed or the pattern stopped matching, it withholds the commands and posts only the count. Posting them would drop even the Linear-key redaction every run has had.
 
+  **The live record is audit run 35306256155 on fixture TAC-464.** A throwaway branch declared `DENIALS_CANARY: ${{ secrets.DENIALS_CANARY || '<fake value>' }}` in the reporting step. No repo secret has that name, so the step held the fake value under a `secrets.*` declaration. The session was refused `python3 -c "print('tac441-left <fake value> tac441-right')"`, and `[DENIALS]` posted it as `python3 -c "print('tac441-left *** tac441-right')"`. **To make a fixture session hit a denial, put the command in the workflow prompt on the throwaway branch, and use a command that is actually refused.** Two earlier runs missed:
+  - A ticket asked for `echo`, which Claude Code allows although it's on neither allowlist, so nothing was refused.
+  - A ticket asked for `python3`, and the audit session didn't run it, because `audit-ticket.md` tells it to check a command's behaviour by reading rather than running.
+
   Only this step's secrets are covered. `CLAUDE_CODE_OAUTH_TOKEN` goes to the Claude step alone, so if a session typed it into a denied command, it would be posted unredacted. The block is character-identical in both workflows, which the test checks, and in `analog-guest`, which nothing here can check: TAC-442 copies it from here.
 - **NativeWind v4** — hover variants don't apply on RN; if you reach for `hover:` instinctively, stop. State-dependent styling uses Pressable's `style` prop with a function, or inline conditional style. No `hover:text-clay` patterns.
 - **Expo Go limitations** — Phase 1 of TAC-112 runs in Expo Go, which means no custom native modules. Anything requiring a config plugin or native code needs a dev client build (deferred until Apple Dev account is enrolled).
