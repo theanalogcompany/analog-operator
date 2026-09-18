@@ -47,7 +47,7 @@ name: Build ready tickets
 # exactly one, analog-operator. That was measured here, not carried over from
 # analog-guest's check. Build keeps the App token rather than the job's own:
 # a PR opened with the job token triggers no other workflows, so build's PRs
-# would get no CI and no preview build.
+# would get no CI.
 #
 # Known unknown: which permissions that token carries inside this repo. The
 # exchange sends no permissions request and its response states only the
