@@ -236,8 +236,8 @@ describe('ticket workflows', () => {
 
     // The jq gate is coarse: anything without the CC prefix resumes, a plain
     // CHAT note included. TAC-396's approval left it that way, leaving the
-    // RULING-versus-context call to /work-ticket once it runs. Its prose does
-    // not make that call yet: TAC-396's wording for it is unapplied.
+    // RULING-versus-context call to /work-ticket once it runs, which makes it
+    // in Phase 0 step 2b and "Reply classification" (TAC-454).
     const cases: Array<{ name: string; bodies: string[]; resume: boolean }> = [
       { name: "Claude Code's own [AUDIT] does not resume it", bodies: [PLAN, AUDIT], resume: false },
       { name: 'a CHAT — RULING comment resumes it', bodies: [PLAN, RULING], resume: true },
