@@ -16,6 +16,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 
+import { commentMarker, isBotComment } from '@/scripts/lib/comment-provenance.mjs';
+
 const ROOT = join(__dirname, '..');
 const BUILD = join(ROOT, '.github/workflows/build-ready.yml');
 const AUDIT = join(ROOT, '.github/workflows/audit-new-todo.yml');
@@ -62,18 +64,30 @@ function ticket({ labels, repoLine }: Ticket) {
  * version of this file passed on a Mac and failed every jq-backed case in
  * CI. A temp file has no platform-dependent behaviour to get wrong.
  */
-function evalOn(rules: string, expr: string, _t: Ticket, repo = 'analog-operator'): unknown {
+function runJq(program: string, args: string[]): unknown {
   const dir = mkdtempSync(join(tmpdir(), 'tac439-jq-'));
-  const program = join(dir, 'program.jq');
+  const file = join(dir, 'program.jq');
   try {
-    writeFileSync(program, `${rules}\n${expr}`, 'utf8');
-    const out = execFileSync('jq', ['-n', '-c', '--arg', 'repo', repo, '-f', program], {
-      encoding: 'utf8',
-    });
+    writeFileSync(file, program, 'utf8');
+    const out = execFileSync('jq', ['-n', '-c', ...args, '-f', file], { encoding: 'utf8' });
     return JSON.parse(out);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function evalOn(rules: string, expr: string, _t: Ticket, repo = 'analog-operator'): unknown {
+  return runJq(`${rules}\n${expr}`, ['--arg', 'repo', repo]);
+}
+
+/** build-ready.yml's `SELECTED` program: the jq that decides start and resume. */
+function extractSelected(source: string): string {
+  const m = /SELECTED=\$\(echo "\$RESPONSE" \| jq -c[\s\S]*?"\$RULES"'\n([\s\S]*?)\n\s*'\)/.exec(source);
+  if (!m) throw new Error('no SELECTED program found');
+  return m[1]
+    .split('\n')
+    .map((l) => l.trim())
+    .join('\n');
 }
 
 describe('ticket workflows', () => {
@@ -173,6 +187,83 @@ describe('ticket workflows', () => {
     it('still refuses a Repo: line naming no labelled repo', () => {
       expect(selects(unlabelled, 'analog-operator')).toBe(false);
       expect(refused(unlabelled)).toBe(true);
+    });
+  });
+
+  // TAC-437's gate, checked where this repo decides it. Nothing here imports
+  // scripts/lib/comment-provenance.mjs at runtime: CI resumes a blocked
+  // ticket through build-ready.yml's own SELECTED jq, so the module's tests
+  // alone would say nothing about whether a run resumes. Each case runs that
+  // jq over a blocked ticket whose last turn is the comment named, then
+  // checks the shared classifier reads the comment the same way.
+  describe('which newest comment resumes a blocked ticket', () => {
+    const selected = extractSelected(buildSrc);
+    const PLAN = '**[FROM CLAUDE CODE]**\n\n[PLAN] TAC-TEST\n\nWaiting for approval.';
+    const AUDIT = '**[FROM CLAUDE CODE]**\n\n[AUDIT] TAC-TEST\n\nA run might later post [NEEDS-INPUT], but none was raised.';
+    const AUDIT_ESCAPED = '**\\[FROM CLAUDE CODE\\]**\n\n\\[AUDIT\\] TAC-TEST\n\nNo questions.';
+    const RULING = '**[FROM CLAUDE CHAT — RULING]**\n\nPlan approved as written. Build it.';
+    const CHAT_PLAIN = '**[FROM CLAUDE CHAT]**\n\nSplit 2026-09-17. The other half moves to its own ticket.';
+    const UNPREFIXED = 'Approved, build it.';
+    const DENIALS = '**[FROM CLAUDE CODE]**\n\n[DENIALS] TAC-TEST run=1 count=1\n\nBookkeeping.';
+
+    /** True when build-ready.yml would resume the ticket. */
+    const resumes = (bodies: string[]): boolean => {
+      const issue = {
+        id: 'issue-1',
+        identifier: 'TAC-TEST',
+        priority: 2,
+        state: { name: 'Ready' },
+        labels: { nodes: [{ name: 'analog-operator' }, { name: 'Needs Decision' }] },
+        description: '**Repo:** `analog-operator`\n\nbody\n',
+        comments: {
+          nodes: bodies.map((body, i) => ({
+            id: `c${i}`,
+            createdAt: `2026-09-17T1${i}:00:00.000Z`,
+            body,
+          })),
+        },
+      };
+      const response = { data: { issues: { nodes: [issue] } } };
+      const out = runJq(`${rules}\n${JSON.stringify(response)} | ${selected}`, [
+        '--arg', 'repo', 'analog-operator',
+        '--argjson', 'limit', '2',
+        '--argjson', 'maxAttempts', '2',
+        '--argjson', 'liveHours', '3',
+        '--arg', 'now', '2026-09-18T00:00:00Z',
+      ]) as Array<{ mode: string }>;
+      return out.some((t) => t.mode === 'resume');
+    };
+
+    // The jq gate is coarse: anything without the CC prefix resumes, a plain
+    // CHAT note included. TAC-396's approval left it that way, leaving the
+    // RULING-versus-context call to /work-ticket once it runs. Its prose does
+    // not make that call yet: TAC-396's wording for it is unapplied.
+    const cases: Array<{ name: string; bodies: string[]; resume: boolean }> = [
+      { name: "Claude Code's own [AUDIT] does not resume it", bodies: [PLAN, AUDIT], resume: false },
+      { name: 'a CHAT — RULING comment resumes it', bodies: [PLAN, RULING], resume: true },
+      { name: 'a plain CHAT comment resumes it too', bodies: [PLAN, CHAT_PLAIN], resume: true },
+      { name: 'an unprefixed reply resumes it', bodies: [PLAN, UNPREFIXED], resume: true },
+      { name: 'a RULING followed by bookkeeping still resumes it', bodies: [PLAN, RULING, DENIALS], resume: true },
+    ];
+
+    it.each(cases)('$name', ({ bodies, resume }) => {
+      expect(resumes(bodies)).toBe(resume);
+      // The jq's own bookkeeping skip, marker_is("RESUME-CLAIM|SLACK|DENIALS").
+      const lastTurn =
+        bodies.filter((b) => !['RESUME-CLAIM', 'SLACK', 'DENIALS'].includes(commentMarker(b) ?? '')).at(-1) ?? '';
+      expect(isBotComment(lastTurn)).toBe(!resume);
+    });
+
+    // Asserts today's wrong behaviour on purpose, under a name that says so.
+    // The classifier reads an escaped CC prefix as CC's own (pinned in
+    // scripts/lib/comment-provenance.test.ts); build-ready.yml's is_bot does
+    // not unescape, so the jq reads it as human and resumes. TAC-396 kept that
+    // jq unchanged (approved 2026-09-17), and the RULES block is shared
+    // verbatim with analog-guest, so a fix lands in both repos or neither.
+    // When it lands this goes red: flip the expectation and the name then.
+    it('KNOWN GAP: an escaped CC [AUDIT] still resumes it, because is_bot does not unescape', () => {
+      expect(isBotComment(AUDIT_ESCAPED)).toBe(true);
+      expect(resumes([PLAN, AUDIT_ESCAPED])).toBe(true);
     });
   });
 });
