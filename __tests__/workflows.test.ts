@@ -127,7 +127,9 @@ describe('ticket workflows', () => {
   // entry going missing. Without it every write is refused, and a refusal
   // fails silently. `allows` models Claude Code's documented Bash rule, not
   // its code, so it proves the entry is present, not that Claude Code admits
-  // it. Only a real run can show that.
+  // it. Only a real run can show that: audit run 35303513132 (TAC-451's
+  // fixture, Claude Code 2.1.276) is the record of it admitting all four
+  // helper calls under this entry.
   describe('the Linear helper each prompt teaches is on its allowlist', () => {
     type Step = { uses?: string; with?: { claude_args?: string; prompt?: string } };
 
