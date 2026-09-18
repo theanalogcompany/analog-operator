@@ -42,7 +42,7 @@ Then scan the Metro QR code with the iOS Camera app, which opens Expo Go and loa
 | `npm run lint` | Run `expo lint` (eslint with `eslint-config-expo`) |
 | `npm test` | Run the jest test suite |
 | `npx tsc --noEmit` | Typecheck without emitting build output |
-| `npm run build:preview` | Trigger an EAS Build preview build for iOS (internal distribution) |
+| `npm run build:preview` | Trigger an EAS Build preview build for iOS (internal distribution; not set up, see [Internal distribution](#internal-distribution-not-set-up)) |
 | `npm run build:production` | Trigger an EAS Build production build for iOS (TestFlight-uploadable) |
 | `npm run submit:production` | Submit the latest production build to TestFlight |
 
@@ -83,7 +83,6 @@ Distribution to pilot operators (and Jaipal's iPhone) runs through [TestFlight](
 
 - Expo account (`eas login`) with access to the `analog-operator` project
 - [EAS CLI](https://docs.expo.dev/eas-update/getting-started/) installed locally (`npm i -g eas-cli`)
-- For CI preview builds: an `EXPO_TOKEN` GitHub Actions secret. A personal access token works for solo accounts; a [robot account](https://docs.expo.dev/accounts/programmatic-access/) token is preferred once we're on an Expo organization for audit-trail reasons. Store in repo Settings → Secrets and variables → Actions; never commit.
 
 ### EAS environment variables
 
@@ -92,7 +91,7 @@ Distribution to pilot operators (and Jaipal's iPhone) runs through [TestFlight](
 - [expo.dev dashboard → Project → Environment Variables](https://docs.expo.dev/eas/environment-variables/) (web UI, easiest), **or**
 - `eas env:create --environment production --name EXPO_PUBLIC_SUPABASE_URL --value '...'` (CLI)
 
-Scope vars to `production` (used by `npm run build:production`) and `preview` (used by the PR preview workflow) — both environments need the values independently. Sensitive vars: set `--visibility sensitive`; non-sensitive (everything `EXPO_PUBLIC_*` is by definition app-visible): leave as plain.
+Scope vars to `production` (used by `npm run build:production`). The `preview` environment, used by `npm run build:preview`, needs its own copies. Sensitive vars: set `--visibility sensitive`; non-sensitive (everything `EXPO_PUBLIC_*` is by definition app-visible): leave as plain.
 
 ### One-time bootstrap (Jaipal)
 
@@ -115,9 +114,17 @@ npm run submit:production                # upload latest production build to App
 
 TestFlight processing takes ~10–15 minutes after submit. Once the build shows "Ready to Submit" in App Store Connect → TestFlight and you've added it to your internal test group, it appears in the TestFlight app on your iPhone and is installable.
 
-### Preview builds on PRs
+### Internal distribution (not set up)
 
-[.github/workflows/eas-build-preview.yml](.github/workflows/eas-build-preview.yml) fires `eas build --platform ios --profile preview` on every pull request against `main`. Builds are installable via [Expo Orbit](https://expo.dev/orbit) or the build-page QR code. **Note:** PRs from forks don't have access to the `EXPO_TOKEN` secret, so preview builds will fail on forked-PR workflows — acceptable for the pilot since there are no external contributors.
+There is no build on PRs. A workflow that ran `eas build --profile preview` on every PR was deleted in TAC-387: it failed all 61 of its runs and never produced a build. A native build break surfaces at `npm run build:production`.
+
+The `preview` profile in [eas.json](eas.json) (`distribution: internal`) and `npm run build:preview` remain for a manual ad-hoc build. Where its credentials stand, as of 2026-09-18:
+
+- **Distribution certificate:** on EAS already; production builds sign with it.
+- **Registered devices:** none (`eas device:list` returns `[]`). An ad-hoc provisioning profile lists the devices allowed to install the build, so it can't exist until at least one is registered. Register each iPhone with `eas device:create`.
+- **Ad-hoc provisioning profile:** missing. After registering devices, generate it by running `npm run build:preview` once interactively (or `eas credentials -p ios`). A device added later means regenerating it.
+
+Run non-interactively, as in CI, a missing profile fails with `EAS CLI couldn't find any credentials suitable for internal distribution`. That message is about the missing profile, not a GitHub secret or an expired certificate.
 
 ### Bumping versions
 
