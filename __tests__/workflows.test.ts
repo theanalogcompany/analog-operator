@@ -119,6 +119,66 @@ describe('ticket workflows', () => {
     expect(extractDef(auditRules, name)).toBe(extractDef(rules, name));
   });
 
+  // TAC-451. Both prompts teach `node scripts/linear.mjs` for every Linear
+  // write, in a block kept byte for byte with analog-guest
+  // (scripts/lib/linear-prompts.test.ts). analog-guest's allowlists already
+  // carried Bash(node:*); these carried no node at all, so this repo adds the
+  // helper alone, and nothing in the shared prompt test would notice the
+  // entry going missing. Without it every write is refused, and a refusal
+  // fails silently. `allows` models Claude Code's documented Bash rule, not
+  // its code, so it proves the entry is present, not that Claude Code admits
+  // it. Only a real run can show that.
+  describe('the Linear helper each prompt teaches is on its allowlist', () => {
+    type Step = { uses?: string; with?: { claude_args?: string; prompt?: string } };
+
+    const claudeStep = (src: string) => {
+      const doc = yaml.load(src) as { jobs: Record<string, { steps: Step[] }> };
+      const step = Object.values(doc.jobs)
+        .flatMap((job) => job.steps)
+        .find((s) => s.uses?.startsWith('anthropics/claude-code-action'));
+      if (!step?.with?.claude_args || !step.with.prompt) throw new Error('no claude-code-action step');
+      return { args: step.with.claude_args, prompt: step.with.prompt };
+    };
+
+    const tools = (args: string, flag: string) => {
+      const m = new RegExp(`${flag} "([^"]*)"`).exec(args);
+      if (!m) throw new Error(`no ${flag}`);
+      return m[1].split(',');
+    };
+
+    // Bash(x) allows exactly x; Bash(x:*) allows x followed by anything. Any
+    // other `*` is a wildcard form this doesn't model, and treating it as an
+    // exact match would let a deny rule such as Bash(node *) pass unseen.
+    const allows = (rule: string, command: string) => {
+      const m = /^Bash\((.*)\)$/.exec(rule);
+      if (!m) return false;
+      if (m[1].replace(/:\*$/, '').includes('*')) throw new Error(`unmodelled wildcard rule: ${rule}`);
+      if (!m[1].endsWith(':*')) return command === m[1];
+      const prefix = m[1].slice(0, -2);
+      return command === prefix || command.startsWith(`${prefix} `);
+    };
+
+    it.each([
+      ['build-ready.yml', BUILD],
+      ['audit-new-todo.yml', AUDIT],
+    ])('%s', (_name, path) => {
+      const { args, prompt } = claudeStep(read(path));
+      const taught = prompt
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('node scripts/linear.mjs '));
+      // comment, describe, label add, label remove, state. Zero would pass
+      // every assertion below and prove nothing.
+      expect(taught).toHaveLength(5);
+      const allowed = tools(args, '--allowedTools');
+      const disallowed = tools(args, '--disallowedTools');
+      for (const command of taught) {
+        expect({ command, allowed: allowed.some((rule) => allows(rule, command)) }).toEqual({ command, allowed: true });
+        expect({ command, disallowed: disallowed.some((rule) => allows(rule, command)) }).toEqual({ command, disallowed: false });
+      }
+    });
+  });
+
   describe('owner', () => {
     const cases: Array<{ name: string; t: Ticket; owner: string }> = [
       {
