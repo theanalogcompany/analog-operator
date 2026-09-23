@@ -442,10 +442,12 @@ describe('lib/api/queue HTTP shape', () => {
       const result = await listQueue();
       expect(result.ok).toBe(true);
       if (result.ok) {
+        // `createdAt` is sent by the server per the Contract and deliberately
+        // not parsed: nothing renders it, and under `.catch(null)` a required
+        // field nobody reads can only ever cost a quote that was otherwise fine.
         expect(result.data.drafts[0].replyingTo).toEqual({
           messageId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
           body: 'do you have oat milk for any drink?',
-          createdAt: '2026-09-23T18:04:11.271Z',
         });
       }
     });
@@ -467,6 +469,27 @@ describe('lib/api/queue HTTP shape', () => {
       const result = await listQueue();
       expect(result.ok).toBe(true);
       if (result.ok) expect(result.data.drafts[0].replyingTo).toBeNull();
+    });
+
+    it('parses an empty body rather than rejecting it, and leaves the display call to the card', async () => {
+      // A media-only inbound is stored with `body: ''` (TAC-411), so an empty
+      // one is a real card and not a malformed payload. Withholding the quote
+      // is `shouldShowReplyQuote`'s job, because it also covers the fabricated
+      // drafts and fixtures that never reach this schema.
+      respondWith({
+        messageId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+        body: '',
+        createdAt: '2026-09-23T18:04:11.271Z',
+      });
+
+      const result = await listQueue();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.drafts[0].replyingTo).toEqual({
+          messageId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+          body: '',
+        });
+      }
     });
 
     it('degrades a malformed replyingTo to null instead of failing the draft', async () => {

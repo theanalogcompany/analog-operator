@@ -300,27 +300,45 @@ describe('the edit takeover header', () => {
  * The backing fixes a defect older than TAC-364: on main the unbacked dividers
  * were already below 4.5:1 on the stone (3.27) and clay (3.94) card grounds.
  */
+/**
+ * The worst ratio `groundText.body` white reaches over a card ground, sampled
+ * across the given grid, optionally through the `dividerBacking` scrim.
+ *
+ * Shared by the two cases below because the arithmetic is identical: same ink,
+ * same alpha, same backing. They stay SEPARATELY NAMED on purpose — a gate
+ * named for dividers would take the reply-quote row's gate with it the day
+ * dividers change — but there is no reason for both to carry their own copy of
+ * the compositor.
+ */
+function minBackedWhite(
+  name: CardGroundName,
+  backed: boolean,
+  xs: number[],
+  ys: number[],
+): number {
+  const backing = parseColor(dividerBacking.color);
+  const a = backed ? backing[3] : 0;
+  let min = Infinity;
+  for (const y of ys) {
+    for (const x of xs) {
+      const [r, g, b] = composite(GROUNDS[name], x, y);
+      const under: RGB = [
+        r * (1 - a) + backing[0] * a,
+        g * (1 - a) + backing[1] * a,
+        b * (1 - a) + backing[2] * a,
+      ];
+      min = Math.min(min, whiteOn(under, alphaOf(groundText.body)));
+    }
+  }
+  return min;
+}
+
 describe('the edit takeover date dividers', () => {
   const XS = span(22, W - 22, 24);
   const YS = span(layout.mockTopInsetPx, H, 120);
-  const backing = parseColor(dividerBacking.color);
 
-  function minDivider(name: CardGroundName, backed: boolean): number {
-    const a = backed ? backing[3] : 0;
-    let min = Infinity;
-    for (const y of YS) {
-      for (const x of XS) {
-        const [r, g, b] = composite(GROUNDS[name], x, y);
-        const under: RGB = [
-          r * (1 - a) + backing[0] * a,
-          g * (1 - a) + backing[1] * a,
-          b * (1 - a) + backing[2] * a,
-        ];
-        min = Math.min(min, whiteOn(under, alphaOf(groundText.body)));
-      }
-    }
-    return min;
-  }
+  const minDivider = (name: CardGroundName, backed: boolean) =>
+    minBackedWhite(name, backed, XS, YS);
 
   it.each(CARD_GROUND_NAMES)('%s keeps a backed divider at 4.5:1 anywhere on the screen', (name) => {
     expect(minDivider(name, true)).toBeGreaterThanOrEqual(4.5);
@@ -339,8 +357,9 @@ describe('the edit takeover date dividers', () => {
  *
  * It sits on the card's ground like the date dividers, takes the same
  * `dividerBacking` scrim, and carries `groundText.body` in 8.5pt tracked caps
- * (the label) and 12.5px (the quote). Both are NORMAL text under WCAG — 12.5px
- * is about 9.4pt, nowhere near the 18pt / 14pt-bold large-text threshold — so
+ * (the label) and 12.5px (the quote). Both are NORMAL text under WCAG — RN's
+ * fontSize is points, so the quote is 12.5pt, nowhere near the 18pt /
+ * 14pt-bold large-text threshold — so
  * 4.5:1 governs both. The two differ in size but never in ratio: contrast
  * depends on colour alone and both carry the same one.
  *
@@ -354,27 +373,9 @@ describe('the edit takeover date dividers', () => {
 describe('the edit takeover reply-quote row', () => {
   const XS = span(20, W - 20, 24);
   const YS = span(layout.mockTopInsetPx, H, 120);
-  const backing = parseColor(dividerBacking.color);
-
-  function minQuote(name: CardGroundName, backed: boolean): number {
-    const a = backed ? backing[3] : 0;
-    let min = Infinity;
-    for (const y of YS) {
-      for (const x of XS) {
-        const [r, g, b] = composite(GROUNDS[name], x, y);
-        const under: RGB = [
-          r * (1 - a) + backing[0] * a,
-          g * (1 - a) + backing[1] * a,
-          b * (1 - a) + backing[2] * a,
-        ];
-        min = Math.min(min, whiteOn(under, alphaOf(groundText.body)));
-      }
-    }
-    return min;
-  }
 
   it.each(CARD_GROUND_NAMES)('%s keeps the backed row at 4.5:1 anywhere on the screen', (name) => {
-    expect(minQuote(name, true)).toBeGreaterThanOrEqual(4.5);
+    expect(minBackedWhite(name, true, XS, YS)).toBeGreaterThanOrEqual(4.5);
   });
 
   // The row sits low, against the composer, which is where Honey is weakest:
@@ -382,7 +383,7 @@ describe('the edit takeover reply-quote row', () => {
   // fails, so the scrim is load-bearing rather than decoration inherited from
   // the divider beside it.
   it('needs the backing: Honey misses 4.5:1 without it', () => {
-    expect(minQuote('midThread', false)).toBeLessThan(4.5);
+    expect(minBackedWhite('midThread', false, XS, YS)).toBeLessThan(4.5);
   });
 });
 

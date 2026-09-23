@@ -569,7 +569,7 @@ export default function EditScreen() {
               2026-09-23. */}
           <ReplyQuote
             replyingTo={draft?.replyingTo ?? null}
-            lastRenderedMessageId={lastRenderedMessageId(items)}
+            lastRenderedId={lastRenderedMessageId(items)}
             surface="takeover"
             style={{ paddingHorizontal: 20, paddingTop: 10 }}
           />

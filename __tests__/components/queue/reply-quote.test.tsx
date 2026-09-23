@@ -8,7 +8,7 @@ import {
 } from '@/components/queue/reply-quote';
 import { type ReplyingTo } from '@/lib/api/queue';
 import { CARD_COPY } from '@/lib/card-copy';
-import { dividerBacking } from '@/lib/theme';
+import { dividerBacking, groundText } from '@/lib/theme';
 import { type ThreadItem } from '@/lib/thread-cluster';
 
 const OAT_MILK = 'a1b2c3d4-4444-4a5b-8c6d-7e8f9a0b1c2d';
@@ -17,7 +17,6 @@ const SUNDAY = 'a1b2c3d4-4446-4a5b-8c6d-7e8f9a0b1c2d';
 const replyingTo: ReplyingTo = {
   messageId: OAT_MILK,
   body: 'do you have oat milk for any drink?',
-  createdAt: '2026-09-23T18:04:11.271Z',
 };
 
 function bubble(id: string): ThreadItem {
@@ -50,6 +49,17 @@ describe('shouldShowReplyQuote', () => {
     expect(shouldShowReplyQuote(replyingTo, OAT_MILK)).toBe(false);
   });
 
+  it('withholds the quote when the replied-to message has no words', () => {
+    // A media-only inbound is stored with `body: ''` (TAC-411) and is excluded
+    // from `recentContext` by the queue RPC's `m.body <> ''`, so its id can
+    // never be the last rendered bubble and the id comparison alone would say
+    // "show". The row would then render the label over nothing, and on the
+    // takeover it would land directly under "Nothing has reached this guest
+    // yet." — two claims that read together as a broken screen.
+    expect(shouldShowReplyQuote({ ...replyingTo, body: '' }, SUNDAY)).toBe(false);
+    expect(shouldShowReplyQuote({ ...replyingTo, body: '   ' }, SUNDAY)).toBe(false);
+  });
+
   it('shows the quote when the thread renders no messages at all', () => {
     // An empty thread cannot already be showing the question, so the quote is
     // the only thing naming it.
@@ -75,7 +85,7 @@ describe('lastRenderedMessageId', () => {
 describe('ReplyQuote', () => {
   it('renders the label and the guest’s words', () => {
     render(
-      <ReplyQuote replyingTo={replyingTo} lastRenderedMessageId={SUNDAY} surface="card" />,
+      <ReplyQuote replyingTo={replyingTo} lastRenderedId={SUNDAY} surface="card" />,
     );
 
     expect(screen.getByTestId('reply-quote')).toBeTruthy();
@@ -86,7 +96,7 @@ describe('ReplyQuote', () => {
 
   it('renders nothing when the quote is withheld', () => {
     render(
-      <ReplyQuote replyingTo={replyingTo} lastRenderedMessageId={OAT_MILK} surface="card" />,
+      <ReplyQuote replyingTo={replyingTo} lastRenderedId={OAT_MILK} surface="card" />,
     );
 
     expect(screen.queryByTestId('reply-quote')).toBeNull();
@@ -95,7 +105,7 @@ describe('ReplyQuote', () => {
   it('renders nothing before the server sends the field', () => {
     // The client ships ahead of TAC-534, so `replyingTo` is null on every card
     // until that deploys. The card must look exactly like today's.
-    render(<ReplyQuote replyingTo={null} lastRenderedMessageId={SUNDAY} surface="card" />);
+    render(<ReplyQuote replyingTo={null} lastRenderedId={SUNDAY} surface="card" />);
 
     expect(screen.queryByTestId('reply-quote')).toBeNull();
   });
@@ -107,7 +117,7 @@ describe('ReplyQuote', () => {
     render(
       <ReplyQuote
         replyingTo={{ ...replyingTo, body: 'a '.repeat(400) }}
-        lastRenderedMessageId={SUNDAY}
+        lastRenderedId={SUNDAY}
         surface="card"
       />,
     );
@@ -119,15 +129,21 @@ describe('ReplyQuote', () => {
   it('announces the whole untruncated question to VoiceOver', () => {
     // The visual row is clipped to one line; what is read out must not be.
     render(
-      <ReplyQuote replyingTo={replyingTo} lastRenderedMessageId={SUNDAY} surface="card" />,
+      <ReplyQuote replyingTo={replyingTo} lastRenderedId={SUNDAY} surface="card" />,
     );
 
     expect(screen.getByLabelText(`Replying to: ${replyingTo.body}`)).toBeTruthy();
   });
 
+  it('renders nothing for a media-only inbound, rather than a label over blank', () => {
+    render(<ReplyQuote replyingTo={{ ...replyingTo, body: '' }} lastRenderedId={SUNDAY} surface="card" />);
+
+    expect(screen.queryByTestId('reply-quote')).toBeNull();
+  });
+
   it('takes the left rule and no fill on the white card surface', () => {
     render(
-      <ReplyQuote replyingTo={replyingTo} lastRenderedMessageId={SUNDAY} surface="card" />,
+      <ReplyQuote replyingTo={replyingTo} lastRenderedId={SUNDAY} surface="card" />,
     );
 
     const style = StyleSheet.flatten(screen.getByTestId('reply-quote').props.style);
@@ -136,15 +152,34 @@ describe('ReplyQuote', () => {
   });
 
   it('takes the divider scrim on the takeover, where it sits on a card ground', () => {
-    // White 8.5px caps directly on a card ground misses 4.5:1 (Honey falls to
-    // 2.45:1). Same colour and alpha as the date dividers beside it, so
-    // ground-contrast.test.ts's divider case already gates this pairing.
+    // White 8.5pt caps directly on a card ground misses 4.5:1 (Honey falls to
+    // 2.45:1). Gated by its own case in ground-contrast.test.ts, "the edit
+    // takeover reply-quote row".
     render(
-      <ReplyQuote replyingTo={replyingTo} lastRenderedMessageId={SUNDAY} surface="takeover" />,
+      <ReplyQuote replyingTo={replyingTo} lastRenderedId={SUNDAY} surface="takeover" />,
     );
 
     const style = StyleSheet.flatten(screen.getByTestId('reply-quote').props.style);
     expect(style.backgroundColor).toBe(dividerBacking.color);
     expect(style.borderLeftWidth).toBeUndefined();
+  });
+
+  it('inks the takeover row at groundText.body, which is what the contrast gate assumes', () => {
+    // ground-contrast.test.ts composites `whiteOn(under, alphaOf(groundText.body))`.
+    // Nothing else ties the component to that alpha, so switching to
+    // `groundText.chrome` (0.85) would leave both files green while the gate
+    // quietly stopped describing the component. Same shape as the TAC-312 rule,
+    // one layer along.
+    render(
+      <ReplyQuote replyingTo={replyingTo} lastRenderedId={SUNDAY} surface="takeover" />,
+    );
+
+    const quote = StyleSheet.flatten(screen.getByText(replyingTo.body).props.style);
+    expect(quote.color).toBe(groundText.body);
+
+    const label = StyleSheet.flatten(
+      screen.getByText(CARD_COPY.replyingTo.toUpperCase()).props.style,
+    );
+    expect(label.color).toBe(groundText.body);
   });
 });

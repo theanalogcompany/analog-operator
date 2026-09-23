@@ -58,11 +58,21 @@ export type ReplacedDraft = z.infer<typeof ReplacedDraftSchema>;
  * also absorbs the field being ABSENT, which it is until TAC-534 deploys. The
  * client ships ahead and the quote simply does not render until the server
  * starts sending it, which is exactly today's card. No tighten is owed later.
+ *
+ * The Contract's third field, `createdAt`, is deliberately NOT parsed. Nothing
+ * renders it, and under `.catch(null)` a required field that nothing reads can
+ * only ever cost a quote whose `messageId` and `body` were both fine. Zod drops
+ * it silently. Add it back the day something shows a timestamp on the row.
+ *
+ * `body` may be EMPTY and is not rejected here. A media-only inbound is stored
+ * with `body: ''` (TAC-411), so an empty one is a real card, not a malformed
+ * payload. `shouldShowReplyQuote` in `components/queue/reply-quote.tsx` is where
+ * that becomes "nothing to quote", because it also covers the fabricated drafts
+ * and fixtures that never pass through this schema.
  */
 export const ReplyingToSchema = z.object({
   messageId: z.string().uuid(),
   body: z.string(),
-  createdAt: z.string(),
 });
 export type ReplyingTo = z.infer<typeof ReplyingToSchema>;
 

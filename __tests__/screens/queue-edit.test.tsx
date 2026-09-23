@@ -1250,7 +1250,6 @@ describe('EditScreen — what the draft is answering (TAC-533)', () => {
   const answeringOat = {
     messageId: OAT,
     body: 'do you have oat milk for any drink?',
-    createdAt: '2026-09-23T18:00:00.000Z',
   };
 
   /** The question, then a newer unrelated one that opened its own card. */

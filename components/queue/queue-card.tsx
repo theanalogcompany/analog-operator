@@ -378,7 +378,7 @@ export function QueueCard({
           Instagram. */}
       <ReplyQuote
         replyingTo={draft.replyingTo}
-        lastRenderedMessageId={lastRenderedMessageId(items)}
+        lastRenderedId={lastRenderedMessageId(items)}
         surface="card"
         metaInk={metaInk}
         style={{ paddingHorizontal: card.regionInsetPx, marginTop: 10 }}

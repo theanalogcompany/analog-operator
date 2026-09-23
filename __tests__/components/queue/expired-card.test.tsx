@@ -182,3 +182,49 @@ describe('the expired card', () => {
     expect(screen.getByLabelText('Obligation')).toBeTruthy();
   });
 });
+
+describe('expired card — what the draft is answering (TAC-533)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    __resetNowClockForTests();
+  });
+
+  afterEach(() => {
+    __resetNowClockForTests();
+    jest.useRealTimers();
+  });
+
+  it('still names the question once the window has shut', () => {
+    // Deliberately unlike the replaced-draft block, which IS hidden when
+    // expired: that block is the hold reason, and the hold stops mattering the
+    // moment the card stops being sendable from here. What the draft answers
+    // does not stop mattering, because the operator still has to judge it
+    // before copying it into Instagram. Pinned so a refactor can't tidy the row
+    // into the `expired ? ... : ...` branch alongside `replacedDraft`.
+    renderStack(
+      makeDraft({
+        recentContext: [
+          {
+            id: 'a1b2c3d4-4444-4a5b-8c6d-7e8f9a0b1c2d',
+            direction: 'inbound',
+            body: 'do you have oat milk for any drink?',
+            createdAt: new Date(NOW - 20 * 60_000).toISOString(),
+          },
+          {
+            id: 'a1b2c3d4-4446-4a5b-8c6d-7e8f9a0b1c2d',
+            direction: 'inbound',
+            body: 'and are you open on sunday mornings?',
+            createdAt: new Date(NOW - 6 * 60_000).toISOString(),
+          },
+        ],
+        replyingTo: {
+          messageId: 'a1b2c3d4-4444-4a5b-8c6d-7e8f9a0b1c2d',
+          body: 'do you have oat milk for any drink?',
+        },
+      }),
+    );
+
+    expect(screen.getByTestId('reply-quote')).toBeTruthy();
+  });
+});

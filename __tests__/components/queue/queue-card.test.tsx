@@ -666,7 +666,6 @@ describe('QueueCard — what the draft is answering (TAC-533)', () => {
   const answeringOat = {
     messageId: OAT,
     body: 'do you have oat milk for any drink?',
-    createdAt: '2026-09-23T18:00:00.000Z',
   };
 
   it('names the question when it is buried under newer, unrelated ones', () => {

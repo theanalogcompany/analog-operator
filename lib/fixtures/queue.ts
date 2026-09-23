@@ -80,7 +80,7 @@ const draft = (args: {
   windowMinutesLeft?: number | null;
   replacedDraft?: { body: string; replacedAt: string } | null;
   /** The guest message this draft answers. (TAC-533.) */
-  replyingTo?: { messageId: string; body: string; createdAt: string } | null;
+  replyingTo?: { messageId: string; body: string } | null;
 }): PendingDraft => {
   const now = Date.now();
   return {
@@ -199,7 +199,6 @@ function seedDrafts(): PendingDraft[] {
       replyingTo: {
         messageId: 'a1b2c3d4-4444-4a5b-8c6d-7e8f9a0b1c2d',
         body: 'also is there parking near you in the evening?',
-        createdAt: new Date(Date.now() - 12 * 60_000).toISOString(),
       },
       draftBody:
         'The bay on Fulton is free after six, two hours. Anything longer and the garage on Grove is easiest.',
@@ -248,7 +247,6 @@ function seedDrafts(): PendingDraft[] {
       replyingTo: {
         messageId: 'a1b2c3d4-6666-4a5b-8c6d-7e8f9a0b1c2d',
         body: 'can we book a table for 6 at 7:30 on friday? sorry, two more joining',
-        createdAt: new Date(Date.now() - 4 * 60_000).toISOString(),
       },
       draftBody:
         'Six at 7:30 on Friday works. I have put you at the long table by the window.',

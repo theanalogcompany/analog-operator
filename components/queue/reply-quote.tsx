@@ -33,14 +33,14 @@ import { body as bodyType, dividerBacking, groundText, typePresets } from '@/lib
  */
 export function ReplyQuote({
   replyingTo,
-  lastRenderedMessageId,
+  lastRenderedId,
   surface,
   metaInk,
   style,
 }: {
   replyingTo: ReplyingTo | null;
-  /** See `shouldShowReplyQuote`. */
-  lastRenderedMessageId: string | null;
+  /** The last message the thread renders. See `shouldShowReplyQuote`. */
+  lastRenderedId: string | null;
   /**
    * `card` — the white card surface, where the row takes the replaced-draft
    * block's left rule and dark ink.
@@ -52,7 +52,7 @@ export function ReplyQuote({
   metaInk?: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  if (!shouldShowReplyQuote(replyingTo, lastRenderedMessageId)) return null;
+  if (!shouldShowReplyQuote(replyingTo, lastRenderedId)) return null;
 
   const onGround = surface === 'takeover';
 
@@ -143,10 +143,20 @@ export function ReplyQuote({
  */
 export function shouldShowReplyQuote(
   replyingTo: ReplyingTo | null,
-  lastRenderedMessageId: string | null,
+  lastRenderedId: string | null,
 ): replyingTo is ReplyingTo {
   if (!replyingTo) return false;
-  return replyingTo.messageId !== lastRenderedMessageId;
+  // An empty body is a real server state, not a defensive nicety, and it is the
+  // one case the id comparison below cannot catch. A media-only inbound is
+  // stored with `body: ''` (TAC-411); `list_operator_queue` excludes it from
+  // `recentContext` (`m.body <> ''`), so its id can never be the last rendered
+  // bubble, so the comparison would say "show" and the row would render the
+  // label over nothing. On the takeover that lands directly under "Nothing has
+  // reached this guest yet.", which reads as a broken screen. Decided here
+  // rather than at the parse boundary so it also covers a fabricated draft
+  // (`lib/decline-handoff.ts`) and a fixture, neither of which is parsed.
+  if (replyingTo.body.trim().length === 0) return false;
+  return replyingTo.messageId !== lastRenderedId;
 }
 
 /**
