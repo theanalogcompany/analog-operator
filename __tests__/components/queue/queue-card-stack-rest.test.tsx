@@ -47,6 +47,7 @@ function makeDraft(): PendingDraft {
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    replyingTo: null,
     draftBody: 'Patio is open until 9.',
     category: null,
     voiceFidelity: 0.81,

@@ -48,6 +48,15 @@ export function buildDeclineHandoffDraft(
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    // A decline draft is proactive: the agent is apologising for a commitment,
+    // not answering a message, so there is no inbound to quote. The server's
+    // own row carries `reply_to_message_id: NULL` for the same reason, so the
+    // realtime reload replaces this with the same value. Shipped behaviour, not
+    // a TAC-534 promise: analog-guest's `buildOutboundInsert` writes
+    // `ctx.currentMessage?.id ?? null` (lib/agent/schedule-and-send.ts), and
+    // migration 054 names the operator decline among the proactive cards that
+    // hold NULL there. (TAC-533.)
+    replyingTo: null,
     draftBody: declined.body,
     category: null,
     voiceFidelity: null,

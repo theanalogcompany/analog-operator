@@ -87,6 +87,7 @@ describe('lib/fixtures/queue emitter', () => {
       replyWindowExpiresAt: null,
       instagramUsername: null,
       replacedDraft: null,
+      replyingTo: null,
       draftBody: 'hello!',
       category: null,
       voiceFidelity: 0.8,

@@ -18,6 +18,7 @@ function draft(messageId: string, guestId: string): PendingDraft {
     replyWindowExpiresAt: null,
     instagramUsername: 'mia.brews',
     replacedDraft: null,
+    replyingTo: null,
     draftBody: 'body',
     category: null,
     voiceFidelity: null,

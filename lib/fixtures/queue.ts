@@ -79,6 +79,8 @@ const draft = (args: {
   instagramUsername?: string | null;
   windowMinutesLeft?: number | null;
   replacedDraft?: { body: string; replacedAt: string } | null;
+  /** The guest message this draft answers. (TAC-533.) */
+  replyingTo?: { messageId: string; body: string } | null;
 }): PendingDraft => {
   const now = Date.now();
   return {
@@ -98,6 +100,7 @@ const draft = (args: {
           ).toISOString(),
     instagramUsername: args.instagramUsername ?? null,
     replacedDraft: args.replacedDraft ?? null,
+    replyingTo: args.replyingTo ?? null,
     draftBody: args.draftBody,
     category: args.category,
     voiceFidelity: args.voiceFidelity,
@@ -169,14 +172,34 @@ function seedDrafts(): PendingDraft[] {
       windowMinutesLeft: 51,
       recognitionState: 'regular',
       agentReasoning: null,
+      // TAC-533's own shape, so the quote is exercised offline: the draft
+      // answers the parking question, and the guest has since asked two
+      // unrelated things that each opened their own card. Without the quote
+      // this draft reads as a reply to "are you open on sunday mornings?".
       recentContext: [
         {
           id: 'a1b2c3d4-4444-4a5b-8c6d-7e8f9a0b1c2d',
           body: 'also is there parking near you in the evening?',
           direction: 'inbound',
+          minsAgo: 12,
+        },
+        {
+          id: 'a1b2c3d4-4445-4a5b-8c6d-7e8f9a0b1c2d',
+          body: 'do you have any events coming up in november?',
+          direction: 'inbound',
+          minsAgo: 8,
+        },
+        {
+          id: 'a1b2c3d4-4446-4a5b-8c6d-7e8f9a0b1c2d',
+          body: 'and are you open on sunday mornings?',
+          direction: 'inbound',
           minsAgo: 6,
         },
       ],
+      replyingTo: {
+        messageId: 'a1b2c3d4-4444-4a5b-8c6d-7e8f9a0b1c2d',
+        body: 'also is there parking near you in the evening?',
+      },
       draftBody:
         'The bay on Fulton is free after six, two hours. Anything longer and the garage on Grove is easiest.',
       category: 'question',
@@ -202,14 +225,29 @@ function seedDrafts(): PendingDraft[] {
         body: 'Four at 7 on Friday works. I have put you by the window.',
         replacedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
       },
+      // The one seed where BOTH quotes are on screen at once: the head carries
+      // what the regen replaced, and the row above the composer carries the
+      // correcting message, because the guest wrote again afterwards. Without
+      // that trailing message the correction IS the newest message and the
+      // reply quote is withheld, which is the ordinary correction card.
       recentContext: [
         {
           id: 'a1b2c3d4-6666-4a5b-8c6d-7e8f9a0b1c2d',
           body: 'can we book a table for 6 at 7:30 on friday? sorry, two more joining',
           direction: 'inbound',
+          minsAgo: 4,
+        },
+        {
+          id: 'a1b2c3d4-6667-4a5b-8c6d-7e8f9a0b1c2d',
+          body: 'no rush, whenever you get a sec',
+          direction: 'inbound',
           minsAgo: 2,
         },
       ],
+      replyingTo: {
+        messageId: 'a1b2c3d4-6666-4a5b-8c6d-7e8f9a0b1c2d',
+        body: 'can we book a table for 6 at 7:30 on friday? sorry, two more joining',
+      },
       draftBody:
         'Six at 7:30 on Friday works. I have put you at the long table by the window.',
       category: 'reservation',

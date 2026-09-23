@@ -119,6 +119,7 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    replyingTo: null,
     draftBody: "Yes — patio's open until 9.",
     category: null,
     voiceFidelity: null,
@@ -292,6 +293,7 @@ describe('EditScreen', () => {
       replyWindowExpiresAt: null,
       instagramUsername: null,
       replacedDraft: null,
+      replyingTo: null,
       draftBody: "Yes — patio's open until 9.",
       category: null,
       voiceFidelity: null,
@@ -1238,5 +1240,61 @@ describe('sending from the takeover after the window shuts', () => {
       fireEvent.press(screen.getByLabelText('Send my version'));
     });
     expect(editAndSend).toHaveBeenCalled();
+  });
+});
+
+describe('EditScreen — what the draft is answering (TAC-533)', () => {
+  const OAT = 'a1b2c3d4-4444-4a5b-8c6d-7e8f9a0b1c2d';
+  const SUNDAY = 'a1b2c3d4-4446-4a5b-8c6d-7e8f9a0b1c2d';
+
+  const answeringOat = {
+    messageId: OAT,
+    body: 'do you have oat milk for any drink?',
+  };
+
+  /** The question, then a newer unrelated one that opened its own card. */
+  const buriedThread = [
+    {
+      id: OAT,
+      direction: 'inbound' as const,
+      body: 'do you have oat milk for any drink?',
+      createdAt: '2026-09-23T18:00:00.000Z',
+    },
+    {
+      id: SUNDAY,
+      direction: 'inbound' as const,
+      body: 'and are you open on sunday mornings?',
+      createdAt: '2026-09-23T18:06:00.000Z',
+    },
+  ];
+
+  it('names the question above the composer, where the reply is being rewritten', async () => {
+    mockQueue.drafts = [makeDraft({ recentContext: buriedThread, replyingTo: answeringOat })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+
+    await renderAndDrain();
+
+    expect(screen.getByTestId('reply-quote')).toBeTruthy();
+    expect(screen.getByLabelText(`Replying to: ${answeringOat.body}`)).toBeTruthy();
+  });
+
+  it('adds nothing when the thread already ends on the question', async () => {
+    mockQueue.drafts = [
+      makeDraft({ recentContext: [buriedThread[0]], replyingTo: answeringOat }),
+    ];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+
+    await renderAndDrain();
+
+    expect(screen.queryByTestId('reply-quote')).toBeNull();
+  });
+
+  it('adds nothing while the server has not shipped the field', async () => {
+    mockQueue.drafts = [makeDraft({ recentContext: buriedThread, replyingTo: null })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+
+    await renderAndDrain();
+
+    expect(screen.queryByTestId('reply-quote')).toBeNull();
   });
 });

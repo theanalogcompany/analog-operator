@@ -36,6 +36,7 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    replyingTo: null,
     draftBody: 'x',
     category: null,
     voiceFidelity: null,

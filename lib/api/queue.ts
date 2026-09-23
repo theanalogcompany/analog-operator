@@ -44,6 +44,38 @@ export const ReplacedDraftSchema = z.object({
 });
 export type ReplacedDraft = z.infer<typeof ReplacedDraftSchema>;
 
+/**
+ * The guest message this draft is answering. (TAC-533 Contract; TAC-534 is the
+ * server half.)
+ *
+ * The BODY is on the wire, not just the id, and that is the whole point of the
+ * pair. `recentContext` is the last three messages; since TAC-397 gave each
+ * unanswered question its own card, the message a given card answers is
+ * routinely older than that, which is the defect being fixed. An id alone
+ * would name a message the client does not hold and so could not quote.
+ *
+ * `.catch(null)` for the same reason `replacedDraft` uses it, plus one more: it
+ * also absorbs the field being ABSENT, which it is until TAC-534 deploys. The
+ * client ships ahead and the quote simply does not render until the server
+ * starts sending it, which is exactly today's card. No tighten is owed later.
+ *
+ * The Contract's third field, `createdAt`, is deliberately NOT parsed. Nothing
+ * renders it, and under `.catch(null)` a required field that nothing reads can
+ * only ever cost a quote whose `messageId` and `body` were both fine. Zod drops
+ * it silently. Add it back the day something shows a timestamp on the row.
+ *
+ * `body` may be EMPTY and is not rejected here. A media-only inbound is stored
+ * with `body: ''` (TAC-411), so an empty one is a real card, not a malformed
+ * payload. `shouldShowReplyQuote` in `components/queue/reply-quote.tsx` is where
+ * that becomes "nothing to quote", because it also covers the fabricated drafts
+ * and fixtures that never pass through this schema.
+ */
+export const ReplyingToSchema = z.object({
+  messageId: z.string().uuid(),
+  body: z.string(),
+});
+export type ReplyingTo = z.infer<typeof ReplyingToSchema>;
+
 export const RecentContextEntrySchema = z.object({
   id: z.string().uuid(),
   direction: z.enum(['inbound', 'outbound']),
@@ -142,6 +174,10 @@ export const PendingDraftSchema = z
     // instead — which is venue-filtered and reflects optimistic removals, so it
     // can never disagree with the cards actually on screen. (TAC-486.)
     replacedDraft: ReplacedDraftSchema.nullable().catch(null),
+    // TAC-533 Contract. Absent until TAC-534 deploys; `.catch(null)` treats
+    // absent, null and unreadable alike, so the quote is withheld rather than
+    // the whole queue failing to parse.
+    replyingTo: ReplyingToSchema.nullable().catch(null),
     pendingSinceMs: z.number(),
     recentContext: z.array(RecentContextEntrySchema).default([]),
     langfuseTraceId: z.string().nullable(),

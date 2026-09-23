@@ -59,6 +59,7 @@ function makeDraft(over: Partial<PendingDraft> & { messageId: string }): Pending
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    replyingTo: null,
     draftBody: 'x',
     category: null,
     voiceFidelity: null,
