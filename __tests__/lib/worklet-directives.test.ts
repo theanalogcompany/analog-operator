@@ -1,4 +1,8 @@
-import { isComposerTap, peekOpacity } from '@/components/queue/queue-card-stack';
+import {
+  isComposerTap,
+  isHandleTap,
+  peekOpacity,
+} from '@/components/queue/queue-card-stack';
 import { hintState } from '@/components/queue/swipe-hints';
 import { washOpacity } from '@/components/queue/swipe-overlay';
 import { resolveSwipeOutcome } from '@/hooks/use-queue-swipe';
@@ -39,6 +43,9 @@ const workletHelpers = {
   peekOpacity,
   // Called from the Tap gesture's onEnd, on the UI thread.
   isComposerTap,
+  // Also from the Tap gesture's onEnd: the handle link's hit-test, which is
+  // hoisted into the gesture because a Pressable there would kill the pan.
+  isHandleTap,
   // Called from the Pan gesture's onEnd, on the UI thread.
   resolveSwipeOutcome,
 
@@ -69,6 +76,6 @@ describe('worklet directives', () => {
   it('covers every helper, so the list cannot silently fall behind', () => {
     // A reminder rather than a real constraint: if you extracted a new helper
     // and did not add it above, this count is the thing that nags you.
-    expect(Object.keys(workletHelpers)).toHaveLength(12);
+    expect(Object.keys(workletHelpers)).toHaveLength(13);
   });
 });

@@ -16,6 +16,7 @@ import {
   clearUndoState,
   setUndoState,
 } from '@/hooks/use-undo-state';
+import { useNow } from '@/hooks/use-now';
 import { useSessionProgress } from '@/hooks/use-session-progress';
 import {
   type HeadsUpCommitment,
@@ -32,6 +33,7 @@ import {
   stageDeclineHandoff,
 } from '@/lib/decline-handoff';
 import { openHelpSms } from '@/lib/help';
+import { copyAndOpenInstagram, openInstagramThread } from '@/lib/instagram';
 import { setBadgeCount } from '@/lib/notifications/badge';
 import {
   type TapTarget,
@@ -47,6 +49,7 @@ import {
 } from '@/lib/queue-items';
 import { useQueueContext } from '@/lib/queue-context';
 import { type ReviewBucket, bucketForDraft, bucketForItem } from '@/lib/review-bucket';
+import { windowState } from '@/lib/reply-window';
 import { useVenueSelection } from '@/lib/venue-context';
 import { display, layout, typePresets } from '@/lib/theme';
 
@@ -107,12 +110,24 @@ export default function QueueScreen() {
   const progress = useSessionProgress(visibleIds, venue.selectedVenueId);
 
   const top = displayItems[0];
+  const nowMs = useNow();
+  // An expired card has left play, so it leaves its bucket colour with it and
+  // the whole screen goes to slate. This is an OVERRIDE on top of the bucket,
+  // not a bucket of its own, which is why `slate` is a GroundName but not a
+  // CardGroundName (see lib/grounds.ts). (TAC-486.)
+  const topExpired =
+    top?.kind === 'draft' &&
+    windowState({
+      expiresAt: top.draft.replyWindowExpiresAt,
+      channel: top.draft.guestChannel,
+      nowMs,
+    }).kind === 'closed';
   // The ground encodes what kind of decision the top card is, so the operator
   // knows before reading a word. It keys on the reason CODE, never the label
   // (see lib/review-bucket.ts). With an empty deck there is no decision, so it
   // settles to clay: `resting`, which must also be the entrance's ground; see
   // CLAUDE.md. (TAC-384, TAC-364.)
-  const groundName = top ? bucketForItem(top) : 'resting';
+  const groundName = !top ? 'resting' : topExpired ? 'slate' : bucketForItem(top);
 
   // A tapped notification may be for a guest at a venue that isn't the one on
   // screen. Neither APNs payload carries a venueId (see lib/notifications/
@@ -217,6 +232,56 @@ export default function QueueScreen() {
   // (TAC-312.)
   const handleRefuseApprove = (): void => {
     showToast(CARD_COPY.toast.nothingToSend);
+  };
+
+  /**
+   * The expired card's one action. Copies the draft, then opens the guest's
+   * Instagram thread; Instagram cannot be handed prefilled text, so the
+   * operator pastes when they arrive.
+   *
+   * The card is NOT cleared here. Nothing has been sent from analog and
+   * nothing about the guest's state is known to have changed just because the
+   * operator opened a thread, so removing the card would record a send that
+   * may not have happened. It clears when the echo arrives (server-side,
+   * TAC-473) or not at all.
+   */
+  const handleCopyAndOpen = async (draft: PendingDraft): Promise<void> => {
+    const result = await copyAndOpenInstagram({
+      body: draft.draftBody,
+      username: draft.instagramUsername,
+    });
+    if (result.ok) return;
+    // One toast per failure. The open-failed string says the draft is on the
+    // clipboard, which is true only when the copy succeeded; using it for a
+    // failed copy would name the one thing that did not happen.
+    showToast(
+      result.error.kind === 'NO_HANDLE'
+        ? CARD_COPY.toast.noInstagramHandle
+        : result.error.kind === 'COPY_FAILED'
+          ? CARD_COPY.toast.instagramCopyFailed
+          : CARD_COPY.toast.instagramOpenFailed,
+    );
+  };
+
+  /**
+   * The handle link. Opens the guest's Instagram thread and nothing else: no
+   * copy, because an operator tapping a handle is looking at who this is, and
+   * quietly replacing their clipboard is a side effect they never asked for.
+   */
+  const handleOpenHandle = async (draft: PendingDraft): Promise<void> => {
+    const username = draft.instagramUsername;
+    if (!username) {
+      showToast(CARD_COPY.toast.noInstagramHandle);
+      return;
+    }
+    const result = await openInstagramThread(username);
+    if (!result.ok) showToast(CARD_COPY.toast.instagramOpenFailed);
+  };
+
+  // A swipe was in flight when the window shut under it. Nothing to remove and
+  // nothing to restore: all this owes the operator is the explanation.
+  const handleBlockedExpired = (): void => {
+    showToast(CARD_COPY.replyWindow.closedMidSwipe);
   };
 
   const handleEdit = (draft: PendingDraft): void => {
@@ -381,6 +446,9 @@ export default function QueueScreen() {
           onAcknowledge={handleAcknowledge}
           onDecline={handleDecline}
           onPressHelp={handleHelp}
+          onCopyAndOpen={handleCopyAndOpen}
+          onOpenHandle={handleOpenHandle}
+          onBlockedExpired={handleBlockedExpired}
         />
       )}
 

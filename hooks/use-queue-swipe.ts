@@ -89,6 +89,15 @@ export type UseQueueSwipeResult = {
   rotation: SharedValue<number>;
   direction: SharedValue<SwipeDirection>;
   intensity: SharedValue<number>;
+  /**
+   * Whether a finger is currently down and dragging.
+   *
+   * Read from the JS thread so the card can tell a swipe that was IN FLIGHT
+   * when the reply window shut from one that never started. The first owes the
+   * operator an explanation; the second owes nothing, because they did not try
+   * anything. (TAC-486.)
+   */
+  isPanning: SharedValue<boolean>;
 };
 
 export function useQueueSwipe({
@@ -103,6 +112,7 @@ export function useQueueSwipe({
   const rotation = useSharedValue<number>(swipe.residualRotationDeg);
   const direction = useSharedValue<SwipeDirection>(0);
   const intensity = useSharedValue<number>(0);
+  const isPanning = useSharedValue<boolean>(false);
   // Edge-detects the threshold so the haptic fires on crossing, not on every
   // frame spent past the line.
   const pastThreshold = useSharedValue<boolean>(false);
@@ -114,6 +124,11 @@ export function useQueueSwipe({
     .onBegin(() => {
       'worklet';
       pastThreshold.value = false;
+      isPanning.value = true;
+    })
+    .onFinalize(() => {
+      'worklet';
+      isPanning.value = false;
     })
     .onUpdate((e) => {
       'worklet';
@@ -180,5 +195,5 @@ export function useQueueSwipe({
       }
     });
 
-  return { pan, translateX, rotation, direction, intensity };
+  return { pan, translateX, rotation, direction, intensity, isPanning };
 }

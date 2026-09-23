@@ -92,11 +92,35 @@ export function surfaceTappedItem(
 }
 
 /**
- * A heads-up card can always be acknowledged, so the gesture never refuses it.
- * A draft card refuses swipe-right while its body is blank (TAC-312).
+ * Whether this card's reply window has shut.
+ *
+ * Passed in rather than computed here, because expiry depends on the current
+ * time and this module is pure: a hidden clock inside the swipe decision could
+ * not be tested without driving one, and the whole reason `swipeActionFor`
+ * exists as a pure function is TAC-312, where the gesture layer had no
+ * coverage and the one place the behaviour lived was the one place nothing
+ * looked.
+ *
+ * Required, not optional. Every call site has to state what it knows about the
+ * window, so a new one cannot silently default to "still open" and hand an
+ * expired card a working swipe.
  */
-export function canCommitRightFor(item: QueueItem): boolean {
+export type SwipeContext = {
+  /** True only for a DRAFT card whose Instagram reply window has closed. */
+  expired: boolean;
+};
+
+/**
+ * A heads-up card can always be acknowledged, so the gesture never refuses it.
+ * A draft card refuses swipe-right while its body is blank (TAC-312), and an
+ * expired card refuses it because nothing can be sent from analog any more.
+ */
+export function canCommitRightFor(
+  item: QueueItem,
+  context: SwipeContext,
+): boolean {
   if (item.kind === 'headsUp') return true;
+  if (context.expired) return false;
   return item.draft.draftBody.trim().length > 0;
 }
 
@@ -106,15 +130,42 @@ export type SwipeAction =
   | { type: 'refuse-approve'; draft: PendingDraft }
   | { type: 'acknowledge'; commitment: HeadsUpCommitment }
   | { type: 'decline'; commitment: HeadsUpCommitment }
+  /**
+   * A gesture that reached a decision on a card whose window has shut. It has
+   * no draft payload and nothing to dispatch: the only thing owed is the one
+   * line explaining why, which is what ruling 3 of 2026-09-23 asks for when a
+   * gesture is in flight as the card crosses.
+   */
+  | { type: 'blocked-expired' }
   | { type: 'none' };
 
 /**
- * What a finished swipe does to this card. The no-send guard is the heads-up
- * branch: it has no path to `approve` or `edit`, and a refusal (which the
- * gesture should never produce for a heads-up card) resolves to `none` rather
- * than to anything with a side effect.
+ * What a finished swipe does to this card.
+ *
+ * Two guards, not one. The heads-up branch has no path to `approve` or `edit`,
+ * so a commitment card can never send a message (TAC-364). The expired branch
+ * has no path to `approve` OR `edit`: once the window is shut the draft cannot
+ * be sent from analog at all, so opening the composer would offer an edit that
+ * ends in a send that cannot happen.
+ *
+ * In practice an expired card is rendered outside the `GestureDetector`
+ * entirely, so no swipe starts on one. This is the second guard, for the case
+ * the gesture layer cannot prevent: a card that expires WHILE a pan is already
+ * in flight.
+ *
+ * It is NOT the only place a send is stopped, and the difference matters. This
+ * guard stops an expired card being OPENED. A takeover opened while the window
+ * was still open outlives it entirely, and a long edit outlasts the 5-minute
+ * display margin easily, so `handleSend` in `app/queue/edit.tsx` re-checks the
+ * window at press time. Without that second check the send goes out, the server
+ * refuses it, and the operator gets a generic failure toast that says nothing
+ * about the window. (TAC-486.)
  */
-export function swipeActionFor(item: QueueItem, outcome: SwipeOutcome): SwipeAction {
+export function swipeActionFor(
+  item: QueueItem,
+  outcome: SwipeOutcome,
+  context: SwipeContext,
+): SwipeAction {
   if (item.kind === 'headsUp') {
     switch (outcome) {
       case 'right':
@@ -125,6 +176,11 @@ export function swipeActionFor(item: QueueItem, outcome: SwipeOutcome): SwipeAct
       case 'return':
         return { type: 'none' };
     }
+  }
+  if (context.expired) {
+    // `return` is an ordinary short drag that committed to nothing, so it owes
+    // no explanation even here.
+    return outcome === 'return' ? { type: 'none' } : { type: 'blocked-expired' };
   }
   switch (outcome) {
     case 'right':

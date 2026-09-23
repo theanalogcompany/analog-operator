@@ -46,12 +46,59 @@ const BUCKET_BY_CODE: Readonly<Record<string, DraftBucket>> = {
   comp_regex_backstop: 'obligation',
   complaint_commitment_floor: 'obligation',
   mechanic_offer_backstop: 'obligation',
+  // Ruled 2026-09-23. Both mean approving this card does something: the agent
+  // promised in prose with no carrier (TAC-401), or a real commitment is being
+  // cancelled (TAC-513).
+  prose_promise_backstop: 'obligation',
+  commitment_cancellation_gated: 'obligation',
   // 02 Something outside the draft needs you.
   knowledge_gap: 'outsideDraft',
   knowledge_gap_backstop: 'outsideDraft',
   grounding_check_failed: 'outsideDraft',
   hold_all_outbound: 'outsideDraft',
   category_requires_approval: 'outsideDraft',
+  unverified_url: 'outsideDraft',
+  prose_promise_check_failed: 'outsideDraft',
+  /**
+   * The one worth understanding rather than copying (ruled 2026-09-23).
+   *
+   * It fires when a reply SAYS something is cancelled and nothing in the reply
+   * cancels anything, so approving it changes nothing — which is precisely the
+   * defect. An obligation card means "approving this does something"; this one
+   * means "this text claims something we cannot back up", and the operator's
+   * move is to fix the wording. Seen live 2026-09-21: the agent told a guest
+   * "the comp for the blossom tonic is cancelled" and the comp stayed open.
+   *
+   * Note that it and `commitment_cancellation_gated` below read as neighbours
+   * to an operator while sitting in different buckets: one is a real
+   * cancellation, the other a claimed one. Accepted by Jaipal, with the caveat
+   * that their wording and treatment have to be obviously different at a
+   * glance or the distinction that matters is the one that gets missed. The
+   * wording is the server's.
+   */
+  prose_cancellation_backstop: 'outsideDraft',
+  /**
+   * Ruled 2026-09-23. A check that could not RUN, which is the same family as
+   * `prose_promise_check_failed` above: nothing was found to be wrong, and
+   * nothing was verified either, so the operator's move is to confirm the fact
+   * rather than to authorise anything.
+   */
+  grounding_check_degraded: 'outsideDraft',
+  prose_cancellation_check_failed: 'outsideDraft',
+  /**
+   * Ruled 2026-09-23. The reply asserts something about the VENUE that is not
+   * true — that the guest can come over — so the operator checks the fact. It
+   * commits nothing, which is what keeps it out of the obligation bucket even
+   * though an arrival is involved.
+   */
+  closed_venue_arrival_emitted: 'outsideDraft',
+  closed_venue_arrival_backstop: 'outsideDraft',
+  /**
+   * Ruled 2026-09-23, on the same reasoning as `prose_cancellation_backstop`:
+   * the reply points at a promise that does not exist. Approving it changes
+   * nothing, so it is a claim to fix rather than an obligation to weigh.
+   */
+  unresolved_cancellation_id: 'outsideDraft',
   // 03 The draft came out wrong.
   model_flagged: 'draftWrong',
   self_talk_detected: 'draftWrong',
@@ -67,6 +114,85 @@ const BUCKET_BY_CODE: Readonly<Record<string, DraftBucket>> = {
  * "Needs review" label fallback. Never a flag colour.
  */
 export const FALLBACK_BUCKET: DraftBucket = 'midThread';
+
+/**
+ * The reason codes we have RULED ON, each with an explicit bucket.
+ *
+ * Transcribed from `analog-guest`'s `REVIEW_REASON_LABELS`
+ * (`lib/operator/queue.ts`) on its merged `main`, 2026-09-23. Together with
+ * `UNRULED_SERVER_REASON_CODES` below this accounts for all 26 codes that
+ * enum holds on that date.
+ *
+ * A HAND-KEPT MIRROR, like `BUCKET_BY_CODE` itself. It catches a code we know
+ * about and forgot to map. It CANNOT catch a code the server adds later:
+ * nothing in this repo can reach that enum, so a new one arrives as unknown and
+ * lands on `FALLBACK_BUCKET` until someone transcribes it. That is the safe
+ * direction, and the test over this list is what turns "someone adds it" into a
+ * red build rather than a release of cards on the wrong ground — the defect
+ * TAC-511 filed.
+ */
+export const SERVER_REASON_CODES: readonly string[] = [
+  'commitment_type_gated',
+  'comp_regex_backstop',
+  'complaint_commitment_floor',
+  'mechanic_offer_backstop',
+  'prose_promise_backstop',
+  'commitment_cancellation_gated',
+  'knowledge_gap',
+  'knowledge_gap_backstop',
+  'grounding_check_failed',
+  'hold_all_outbound',
+  'category_requires_approval',
+  'unverified_url',
+  'prose_promise_check_failed',
+  'prose_cancellation_backstop',
+  'grounding_check_degraded',
+  'prose_cancellation_check_failed',
+  'closed_venue_arrival_emitted',
+  'closed_venue_arrival_backstop',
+  'unresolved_cancellation_id',
+  'model_flagged',
+  'self_talk_detected',
+  'fidelity_below_auto_send_floor',
+  'generation_failed',
+  'previous_pending_held',
+  'operator_decline_initiated',
+];
+
+/**
+ * The one code the server can emit that this app deliberately does NOT map.
+ *
+ * **`instagram_send_failed` is not a draft-review reason at all.** The message
+ * already failed to send, so there is nothing to approve, and every bucket here
+ * names a kind of decision about a draft that is still about to go out. Ruled
+ * 2026-09-23: its operator action is identical to an expired card's — get the
+ * text out by hand — so it belongs on the slate ground with the copy-and-open
+ * block, NOT in `BUCKET_BY_CODE`.
+ *
+ * It is left unmapped rather than forced there, on Jaipal's own instruction
+ * that a named gap beats a card that reads wrong. Three things on the expired
+ * card would be false for it, and two of them are copy he has not approved:
+ *
+ *  - the strip reads "Reply window closed", and a failed send can happen with
+ *    the window wide open;
+ *  - the body line reads "Instagram stopped accepting replies N ago", which
+ *    would be a specific, checkable, false claim about why;
+ *  - the timer would read "18h left" directly above a block saying the reply
+ *    has to go out by hand, which is two answers to the same question.
+ *
+ * Doing it properly means a `handOff` concept broader than `expired`, its own
+ * strip and body copy, and a suppressed timer. That is the ticket's deferred
+ * "send failed" card type, which has no surface yet. Until it does, this card
+ * sits on the mid-thread ground: wrong, but only vaguely wrong, and recorded.
+ */
+export const UNRULED_SERVER_REASON_CODES: readonly string[] = [
+  'instagram_send_failed',
+];
+
+/** Whether a code has an EXPLICIT bucket rather than falling back. */
+export function hasExplicitBucket(code: string): boolean {
+  return knownBucket(code) !== null;
+}
 
 const STRIP_LABELS: Record<DraftBucket, string> = {
   obligation: CARD_COPY.strip.obligation,

@@ -13,6 +13,37 @@ export const RecognitionStateSchema = z.enum([
 ]);
 export type RecognitionState = z.infer<typeof RecognitionStateSchema>;
 
+/**
+ * Which channel a card sends on, or a conversation is on. (TAC-473 Contract.)
+ *
+ * A BARE enum with no `.catch()`, deliberately. The Contract guarantees the
+ * field is "ALWAYS PRESENT — never `undefined`, never absent — so the client
+ * never branches on presence", and the server half shipped first. The two
+ * failure modes if that ever stops being true are not symmetric: a bare enum
+ * empties the whole queue, loudly, and is fixed by a server deploy; a
+ * `.catch('text')` would quietly render every Instagram card as a text card,
+ * with no window and no timer, and leave a swipe-right that looks available and
+ * fails at the send gate. Loud beats silent when the silent version hands the
+ * operator a card that lies about what it will do.
+ */
+export const GuestChannelSchema = z.enum(['text', 'instagram']);
+export type GuestChannel = z.infer<typeof GuestChannelSchema>;
+
+/**
+ * The draft text a regen replaced, when a guest's correction rewrote a pending
+ * card in place. (TAC-397 Contract; this is its client half.)
+ *
+ * `.catch(null)` where it is used, per that Contract: the field is always
+ * present, but it is display-only, so an unreadable one costs a caption rather
+ * than the queue. Only ever the MOST RECENT prior body — a draft regenerated
+ * twice carries no history.
+ */
+export const ReplacedDraftSchema = z.object({
+  body: z.string(),
+  replacedAt: z.string(),
+});
+export type ReplacedDraft = z.infer<typeof ReplacedDraftSchema>;
+
 export const RecentContextEntrySchema = z.object({
   id: z.string().uuid(),
   direction: z.enum(['inbound', 'outbound']),
@@ -57,6 +88,25 @@ export const PendingDraftSchema = z
     guestId: z.string().uuid(),
     guestDisplayName: z.string().nullable(),
     guestPhoneFallback: z.string(),
+    // TAC-473 Contract, all three ALWAYS PRESENT on the wire.
+    //
+    // On a DRAFT, `guestChannel` is the draft row's own `messages.channel`, not
+    // a property re-derived from the guest: it is exactly "what approving this
+    // card will do", because `dispatchOperatorOutbound` routes on that same
+    // value. Anything re-derived could disagree with the routing and tell the
+    // operator the wrong thing.
+    guestChannel: GuestChannelSchema,
+    // The TRUE deadline, Meta's clock, no margin subtracted — the Contract is
+    // explicit that the client subtracts its own. See lib/reply-window.ts.
+    //
+    // `null` has TWO causes and they are not the same: a text guest has no
+    // window, while an Instagram guest with `null` has one nobody has measured.
+    // `windowState` tells them apart with `guestChannel` and never renders the
+    // second as expired.
+    replyWindowExpiresAt: z.string().nullable(),
+    // The handle WITHOUT a leading `@`; we prepend it for display. A non-blank
+    // CHECK on the column means an absent handle is always `null`, never `''`.
+    instagramUsername: z.string().nullable(),
     draftBody: z.string(),
     category: z.string().nullable(),
     voiceFidelity: z.number().nullable(),
@@ -82,6 +132,16 @@ export const PendingDraftSchema = z
     // this client parse cleanly either way. Tighten to .nullable() in a
     // follow-up once both sides are live.
     agentReasoning: z.string().nullable().optional().default(null),
+    // TAC-397 Contract. Non-null only on a draft regenerated in place because
+    // the guest corrected the question it was answering; the operator sees the
+    // text it replaced so they can check the new one still answers everything.
+    //
+    // NOTE: `otherPendingDraftsForGuest` is deliberately NOT read here. The
+    // sub-queue row ("1 / 3 cards for Mia") needs a POSITION as well as a
+    // total, which that field cannot give, and it is derived from the deck
+    // instead — which is venue-filtered and reflects optimistic removals, so it
+    // can never disagree with the cards actually on screen. (TAC-486.)
+    replacedDraft: ReplacedDraftSchema.nullable().catch(null),
     pendingSinceMs: z.number(),
     recentContext: z.array(RecentContextEntrySchema).default([]),
     langfuseTraceId: z.string().nullable(),

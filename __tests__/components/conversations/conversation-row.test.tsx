@@ -1,3 +1,4 @@
+import Svg from 'react-native-svg';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { ConversationRow } from '@/components/conversations/conversation-row';
@@ -11,6 +12,9 @@ const BASE: ConversationSummary = {
   agentName: 'Sana',
   name: 'Maya R.',
   phoneFallback: '+15551110001',
+  guestChannel: 'text',
+  replyWindowExpiresAt: null,
+  instagramUsername: null,
   recognitionState: 'returning',
   lastMessageAt: new Date(Date.now() - 2 * 60_000).toISOString(),
   lastMessageDirection: 'outbound',
@@ -93,5 +97,76 @@ describe('ConversationRow', () => {
     render(<ConversationRow conversation={BASE} onPress={onPress} banded />);
     fireEvent.press(screen.getByLabelText('Open conversation with Maya R.'));
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Instagram rows in the Texts list (TAC-486, B3). Changes to each row and
+ * nothing else: the banded-row layout, the activity dot, the time and the
+ * preview are all untouched.
+ */
+describe('ConversationRow and Instagram guests', () => {
+  const instagram = (over: Partial<ConversationSummary> = {}): ConversationSummary => ({
+    ...BASE,
+    guestChannel: 'instagram',
+    instagramUsername: 'mia.brews',
+    name: 'Mia B.',
+    phoneFallback: '',
+    ...over,
+  });
+
+  it('marks an Instagram row with the glyph', () => {
+    render(<ConversationRow conversation={instagram()} onPress={() => {}} banded />);
+    expect(screen.getByText('MIA B.')).toBeTruthy();
+    // The glyph is the only SVG in a row.
+    expect(screen.UNSAFE_queryAllByType(Svg).length).toBeGreaterThan(0);
+  });
+
+  it('leaves a text row unmarked, because text is the default channel', () => {
+    render(<ConversationRow conversation={BASE} onPress={() => {}} banded />);
+    expect(screen.UNSAFE_queryAllByType(Svg)).toHaveLength(0);
+  });
+
+  /**
+   * The hand-off: "Never show a number for an Instagram guest." An unnamed one
+   * shows their handle, in its own case — nobody can look up `@LENA.EATS`.
+   */
+  it('shows an unnamed Instagram guest by their handle, untracked', () => {
+    render(
+      <ConversationRow
+        conversation={instagram({ name: null, instagramUsername: 'lena.eats' })}
+        onPress={() => {}}
+        banded
+      />,
+    );
+    expect(screen.getByText('@lena.eats')).toBeTruthy();
+    expect(screen.queryByText('@LENA.EATS')).toBeNull();
+  });
+
+  /**
+   * The live defect. `phoneFallback` is `''` for a phoneless Instagram guest
+   * and `??` does not fall back on an empty string, so `name ?? phoneFallback`
+   * rendered a blank row name.
+   */
+  it('never renders a blank name', () => {
+    render(
+      <ConversationRow
+        conversation={instagram({ name: null, instagramUsername: null })}
+        onPress={() => {}}
+        banded
+      />,
+    );
+    expect(screen.getByText('INSTAGRAM GUEST')).toBeTruthy();
+  });
+
+  it('still shows an unnamed text guest by their number', () => {
+    render(
+      <ConversationRow
+        conversation={{ ...BASE, name: null }}
+        onPress={() => {}}
+        banded
+      />,
+    );
+    expect(screen.getByText('+15551110001')).toBeTruthy();
   });
 });

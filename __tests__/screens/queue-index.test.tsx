@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import QueueScreen from '@/app/queue/index';
 import { type GroundName } from '@/lib/grounds';
 import { type QueueContextValue } from '@/lib/queue-context';
+import { __resetNowClockForTests } from '@/hooks/use-now';
 import { clearUndoState } from '@/hooks/use-undo-state';
 import {
   type HeadsUpCommitment,
@@ -198,6 +199,10 @@ const draftWithTone = (
   guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
   guestDisplayName: 'A',
   guestPhoneFallback: '+15550001',
+  guestChannel: 'text',
+  replyWindowExpiresAt: null,
+  instagramUsername: null,
+  replacedDraft: null,
   draftBody: 'x',
   category: null,
   voiceFidelity: null,
@@ -258,6 +263,67 @@ describe('QueueScreen — the ground follows the top card', () => {
     mockQueue.commitments = [arrival];
     renderScreen();
     expect(lastGroundName).toBe('headsUp');
+  });
+
+  /**
+   * Slate is an OVERRIDE on top of the bucket, not a bucket of its own: an
+   * expired card keeps its reason code and wears slate anyway. Both halves are
+   * pinned here, at the seam that already decides every other ground, because
+   * `grounds.test.ts` only asserts slate exists and `ground-contrast.test.ts`
+   * only that it is readable. (TAC-486.)
+   */
+  describe('and an expired Instagram card overrides it', () => {
+    const NOW = Date.parse('2026-09-23T12:00:00.000Z');
+    /** A deadline leaving `minutes` of window AFTER the display margin. */
+    const leaving = (minutes: number): string =>
+      new Date(NOW + (minutes + 5) * 60_000).toISOString();
+
+    const instagram = (minutes: number) =>
+      draftWithTone({
+        reviewReasonCode: 'commitment_type_gated',
+        guestChannel: 'instagram',
+        instagramUsername: 'mia.brews',
+        guestPhoneFallback: '',
+        replyWindowExpiresAt: leaving(minutes),
+      });
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(NOW);
+      __resetNowClockForTests();
+    });
+
+    afterEach(() => {
+      __resetNowClockForTests();
+      jest.useRealTimers();
+    });
+
+    it('puts an expired card on slate, whatever its bucket', () => {
+      mockQueue.drafts = [instagram(-3 * 60)];
+      renderScreen();
+      expect(lastGroundName).toBe('slate');
+    });
+
+    it('leaves a live Instagram card on its own bucket', () => {
+      mockQueue.drafts = [instagram(4 * 60)];
+      renderScreen();
+      expect(lastGroundName).toBe('obligation');
+    });
+
+    it('does not claim slate for an Instagram card whose window was never measured', () => {
+      // A null deadline means UNKNOWN, not shut (TAC-473's Contract).
+      mockQueue.drafts = [
+        draftWithTone({
+          reviewReasonCode: 'commitment_type_gated',
+          guestChannel: 'instagram',
+          instagramUsername: 'mia.brews',
+          guestPhoneFallback: '',
+          replyWindowExpiresAt: null,
+        }),
+      ];
+      renderScreen();
+      expect(lastGroundName).toBe('obligation');
+    });
   });
 
   /**
@@ -372,7 +438,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
   const OTHER_GUEST_ID = 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
   const THIRD_GUEST_ID = 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
 
-  const draftFor = (guestId: string, messageId: string) => ({
+  const draftFor = (guestId: string, messageId: string): PendingDraft => ({
     messageId,
     venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     venueSlug: 'mock',
@@ -380,6 +446,10 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
     guestId,
     guestDisplayName: guestId.slice(0, 2).toUpperCase(),
     guestPhoneFallback: '+15550001',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: 'body',
     category: null,
     voiceFidelity: null,
@@ -519,6 +589,10 @@ describe('QueueScreen — handleApprove, the screen’s approve entry', () => {
     guestId: GUEST_ID,
     guestDisplayName: 'Priya N.',
     guestPhoneFallback: '+15551110004',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody,
     category: null,
     voiceFidelity: null,
@@ -591,6 +665,10 @@ describe('QueueScreen refusal path', () => {
     guestId: GUEST_ID,
     guestDisplayName: 'Priya N.',
     guestPhoneFallback: '+15551110004',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: '',
     category: null,
     voiceFidelity: null,

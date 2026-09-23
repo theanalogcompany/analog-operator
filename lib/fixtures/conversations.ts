@@ -4,6 +4,8 @@
 // established, so behavior (including the live-simulation trigger) is
 // consistent between the two fixture modules.
 
+import { DISPLAY_MARGIN_MS } from '@/lib/reply-window';
+
 import { fixtureUuid } from './queue';
 import { FIXTURE_CENTRAL_PERK_ID, FIXTURE_SEXTANT_ID } from './venues';
 
@@ -17,6 +19,10 @@ export interface ConversationSummary {
   agentName: string;
   name: string | null;
   phoneFallback: string;
+  /** TAC-473 Contract. Structurally mirrors `ConversationSummarySchema`. */
+  guestChannel: 'text' | 'instagram';
+  replyWindowExpiresAt: string | null;
+  instagramUsername: string | null;
   recognitionState: ConversationRecognitionState | null;
   lastMessageAt: string;
   lastMessageDirection: 'inbound' | 'outbound';
@@ -54,6 +60,17 @@ interface SeedGuest {
   guestId: string;
   name: string | null;
   phoneFallback: string;
+  /**
+   * Instagram identity (TAC-473). Defaults to a text guest, so every seed row
+   * written before TAC-486 renders exactly as it did.
+   *
+   * `windowMinutesLeft` is what the card should SHOW; the display margin is
+   * added back on in `buildRecord`. `undefined` leaves the deadline null, which
+   * on an Instagram guest reads as "unknown", never as expired.
+   */
+  guestChannel?: 'text' | 'instagram';
+  instagramUsername?: string | null;
+  windowMinutesLeft?: number;
   recognitionState: ConversationRecognitionState;
   conversationCount: number;
   firstConversationDaysAgo: number;
@@ -89,6 +106,53 @@ const CENTRAL_PERK: FixtureVenue = {
 
 function seedGuests(): SeedGuest[] {
   return [
+    // Instagram guests (TAC-486). One named, one not: the unnamed row is the
+    // blank-name case, which now reads as the handle rather than as nothing.
+    {
+      guestId: 'c0999999-9999-4999-8999-999999999999',
+      name: 'Mia B.',
+      phoneFallback: '',
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      windowMinutesLeft: 51,
+      recognitionState: 'regular',
+      conversationCount: 4,
+      firstConversationDaysAgo: 110,
+      messages: [
+        {
+          direction: 'inbound',
+          body: 'the flat white on saturday was cold, we were pretty disappointed',
+          minsAgo: 14,
+        },
+        {
+          direction: 'outbound',
+          body: 'Sorry about Saturday. Your next round is on us, come in any time this week.',
+          minsAgo: 10,
+        },
+        {
+          direction: 'inbound',
+          body: 'also is there parking near you in the evening?',
+          minsAgo: 6,
+        },
+      ],
+    },
+    {
+      guestId: 'c0888888-8888-4888-8888-888888888888',
+      name: null,
+      phoneFallback: '',
+      guestChannel: 'instagram',
+      instagramUsername: 'lena.eats',
+      recognitionState: 'new',
+      conversationCount: 1,
+      firstConversationDaysAgo: 1,
+      messages: [
+        {
+          direction: 'inbound',
+          body: 'do you take walk-ins on saturdays',
+          minsAgo: 27 * 60,
+        },
+      ],
+    },
     {
       guestId: 'c0111111-1111-4111-8111-111111111111',
       name: 'Maya R.',
@@ -377,6 +441,14 @@ function buildRecord(seed: SeedGuest, now: number): ConversationRecord {
     agentName: venue.agentName,
     name: seed.name,
     phoneFallback: seed.phoneFallback,
+    guestChannel: seed.guestChannel ?? 'text',
+    replyWindowExpiresAt:
+      seed.windowMinutesLeft === undefined
+        ? null
+        : new Date(
+            now + seed.windowMinutesLeft * 60_000 + DISPLAY_MARGIN_MS,
+          ).toISOString(),
+    instagramUsername: seed.instagramUsername ?? null,
     recognitionState: seed.recognitionState,
     lastMessageAt: at(describes),
     lastMessageDirection: describes.direction,

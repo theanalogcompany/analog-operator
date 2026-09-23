@@ -43,6 +43,10 @@ function makeDraft(): PendingDraft {
     guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     guestDisplayName: 'Maya R.',
     guestPhoneFallback: '+15551110001',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: 'Patio is open until 9.',
     category: null,
     voiceFidelity: 0.81,
@@ -75,6 +79,9 @@ describe('QueueCardStack: the front card at rest', () => {
           onAcknowledge={jest.fn()}
           onDecline={jest.fn()}
           onPressHelp={jest.fn()}
+          onCopyAndOpen={jest.fn()}
+          onOpenHandle={jest.fn()}
+      onBlockedExpired={jest.fn()}
         />
       </Wrapper>,
     );

@@ -48,7 +48,7 @@ type Props = {
    * about 130px, and the nowrap centre label starves the outer columns until
    * the hint wraps into it. (TAC-364 design spec, card 05.)
    */
-  kind?: 'draft' | 'headsUp';
+  kind?: 'draft' | 'headsUp' | 'expired';
 };
 
 export function SwipeHints({
@@ -96,6 +96,28 @@ export function SwipeHints({
       color: interpolateColor(dim, [0, 1], [hint.restColor, hint.dimmedColor]),
     };
   });
+
+  /**
+   * An expired card: both side hints go, the help pill stays.
+   *
+   * Design resolution 1 drops the greyed "EDIT OFF / SEND OFF" row, because it
+   * draws the eye to what is missing rather than to the one thing available.
+   * But the row is also the only place "Chat with Jaipal" appears on this
+   * screen (`HelpFooter`, TAC-388), and removing the operator's one escape
+   * hatch from the card most likely to confuse them would be a regression
+   * rather than a translation of the design. So the row stays and empties.
+   */
+  if (kind === 'expired') {
+    return (
+      <Animated.View
+        pointerEvents="box-none"
+        testID="swipe-hints-expired"
+        style={[{ flexDirection: 'row', justifyContent: 'center' }, entranceStyle]}
+      >
+        <HelpFooter onPress={onPressHelp} />
+      </Animated.View>
+    );
+  }
 
   if (kind === 'headsUp') {
     return (

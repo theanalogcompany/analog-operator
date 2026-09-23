@@ -1,11 +1,13 @@
 import {
   type DeclineCommitmentResult,
+  type GuestChannel,
   type HeadsUpCommitment,
   type PendingDraft,
   type RecognitionState,
   type ThreadMessage,
 } from '@/lib/api/queue';
 import { type ApiError, type Result, err, ok } from '@/lib/api/errors';
+import { DISPLAY_MARGIN_MS } from '@/lib/reply-window';
 import {
   FIXTURE_CENTRAL_PERK_ID,
   FIXTURE_SEXTANT_ID,
@@ -64,6 +66,19 @@ const draft = (args: {
   reviewTriggerLabels?: string[];
   ungroundedClaims?: string[];
   pendingMinutes: number;
+  /**
+   * Instagram fields (TAC-473 Contract). Default to a text guest so every seed
+   * written before TAC-486 keeps rendering exactly as it did.
+   *
+   * `windowMinutesLeft` is how much window the card should SHOW, so a seed
+   * reads in the units the operator sees. The display margin is added back on
+   * here, because `windowState` subtracts it. `null` leaves the deadline null,
+   * which on an Instagram guest means "unknown", not expired.
+   */
+  guestChannel?: GuestChannel;
+  instagramUsername?: string | null;
+  windowMinutesLeft?: number | null;
+  replacedDraft?: { body: string; replacedAt: string } | null;
 }): PendingDraft => {
   const now = Date.now();
   return {
@@ -74,6 +89,15 @@ const draft = (args: {
     guestId: args.guestId,
     guestDisplayName: args.guestDisplayName,
     guestPhoneFallback: args.guestPhoneFallback,
+    guestChannel: args.guestChannel ?? 'text',
+    replyWindowExpiresAt:
+      args.windowMinutesLeft === undefined || args.windowMinutesLeft === null
+        ? null
+        : new Date(
+            now + args.windowMinutesLeft * 60_000 + DISPLAY_MARGIN_MS,
+          ).toISOString(),
+    instagramUsername: args.instagramUsername ?? null,
+    replacedDraft: args.replacedDraft ?? null,
     draftBody: args.draftBody,
     category: args.category,
     voiceFidelity: args.voiceFidelity,
@@ -102,6 +126,129 @@ const draft = (args: {
 // renders without a backend. (TAC-364.)
 function seedDrafts(): PendingDraft[] {
   return [
+    // Mia: three cards for one guest, on Instagram, sharing one reply window.
+    // Reaches the sub-queue row, the timer's urgent state, and a replaced
+    // draft, all offline. (TAC-486.)
+    draft({
+      messageId: 'a1b2c3d4-1111-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: FIXTURE_SEXTANT_ID,
+      venueSlug: 'mock-sextant-coffee-roasters',
+      guestId: 'a1a2b3c4-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guestDisplayName: 'Mia B.',
+      guestPhoneFallback: '',
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      windowMinutesLeft: 51,
+      recognitionState: 'regular',
+      agentReasoning: null,
+      recentContext: [
+        {
+          id: 'a1b2c3d4-2222-4a5b-8c6d-7e8f9a0b1c2d',
+          body: 'the flat white on saturday was cold, we were pretty disappointed',
+          direction: 'inbound',
+          minsAgo: 14,
+        },
+      ],
+      draftBody:
+        'Sorry about Saturday. That is not how it should arrive. Your next round is on us, come in any time this week.',
+      category: 'complaint',
+      voiceFidelity: 0.78,
+      reviewReason: 'This commits you to something. Your call.',
+      reviewReasonCode: 'commitment_type_gated',
+      pendingMinutes: 14,
+    }),
+    draft({
+      messageId: 'a1b2c3d4-3333-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: FIXTURE_SEXTANT_ID,
+      venueSlug: 'mock-sextant-coffee-roasters',
+      guestId: 'a1a2b3c4-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guestDisplayName: 'Mia B.',
+      guestPhoneFallback: '',
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      windowMinutesLeft: 51,
+      recognitionState: 'regular',
+      agentReasoning: null,
+      recentContext: [
+        {
+          id: 'a1b2c3d4-4444-4a5b-8c6d-7e8f9a0b1c2d',
+          body: 'also is there parking near you in the evening?',
+          direction: 'inbound',
+          minsAgo: 6,
+        },
+      ],
+      draftBody:
+        'The bay on Fulton is free after six, two hours. Anything longer and the garage on Grove is easiest.',
+      category: 'question',
+      voiceFidelity: 0.81,
+      reviewReason: "I couldn't confirm this from what the venue has told me.",
+      reviewReasonCode: 'knowledge_gap',
+      pendingMinutes: 6,
+    }),
+    draft({
+      messageId: 'a1b2c3d4-5555-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: FIXTURE_SEXTANT_ID,
+      venueSlug: 'mock-sextant-coffee-roasters',
+      guestId: 'a1a2b3c4-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guestDisplayName: 'Mia B.',
+      guestPhoneFallback: '',
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      windowMinutesLeft: 51,
+      recognitionState: 'regular',
+      agentReasoning: null,
+      // The draft this one replaced, so the comparison block renders offline.
+      replacedDraft: {
+        body: 'Four at 7 on Friday works. I have put you by the window.',
+        replacedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
+      },
+      recentContext: [
+        {
+          id: 'a1b2c3d4-6666-4a5b-8c6d-7e8f9a0b1c2d',
+          body: 'can we book a table for 6 at 7:30 on friday? sorry, two more joining',
+          direction: 'inbound',
+          minsAgo: 2,
+        },
+      ],
+      draftBody:
+        'Six at 7:30 on Friday works. I have put you at the long table by the window.',
+      category: 'reservation',
+      voiceFidelity: 0.84,
+      reviewReason: 'The draft was updated after the guest wrote again.',
+      reviewReasonCode: 'previous_pending_held',
+      pendingMinutes: 2,
+    }),
+    // An expired card: slate ground, ink strip, copy-and-open, no swipe.
+    draft({
+      messageId: 'b2c3d4e5-1111-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: FIXTURE_SEXTANT_ID,
+      venueSlug: 'mock-sextant-coffee-roasters',
+      guestId: '13e4a5b6-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      // No name and no phone: the blank-name case, which now reads as the
+      // handle rather than as nothing at all.
+      guestDisplayName: null,
+      guestPhoneFallback: '',
+      guestChannel: 'instagram',
+      instagramUsername: 'lena.eats',
+      windowMinutesLeft: -3 * 60,
+      recognitionState: 'new',
+      agentReasoning: null,
+      recentContext: [
+        {
+          id: 'b2c3d4e5-2222-4a5b-8c6d-7e8f9a0b1c2d',
+          body: 'do you take walk-ins on saturdays',
+          direction: 'inbound',
+          minsAgo: 27 * 60,
+        },
+      ],
+      draftBody:
+        'We keep a few seats back for walk-ins on Saturdays. Come by before noon and you should be fine.',
+      category: 'question',
+      voiceFidelity: 0.8,
+      reviewReason: "I couldn't confirm this from what the venue has told me.",
+      reviewReasonCode: 'knowledge_gap',
+      pendingMinutes: 27 * 60,
+    }),
     draft({
       messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
       venueId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',

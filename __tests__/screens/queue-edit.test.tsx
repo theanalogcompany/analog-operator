@@ -115,6 +115,10 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
     guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     guestDisplayName: 'Maya R.',
     guestPhoneFallback: '+15551110001',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: "Yes — patio's open until 9.",
     category: null,
     voiceFidelity: null,
@@ -284,6 +288,10 @@ describe('EditScreen', () => {
       guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
       guestDisplayName: 'Maya R.',
       guestPhoneFallback: '+15551110001',
+      guestChannel: 'text',
+      replyWindowExpiresAt: null,
+      instagramUsername: null,
+      replacedDraft: null,
       draftBody: "Yes — patio's open until 9.",
       category: null,
       voiceFidelity: null,
@@ -1141,5 +1149,94 @@ describe('EditScreen — zero-bubble thread (TAC-411)', () => {
 
     await waitFor(() => expect(screen.getByText(EMPTY_COPY)).toBeTruthy());
     expect(screen.getByDisplayValue('a real draft')).toBeTruthy();
+  });
+});
+
+
+/**
+ * The takeover is the SECOND send path, and it outlives the swipe that opened
+ * it (TAC-486).
+ *
+ * `swipeActionFor` stops an expired card being OPENED, but a takeover opened
+ * while the window was still open stays open and sendable across expiry, and a
+ * long edit outlasts the 5-minute display margin easily. Without this check the
+ * send goes out, the server refuses it with a 502 for a closed Instagram
+ * window, and the operator gets a generic "couldn't send" toast that says
+ * nothing about why.
+ */
+describe('sending from the takeover after the window shuts', () => {
+  const NOW = Date.parse('2026-09-23T12:00:00.000Z');
+  /** A deadline leaving `minutes` of window AFTER the display margin. */
+  const leaving = (minutes: number): string =>
+    new Date(NOW + (minutes + 5) * 60_000).toISOString();
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    (editAndSend as jest.Mock).mockResolvedValue({ ok: true, data: undefined });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function openWith(overrides: Partial<PendingDraft>): void {
+    mockQueue.drafts = [makeDraft(overrides)];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    render(<EditScreen />);
+    fireEvent.changeText(
+      screen.getByLabelText('Edit the draft before sending'),
+      'my edited answer',
+    );
+  }
+
+  it('refuses the send and names the window', async () => {
+    openWith({
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      guestPhoneFallback: '',
+      replyWindowExpiresAt: leaving(-3 * 60),
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Send my version'));
+    });
+    expect(editAndSend).not.toHaveBeenCalled();
+  });
+
+  it('leaves the card in the queue rather than optimistically clearing it', async () => {
+    openWith({
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      guestPhoneFallback: '',
+      replyWindowExpiresAt: leaving(-1),
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Send my version'));
+    });
+    expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
+  });
+
+  it('still sends while the window is open', async () => {
+    openWith({
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      guestPhoneFallback: '',
+      replyWindowExpiresAt: leaving(4 * 60),
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Send my version'));
+    });
+    expect(editAndSend).toHaveBeenCalledWith(
+      mockQueue.drafts[0].messageId,
+      'my edited answer',
+    );
+  });
+
+  it('still sends a text draft, which has no window at all', async () => {
+    openWith({});
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Send my version'));
+    });
+    expect(editAndSend).toHaveBeenCalled();
   });
 });

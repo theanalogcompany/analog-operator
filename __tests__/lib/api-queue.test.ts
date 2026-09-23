@@ -200,6 +200,10 @@ describe('lib/api/queue HTTP shape', () => {
       guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
       guestDisplayName: 'Maya R.',
       guestPhoneFallback: '+15551110001',
+      guestChannel: 'text',
+      replyWindowExpiresAt: null,
+      instagramUsername: null,
+      replacedDraft: null,
       draftBody: "yes, patio's open until 9",
       category: 'reservation',
       voiceFidelity: 0.81,
@@ -258,6 +262,10 @@ describe('lib/api/queue HTTP shape', () => {
     guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     guestDisplayName: 'Maya R.',
     guestPhoneFallback: '+15551110001',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: "yes, patio's open until 9",
     category: null,
     voiceFidelity: 0.55,
@@ -352,6 +360,10 @@ describe('lib/api/queue HTTP shape', () => {
       guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
       guestDisplayName: 'Maya R.',
       guestPhoneFallback: '+15551110001',
+      guestChannel: 'text',
+      replyWindowExpiresAt: null,
+      instagramUsername: null,
+      replacedDraft: null,
       draftBody: 'reply',
       category: null,
       voiceFidelity: null,
@@ -391,6 +403,10 @@ describe('lib/api/queue HTTP shape', () => {
       guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
       guestDisplayName: 'Maya R.',
       guestPhoneFallback: '+15551110001',
+      guestChannel: 'text',
+      replyWindowExpiresAt: null,
+      instagramUsername: null,
+      replacedDraft: null,
       draftBody: 'reply',
       category: null,
       voiceFidelity: null,
@@ -538,6 +554,10 @@ describe('lib/api/queue HTTP shape', () => {
       guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
       guestDisplayName: 'Maya R.',
       guestPhoneFallback: '+15551110001',
+      guestChannel: 'text',
+      replyWindowExpiresAt: null,
+      instagramUsername: null,
+      replacedDraft: null,
       draftBody: 'reply',
       category: null,
       voiceFidelity: null,
@@ -747,4 +767,221 @@ describe('lib/api/queue HTTP shape', () => {
       }
     },
   );
+});
+
+/**
+ * TAC-473's and TAC-397's `## Contract` blocks, transcribed.
+ *
+ * Every expected value below comes from the Contract's own JSON examples, NOT
+ * from the client's schema and NOT from a passing run's output. That is
+ * CLAUDE.md's "Cross-repo contracts" rule #5, and the reason it exists is
+ * TAC-310: a request-shape test written by reading the implementation asserted
+ * `{ body }` against a server that read `editedBody`, and CERTIFIED the defect
+ * on every green run while five operator sends failed in production.
+ *
+ * These live in a live-mode block with `fetch` mocked, never in the fixture
+ * block: fixture mode short-circuits before `authedFetch`, so nothing there can
+ * observe a URL, a header or a payload, and a wire claim made from it would be
+ * asserting nothing at all.
+ */
+describe('lib/api/queue against the TAC-473 and TAC-397 Contracts', () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    process.env.EXPO_PUBLIC_USE_FIXTURES = 'false';
+    process.env.EXPO_PUBLIC_API_BASE_URL = 'https://api.test';
+    fetchMock = jest.fn().mockResolvedValue(new Response('', { status: 200 }));
+    global.fetch = fetchMock as any;
+    jest
+      .spyOn(require('@/lib/supabase/client').supabase.auth, 'getSession')
+      .mockResolvedValue({ data: { session: { access_token: 't' } as any } } as any);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  /**
+   * The fields TAC-473's example elides as `"…": "…"`. Required by the schema
+   * but not named by the Contract, so they are scaffolding, never assertions.
+   */
+  const ELIDED = {
+    category: null,
+    voiceFidelity: null,
+    reviewTriggers: [],
+    reviewTriggerLabels: [],
+    ungroundedClaims: [],
+    recognitionState: null,
+    agentReasoning: null,
+    pendingSinceMs: 0,
+    recentContext: [],
+    langfuseTraceId: null,
+  };
+
+  // Transcribed from TAC-473's Contract, "JSON example", first draft.
+  const CONTRACT_INSTAGRAM_DRAFT = {
+    messageId: '9f3c1d2e-0b7a-4c55-8e21-6a4d9f0e1b33',
+    venueId: '1b0f7a44-2c31-4d88-9a10-77c2e5b31f90',
+    venueSlug: 'le-mils-coffee',
+    guestId: '4e8a2f60-9d14-4b7c-a3e5-2f81c6d40a77',
+    guestDisplayName: null,
+    guestPhoneFallback: '',
+    guestChannel: 'instagram',
+    replyWindowExpiresAt: '2026-09-24T09:12:03.000Z',
+    instagramUsername: 'hana.brews',
+    draftBody: 'We open at 7 tomorrow.',
+    reviewReason: 'This commits you to something. Your call.',
+    reviewReasonCode: 'commitment_type_gated',
+    otherPendingDraftsForGuest: 0,
+    replacedDraft: null,
+    ...ELIDED,
+  };
+
+  // Transcribed from the same example, second draft (a text guest).
+  const CONTRACT_TEXT_DRAFT = {
+    ...CONTRACT_INSTAGRAM_DRAFT,
+    messageId: '2a77b904-5c6e-41f0-bb2d-1e9c3a85d412',
+    guestDisplayName: 'Marcus',
+    guestPhoneFallback: '+15551110001',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+  };
+
+  function respondWith(drafts: unknown[]): void {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ drafts, commitments: [] }), { status: 200 }),
+    );
+  }
+
+  it('parses the Contract’s Instagram draft field for field', async () => {
+    respondWith([CONTRACT_INSTAGRAM_DRAFT]);
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [draft] = result.data.drafts;
+    expect(draft.guestChannel).toBe('instagram');
+    expect(draft.replyWindowExpiresAt).toBe('2026-09-24T09:12:03.000Z');
+    expect(draft.instagramUsername).toBe('hana.brews');
+    // The handle arrives WITHOUT a leading @; prepending it is the client's job.
+    expect(draft.instagramUsername).not.toMatch(/^@/);
+    // A phoneless guest is `''`, not null — ruled in TAC-473 so one Instagram
+    // guest cannot empty the queue for every operator at that venue.
+    expect(draft.guestPhoneFallback).toBe('');
+    expect(draft.guestDisplayName).toBeNull();
+  });
+
+  it('parses the Contract’s text draft, which carries no window and no handle', async () => {
+    respondWith([CONTRACT_TEXT_DRAFT]);
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [draft] = result.data.drafts;
+    expect(draft.guestChannel).toBe('text');
+    expect(draft.replyWindowExpiresAt).toBeNull();
+    expect(draft.instagramUsername).toBeNull();
+  });
+
+  it('parses both drafts from one response, as the example sends them', async () => {
+    respondWith([CONTRACT_INSTAGRAM_DRAFT, CONTRACT_TEXT_DRAFT]);
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.drafts.map((d) => d.guestChannel)).toEqual([
+      'instagram',
+      'text',
+    ]);
+  });
+
+  // TAC-473: `replyWindowExpiresAt` null on an INSTAGRAM guest means the window
+  // is unknown, not shut. The parse must carry that through untouched so
+  // `windowState` can tell the two apart; the client must never coerce it.
+  it('keeps a null window on an Instagram draft rather than inventing one', async () => {
+    respondWith([{ ...CONTRACT_INSTAGRAM_DRAFT, replyWindowExpiresAt: null }]);
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.drafts[0].guestChannel).toBe('instagram');
+    expect(result.data.drafts[0].replyWindowExpiresAt).toBeNull();
+  });
+
+  // Transcribed from TAC-397's Contract example, second draft.
+  it('parses the Contract’s replacedDraft field for field', async () => {
+    respondWith([
+      {
+        ...CONTRACT_INSTAGRAM_DRAFT,
+        messageId: '33333333-3333-4333-8333-333333333333',
+        guestId: '22222222-2222-4222-8222-222222222222',
+        reviewReasonCode: 'previous_pending_held',
+        otherPendingDraftsForGuest: 1,
+        replacedDraft: {
+          body: 'we have oat and whole milk',
+          replacedAt: '2026-09-21T16:10:29.000Z',
+        },
+      },
+    ]);
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.drafts[0].replacedDraft).toEqual({
+      body: 'we have oat and whole milk',
+      replacedAt: '2026-09-21T16:10:29.000Z',
+    });
+  });
+
+  // TAC-402's acceptance criterion, verbatim: "a payload missing the field
+  // parses as `null`".
+  it('parses a payload with no replacedDraft as null', async () => {
+    const { replacedDraft: _omitted, ...withoutField } = CONTRACT_INSTAGRAM_DRAFT;
+    respondWith([withoutField]);
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.drafts[0].replacedDraft).toBeNull();
+  });
+
+  it('degrades an unreadable replacedDraft to null rather than losing the card', async () => {
+    respondWith([{ ...CONTRACT_INSTAGRAM_DRAFT, replacedDraft: 'not an object' }]);
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.drafts[0].replacedDraft).toBeNull();
+    expect(result.data.drafts[0].messageId).toBe(CONTRACT_INSTAGRAM_DRAFT.messageId);
+  });
+
+  /**
+   * The deliberate loud failure. `guestChannel` is a bare enum with no
+   * `.catch()`, so a response missing it fails the WHOLE queue.
+   *
+   * This test exists to make that a decision rather than an accident. The
+   * Contract guarantees the field is always present; if it ever isn't, an empty
+   * queue is a page an operator reports in a minute, whereas a `.catch('text')`
+   * would render every Instagram card as a text card with no window, no timer
+   * and a swipe-right that looks available and dies at the send gate. If you
+   * are here because this failed, fix the server, don't soften the schema.
+   */
+  it('fails the whole queue when guestChannel is missing, on purpose', async () => {
+    const { guestChannel: _omitted, ...withoutChannel } = CONTRACT_INSTAGRAM_DRAFT;
+    respondWith([withoutChannel]);
+    const result = await listQueue();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('PARSE');
+  });
+
+  it('fails the whole queue on a guestChannel the Contract does not define', async () => {
+    respondWith([{ ...CONTRACT_INSTAGRAM_DRAFT, guestChannel: 'whatsapp' }]);
+    const result = await listQueue();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('PARSE');
+  });
+
+  // Forward-compat: the Contract calls all three fields additive and says the
+  // deployed client "ignores unknown keys and keeps working".
+  it('ignores fields the Contract has not introduced yet', async () => {
+    respondWith([{ ...CONTRACT_INSTAGRAM_DRAFT, somethingAddedLater: 'x' }]);
+    const result = await listQueue();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.drafts[0].guestChannel).toBe('instagram');
+  });
 });

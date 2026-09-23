@@ -279,6 +279,14 @@ export const typePresets = {
   settingLabel: { size: 11, tracking: 2.2 },
   settingValue: { size: 10, tracking: 1.8 },
   undoAction: { size: 9.5, tracking: 2.2 },
+  /** The reply-window timer pill. Sits where the elapsed pill sits. (TAC-486.) */
+  replyTimer: { size: 9, tracking: 1.7 },
+  /** "1 / 3 cards for Mia", the sub-queue row. (TAC-486.) */
+  subQueue: { size: 9.5, tracking: 1.5 },
+  /** "COPY AND OPEN INSTAGRAM" on the expired card. (TAC-486.) */
+  copyAction: { size: 9.5, tracking: 2.2 },
+  /** "Before she edited it" / "What this replaced". (TAC-486.) */
+  amendLabel: { size: 8.5, tracking: 1.9 },
 } as const;
 
 /** Editorial display — Fraunces italic. Titles only, one per screen. */
@@ -373,4 +381,141 @@ export const takeoverHeader = {
   blockPaddingTopPx: 18,
   blockPaddingBottomPx: 18,
   blockPaddingHorizontalPx: 22,
+} as const;
+
+/**
+ * Instagram's reply window: the drain bar, the timer pill and the expired
+ * card's treatment. Sizes are the design hand-off's CSS px, which map 1:1 to
+ * RN points. (TAC-486.)
+ *
+ * Colours live here rather than in `lib/grounds.ts` because none of them is a
+ * ground or a strip: they are ink and fills on the white card surface, which is
+ * what the rest of this file holds.
+ */
+export const replyWindow = {
+  /** A1: full card width, directly under the flag strip. */
+  bar: {
+    heightPx: 6,
+    trackColor: 'rgba(28,24,20,0.10)',
+    /** So a nearly spent window is still visible rather than a hairline. */
+    minFillPx: 8,
+    /** Left-aligned, so only the right corners are rounded. */
+    fillRadiusPx: 3,
+    /**
+     * A recompute animates; a mount does not. The bar appearing already full
+     * and then sliding would read as the window refilling.
+     */
+    animateMs: 300,
+  },
+  /**
+   * The Instagram gradient, at the hand-off's stops. Spans the FILLED width,
+   * not the track, so a short bar still shows every colour rather than fading
+   * out in the yellows.
+   *
+   * It is the same in every live state: only the length changes. That is what
+   * lets the bar say "Instagram owns this deadline" as well as "this much is
+   * left", and it is why the glyph beside the handle is monochrome (a second
+   * gradient on one card would compete with the bucket strip).
+   */
+  gradient: {
+    colors: ['#FEDA75', '#FA7E1E', '#D62976', '#962FBF', '#4F5BD5'] as const,
+    locations: [0, 0.25, 0.55, 0.8, 1] as const,
+    start: { x: 0, y: 0.5 } as const,
+    end: { x: 1, y: 0.5 } as const,
+  },
+  /**
+   * A2: the pill, in the head row where the elapsed pill sits on a text card.
+   *
+   * The escalation is three things at once, deliberately: the unit gets finer
+   * (18h, then 4h 20m, then 42m), the chip gains a border and then a clay fill,
+   * and under an hour the word "Urgent" appears in the label itself. Colour is
+   * the last of the three and never the only one, so the state survives a
+   * screen in sunlight and an operator who cannot use the hue.
+   */
+  pill: {
+    paddingVerticalPx: 4,
+    paddingHorizontalPx: 10,
+    radiusPx: 999,
+    borderWidthPx: 1,
+  },
+  /** One row per `ReplyWindowState['kind']` that draws a pill. */
+  pillColors: {
+    plenty: { bg: 'transparent', border: 'transparent', ink: '#6F6658' },
+    close: { bg: 'transparent', border: 'rgba(28,24,20,0.28)', ink: '#1C1814' },
+    urgent: { bg: '#A85638', border: '#A85638', ink: '#FFFFFF' },
+    closed: { bg: '#1C1814', border: '#1C1814', ink: '#FFFFFF' },
+  },
+  /**
+   * A4: the expired card. The surface stays white; what changes is the ink and
+   * the chrome, so the draft and the thread stay readable and selectable.
+   */
+  expired: {
+    metaInk: '#635B4E',
+    avatarBg: 'rgba(28,24,20,0.10)',
+    chipBorder: 'rgba(28,24,20,0.28)',
+    inboundBubble: '#DFD5C1',
+    outboundBubble: '#FBF8F2',
+    outboundBorder: 'rgba(28,24,20,0.14)',
+    /** The copy block that replaces the composer. */
+    rule: 'rgba(28,24,20,0.12)',
+    draftBoxBorder: 'rgba(28,24,20,0.26)',
+    draftBoxRadiusPx: 14,
+    draftInk: '#4A4339',
+    buttonBg: '#1C1814',
+    buttonRadiusPx: 999,
+    iconSizePx: 13,
+  },
+} as const;
+
+/**
+ * The sub-queue row: "1 / 3 cards for Mia", shown when the deck holds more than
+ * one pending card for the same guest. (TAC-486, C1.)
+ */
+export const subQueue = {
+  paddingVerticalPx: 8,
+  paddingHorizontalPx: 11,
+  radiusPx: 8,
+  backgroundColor: 'rgba(28,24,20,0.05)',
+  gapPx: 9,
+  ink: '#4A4339',
+  segment: {
+    widthPx: 13,
+    heightPx: 3,
+    radiusPx: 2,
+    gapPx: 3,
+    /** The card you are on. */
+    onColor: '#A85638',
+    offColor: 'rgba(28,24,20,0.22)',
+  },
+} as const;
+
+/**
+ * Instagram identity on a card, a row and a thread header. (TAC-486, B.)
+ *
+ * The glyph is monochrome and tinted to the surrounding ink, never the
+ * full-colour logo: the drain bar already carries Instagram's gradient and a
+ * second one on the same card would compete with the bucket strip.
+ */
+export const instagramIdentity = {
+  avatarSizePx: 32,
+  avatarBg: 'rgba(28,24,20,0.08)',
+  avatarInk: '#4A4339',
+  /** On a gradient ground (the thread header) rather than the white card. */
+  avatarBgOnGround: 'rgba(255,255,255,0.2)',
+  glyph: {
+    cardSizePx: 12,
+    rowSizePx: 11,
+  },
+  handle: {
+    sizePx: 10.5,
+    trackingPx: 0.2,
+    underline: 'rgba(28,24,20,0.3)',
+    underlineOnGround: 'rgba(255,255,255,0.6)',
+    arrowSizePx: 8,
+    gapPx: 4,
+    pressedOpacity: 0.6,
+    hitSlopPx: 8,
+  },
+  /** An unnamed guest's name line is the handle, in its own case. */
+  handleAsNameTrackingPx: 0.2,
 } as const;

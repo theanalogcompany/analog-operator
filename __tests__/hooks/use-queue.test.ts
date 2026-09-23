@@ -24,7 +24,7 @@ jest.mock('@/lib/api/queue', () => ({
 
 const listQueueMock = listQueue as jest.MockedFunction<typeof listQueue>;
 
-function makeDraft(): PendingDraft {
+function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
   return {
     messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
@@ -32,6 +32,10 @@ function makeDraft(): PendingDraft {
     guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     guestDisplayName: 'A',
     guestPhoneFallback: '+15550001',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: 'x',
     category: null,
     voiceFidelity: null,
@@ -45,6 +49,7 @@ function makeDraft(): PendingDraft {
     reviewTriggers: [],
     reviewTriggerLabels: [],
     ungroundedClaims: [],
+    ...overrides,
   };
 }
 
@@ -201,5 +206,159 @@ describe('use-queue — heads-up commitments (TAC-364)', () => {
     act(() => result.current.restoreCommitment(OLDER));
     act(() => result.current.restoreCommitment(OLDER));
     expect(result.current.commitments.map((c) => c.id)).toEqual([OLDER.id, NEWER.id]);
+  });
+});
+
+/**
+ * Queue order (TAC-486, ruled 2026-09-23).
+ *
+ * The rule CHANGED here, and the ticket's own note said it would not, so these
+ * assert the new order against the old one explicitly: time left leads, and
+ * recognition tier is a tiebreak within equal urgency rather than the primary
+ * key.
+ */
+describe('queue order', () => {
+  const NOW = Date.parse('2026-09-23T12:00:00.000Z');
+  const at = (minutes: number) =>
+    new Date(NOW + minutes * 60_000).toISOString();
+
+  function igDraft(over: Partial<PendingDraft>): PendingDraft {
+    return makeDraft({
+      guestChannel: 'instagram',
+      instagramUsername: 'someone',
+      guestPhoneFallback: '',
+      ...over,
+    });
+  }
+
+  async function order(drafts: PendingDraft[]): Promise<string[]> {
+    listQueueMock.mockResolvedValue({
+      ok: true,
+      data: { drafts, commitments: [] },
+    });
+    const { result } = renderHook(() => useQueue());
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    return result.current.drafts.map((d) => d.messageId);
+  }
+
+  /**
+   * The case the old order got wrong. `sortByPriority` sorted by recognition
+   * tier FIRST, so a raving fan with twenty hours sat above a new guest with
+   * forty minutes and the queue buried the card about to become unsendable.
+   */
+  it('puts the soonest deadline first, even for a less important guest', async () => {
+    const fan = igDraft({
+      messageId: '11111111-1111-4111-8111-111111111111',
+      guestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      recognitionState: 'raving_fan',
+      replyWindowExpiresAt: at(20 * 60),
+    });
+    const stranger = igDraft({
+      messageId: '22222222-2222-4222-8222-222222222222',
+      guestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      recognitionState: 'new',
+      replyWindowExpiresAt: at(40),
+    });
+    expect(await order([fan, stranger])).toEqual([
+      stranger.messageId,
+      fan.messageId,
+    ]);
+  });
+
+  it('still ranks by recognition tier when the urgency is equal', async () => {
+    const shared = at(6 * 60);
+    const newcomer = igDraft({
+      messageId: '11111111-1111-4111-8111-111111111111',
+      guestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      recognitionState: 'new',
+      replyWindowExpiresAt: shared,
+    });
+    const regular = igDraft({
+      messageId: '22222222-2222-4222-8222-222222222222',
+      guestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      recognitionState: 'regular',
+      replyWindowExpiresAt: shared,
+    });
+    expect(await order([newcomer, regular])).toEqual([
+      regular.messageId,
+      newcomer.messageId,
+    ]);
+  });
+
+  it('sorts a card with no window after every card that has one', async () => {
+    const text = makeDraft({
+      messageId: '11111111-1111-4111-8111-111111111111',
+      guestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      recognitionState: 'raving_fan',
+    });
+    const instagram = igDraft({
+      messageId: '22222222-2222-4222-8222-222222222222',
+      guestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      recognitionState: 'new',
+      replyWindowExpiresAt: at(20 * 60),
+    });
+    expect(await order([text, instagram])).toEqual([
+      instagram.messageId,
+      text.messageId,
+    ]);
+  });
+
+  it('keeps tier and age deciding among cards that have no window at all', async () => {
+    // Nothing about the old behaviour changes for a text-only queue.
+    const newcomer = makeDraft({
+      messageId: '11111111-1111-4111-8111-111111111111',
+      guestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      recognitionState: 'new',
+      pendingSinceMs: 900_000,
+    });
+    const regular = makeDraft({
+      messageId: '22222222-2222-4222-8222-222222222222',
+      guestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      recognitionState: 'regular',
+      pendingSinceMs: 60_000,
+    });
+    expect(await order([newcomer, regular])).toEqual([
+      regular.messageId,
+      newcomer.messageId,
+    ]);
+  });
+
+  /**
+   * C1 claims a guest's cards "sit together in the deck". This is what makes
+   * that true by construction rather than usually: a per-card comparator would
+   * let another guest who tied on the deadline land between them.
+   */
+  it('keeps one guest cards consecutive even when another guest ties', async () => {
+    const shared = at(3 * 60);
+    const mia1 = igDraft({
+      messageId: '11111111-1111-4111-8111-111111111111',
+      guestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      recognitionState: 'new',
+      replyWindowExpiresAt: shared,
+      pendingSinceMs: 900_000,
+    });
+    const mia2 = igDraft({
+      messageId: '22222222-2222-4222-8222-222222222222',
+      guestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      recognitionState: 'new',
+      replyWindowExpiresAt: shared,
+      pendingSinceMs: 60_000,
+    });
+    // Same deadline, same tier, and an age BETWEEN Mia's two. A per-card
+    // comparator sorts this straight between them and splits the set; only
+    // grouping by guest keeps them together.
+    const jordan = igDraft({
+      messageId: '33333333-3333-4333-8333-333333333333',
+      guestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      recognitionState: 'new',
+      replyWindowExpiresAt: shared,
+      pendingSinceMs: 300_000,
+    });
+    const ids = await order([mia1, jordan, mia2]);
+    const first = ids.indexOf(mia1.messageId);
+    const second = ids.indexOf(mia2.messageId);
+    expect(Math.abs(first - second)).toBe(1);
+    // And oldest first within the guest.
+    expect(first).toBeLessThan(second);
   });
 });

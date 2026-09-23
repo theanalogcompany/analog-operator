@@ -66,6 +66,9 @@ describe('lib/api/conversations HTTP shape', () => {
       agentName: 'Sana',
       name: 'Maya R.',
       phoneFallback: '+15551110001',
+      guestChannel: 'text',
+      replyWindowExpiresAt: null,
+      instagramUsername: null,
       recognitionState: 'returning',
       lastMessageAt: '2026-09-05T21:39:00.000Z',
       lastMessageDirection: 'outbound',
@@ -99,6 +102,9 @@ describe('lib/api/conversations HTTP shape', () => {
       agentName: 'Sana',
       name: null,
       phoneFallback: '+15551110055',
+      guestChannel: 'text',
+      replyWindowExpiresAt: null,
+      instagramUsername: null,
       recognitionState: null,
       lastMessageAt: '2026-09-15T17:00:04.000Z',
       lastMessageDirection: 'outbound',
@@ -163,5 +169,109 @@ describe('lib/api/conversations HTTP shape', () => {
     const result = await listConversations();
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe('PARSE');
+  });
+});
+
+/**
+ * TAC-473's `## Contract`, conversation-summary half, transcribed from its own
+ * JSON example. Same rule as the queue half: expected values come from the
+ * Contract, never from the client's schema. (CLAUDE.md, "Cross-repo contracts"
+ * rule #5.)
+ */
+describe('lib/api/conversations against the TAC-473 Contract', () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    process.env.EXPO_PUBLIC_USE_FIXTURES = 'false';
+    process.env.EXPO_PUBLIC_API_BASE_URL = 'https://api.test';
+    fetchMock = jest.fn().mockResolvedValue(new Response('', { status: 200 }));
+    global.fetch = fetchMock as any;
+    jest
+      .spyOn(require('@/lib/supabase/client').supabase.auth, 'getSession')
+      .mockResolvedValue({ data: { session: { access_token: 't' } as any } } as any);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  /** The fields the Contract's example elides as `"…": "…"`. */
+  const ELIDED = {
+    venueSlug: 'le-mils-coffee',
+    venueTimezone: 'America/Los_Angeles',
+    agentName: 'Sana',
+    recognitionState: null,
+    lastMessagePreview: 'hello',
+    conversationCount: 1,
+    firstConversationAt: '2026-06-01T09:00:00.000Z',
+  };
+
+  // Transcribed from TAC-473's Contract, `GET /api/operator/conversations`.
+  const CONTRACT_CONVERSATION = {
+    guestId: '4e8a2f60-9d14-4b7c-a3e5-2f81c6d40a77',
+    venueId: '1b0f7a44-2c31-4d88-9a10-77c2e5b31f90',
+    name: null,
+    phoneFallback: '',
+    guestChannel: 'instagram',
+    replyWindowExpiresAt: '2026-09-24T09:12:03.000Z',
+    instagramUsername: 'hana.brews',
+    lastMessageAt: '2026-09-23T09:12:03.000Z',
+    lastMessageDirection: 'inbound',
+    ...ELIDED,
+  };
+
+  function respondWith(conversations: unknown[]): void {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ conversations }), { status: 200 }),
+    );
+  }
+
+  it('parses the Contract’s Instagram conversation field for field', async () => {
+    respondWith([CONTRACT_CONVERSATION]);
+    const result = await listConversations();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [row] = result.data;
+    expect(row.guestChannel).toBe('instagram');
+    expect(row.replyWindowExpiresAt).toBe('2026-09-24T09:12:03.000Z');
+    expect(row.instagramUsername).toBe('hana.brews');
+    expect(row.name).toBeNull();
+    expect(row.phoneFallback).toBe('');
+  });
+
+  it('parses a text conversation, which carries no window and no handle', async () => {
+    respondWith([
+      {
+        ...CONTRACT_CONVERSATION,
+        name: 'Marcus',
+        phoneFallback: '+15551110001',
+        guestChannel: 'text',
+        replyWindowExpiresAt: null,
+        instagramUsername: null,
+      },
+    ]);
+    const result = await listConversations();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data[0].guestChannel).toBe('text');
+    expect(result.data[0].replyWindowExpiresAt).toBeNull();
+    expect(result.data[0].instagramUsername).toBeNull();
+  });
+
+  // Same deliberate loud failure as the queue: see the note on that test.
+  it('fails the whole list when guestChannel is missing, on purpose', async () => {
+    const { guestChannel: _omitted, ...withoutChannel } = CONTRACT_CONVERSATION;
+    respondWith([withoutChannel]);
+    const result = await listConversations();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('PARSE');
+  });
+
+  it('ignores fields the Contract has not introduced yet', async () => {
+    respondWith([{ ...CONTRACT_CONVERSATION, somethingAddedLater: 'x' }]);
+    const result = await listConversations();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data[0].guestChannel).toBe('instagram');
   });
 });

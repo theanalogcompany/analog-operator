@@ -8,9 +8,12 @@ import { CARD_GROUND_NAMES, STRIP_COLORS } from '@/lib/grounds';
 import { buildQueueItems, draftItem, headsUpItem } from '@/lib/queue-items';
 import {
   FALLBACK_BUCKET,
+  SERVER_REASON_CODES,
+  UNRULED_SERVER_REASON_CODES,
   bucketForDraft,
   bucketForItem,
   formatProgress,
+  hasExplicitBucket,
   isReviewBucket,
   planAlsoLines,
   secondaryTriggerLabels,
@@ -27,6 +30,10 @@ function draftWith(overrides: Partial<PendingDraft>): PendingDraft {
     guestId: 'f47ac10b-58cc-4372-a567-0e02b2c3d480',
     guestDisplayName: 'Test Guest',
     guestPhoneFallback: '+15550000000',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: 'body',
     category: null,
     voiceFidelity: null,
@@ -400,5 +407,129 @@ describe('planAlsoLines', () => {
       shown: [],
       hidden: 2,
     });
+  });
+});
+
+/**
+ * Every reason code the server can emit has an EXPLICIT bucket (TAC-511).
+ *
+ * The defect this exists for: five codes shipped in `analog-guest` and every
+ * one of their cards rendered as an ordinary mid-thread draft, silently, for a
+ * release. `FALLBACK_BUCKET` is the right behaviour for a code we have never
+ * heard of, but it is the wrong behaviour for one we have, and nothing told
+ * anyone the difference.
+ *
+ * **What this can and cannot catch.** `SERVER_REASON_CODES` is a hand-kept
+ * mirror, like `BUCKET_BY_CODE`, so it catches a code we know about and forgot
+ * to map. It cannot catch a code the server added and we never heard about:
+ * nothing in this repo can reach that enum. Stating the limit rather than
+ * letting a green run imply a guarantee it does not give.
+ */
+describe('every server reason code is mapped', () => {
+  it.each(SERVER_REASON_CODES)('%s has an explicit bucket', (code) => {
+    expect(hasExplicitBucket(code)).toBe(true);
+  });
+
+  it('does not silently drop to the mid-thread fallback', () => {
+    const unmapped = SERVER_REASON_CODES.filter((code) => !hasExplicitBucket(code));
+    expect(unmapped).toEqual([]);
+  });
+
+  /**
+   * The ruling of 2026-09-23, transcribed. Its two bucket names are plainer
+   * English for the two that exist in the code: "commitment" is `obligation`,
+   * "knowledge confirmation" is `outsideDraft`.
+   */
+  it.each([
+    ['unverified_url', 'outsideDraft'],
+    ['prose_promise_check_failed', 'outsideDraft'],
+    ['prose_cancellation_backstop', 'outsideDraft'],
+    ['prose_promise_backstop', 'obligation'],
+    ['commitment_cancellation_gated', 'obligation'],
+  ] as const)('%s lands on %s', (reviewReasonCode, bucket) => {
+    expect(bucketForDraft({ reviewReasonCode })).toBe(bucket);
+  });
+
+  /**
+   * The pairing worth understanding rather than copying. A real cancellation
+   * means approving the card does something; a CLAIMED one means the text says
+   * something we cannot back up and approving it changes nothing. Different
+   * decisions, so different buckets, even though they read as neighbours.
+   */
+  it('separates a real cancellation from a claimed one', () => {
+    expect(bucketForDraft({ reviewReasonCode: 'commitment_cancellation_gated' })).toBe(
+      'obligation',
+    );
+    expect(bucketForDraft({ reviewReasonCode: 'prose_cancellation_backstop' })).toBe(
+      'outsideDraft',
+    );
+  });
+
+  /**
+   * The 2026-09-23 rulings for the codes that were unmapped at review time.
+   * Five are knowledge confirmation; the sixth is deliberately not a bucket at
+   * all (below).
+   */
+  it.each([
+    ['closed_venue_arrival_emitted', 'outsideDraft'],
+    ['closed_venue_arrival_backstop', 'outsideDraft'],
+    ['grounding_check_degraded', 'outsideDraft'],
+    ['prose_cancellation_check_failed', 'outsideDraft'],
+    ['unresolved_cancellation_id', 'outsideDraft'],
+  ] as const)('%s lands on %s', (reviewReasonCode, bucket) => {
+    expect(bucketForDraft({ reviewReasonCode })).toBe(bucket);
+  });
+
+  /**
+   * Both lists together account for every code the server had on 2026-09-23.
+   * The number is the point: if `REVIEW_REASON_LABELS` grows and nobody
+   * transcribes it, this is the line that should look stale.
+   */
+  it('accounts for all 26 codes the server had when it was transcribed', () => {
+    expect(
+      SERVER_REASON_CODES.length + UNRULED_SERVER_REASON_CODES.length,
+    ).toBe(26);
+  });
+
+  /**
+   * The codes the server can emit that nobody has ruled a bucket for. They are
+   * asserted as unmapped so the gap is a fact in the suite rather than a
+   * sentence in a comment, and so that moving one across flips a test in both
+   * directions at once.
+   */
+  it.each(UNRULED_SERVER_REASON_CODES)(
+    '%s is knowingly unmapped, and that is a decision',
+    (code) => {
+      expect(hasExplicitBucket(code)).toBe(false);
+      expect(bucketForDraft({ reviewReasonCode: code })).toBe(FALLBACK_BUCKET);
+    },
+  );
+
+  /**
+   * `instagram_send_failed` is the only one, and it is unmapped on purpose
+   * rather than pending: the message already failed to send, so there is
+   * nothing to approve, and every bucket here names a kind of decision about a
+   * draft still about to go out. Ruled 2026-09-23 that it belongs on the slate
+   * ground with the copy-and-open block instead, which needs the deferred
+   * "send failed" card type. Pinned so that adding it to `BUCKET_BY_CODE`
+   * without building that surface fails here.
+   */
+  it('leaves the send failure out of the buckets entirely', () => {
+    expect(UNRULED_SERVER_REASON_CODES).toEqual(['instagram_send_failed']);
+    expect(hasExplicitBucket('instagram_send_failed')).toBe(false);
+  });
+
+  it('keeps the two lists disjoint, so a code cannot be in both', () => {
+    const overlap = SERVER_REASON_CODES.filter((code) =>
+      UNRULED_SERVER_REASON_CODES.includes(code),
+    );
+    expect(overlap).toEqual([]);
+  });
+
+  it('still sends a code it has never seen to the fallback, not to a flag colour', () => {
+    expect(bucketForDraft({ reviewReasonCode: 'something_invented_later' })).toBe(
+      FALLBACK_BUCKET,
+    );
+    expect(hasExplicitBucket('something_invented_later')).toBe(false);
   });
 });
