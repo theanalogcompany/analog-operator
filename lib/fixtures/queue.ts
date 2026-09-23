@@ -1,11 +1,13 @@
 import {
   type DeclineCommitmentResult,
+  type GuestChannel,
   type HeadsUpCommitment,
   type PendingDraft,
   type RecognitionState,
   type ThreadMessage,
 } from '@/lib/api/queue';
 import { type ApiError, type Result, err, ok } from '@/lib/api/errors';
+import { DISPLAY_MARGIN_MS } from '@/lib/reply-window';
 import {
   FIXTURE_CENTRAL_PERK_ID,
   FIXTURE_SEXTANT_ID,
@@ -64,6 +66,19 @@ const draft = (args: {
   reviewTriggerLabels?: string[];
   ungroundedClaims?: string[];
   pendingMinutes: number;
+  /**
+   * Instagram fields (TAC-473 Contract). Default to a text guest so every seed
+   * written before TAC-486 keeps rendering exactly as it did.
+   *
+   * `windowMinutesLeft` is how much window the card should SHOW, so a seed
+   * reads in the units the operator sees. The display margin is added back on
+   * here, because `windowState` subtracts it. `null` leaves the deadline null,
+   * which on an Instagram guest means "unknown", not expired.
+   */
+  guestChannel?: GuestChannel;
+  instagramUsername?: string | null;
+  windowMinutesLeft?: number | null;
+  replacedDraft?: { body: string; replacedAt: string } | null;
 }): PendingDraft => {
   const now = Date.now();
   return {
@@ -74,6 +89,15 @@ const draft = (args: {
     guestId: args.guestId,
     guestDisplayName: args.guestDisplayName,
     guestPhoneFallback: args.guestPhoneFallback,
+    guestChannel: args.guestChannel ?? 'text',
+    replyWindowExpiresAt:
+      args.windowMinutesLeft === undefined || args.windowMinutesLeft === null
+        ? null
+        : new Date(
+            now + args.windowMinutesLeft * 60_000 + DISPLAY_MARGIN_MS,
+          ).toISOString(),
+    instagramUsername: args.instagramUsername ?? null,
+    replacedDraft: args.replacedDraft ?? null,
     draftBody: args.draftBody,
     category: args.category,
     voiceFidelity: args.voiceFidelity,

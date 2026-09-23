@@ -45,7 +45,16 @@ export type CardGroundName =
   | 'midThread'
   | 'headsUp';
 
-export type GroundName = CardGroundName | 'resting' | 'auth';
+/**
+ * `slate` is the seventh ground and the only one that is NOT a
+ * `CardGroundName`. That is the whole point of keeping it out: a card ground
+ * names a KIND OF DECISION, and "the reply window closed" is not one. An
+ * expired card has left play, so it leaves its bucket colour with it, and
+ * `slate` is an OVERRIDE applied on top of whatever bucket the card is in
+ * rather than a bucket of its own. Adding it to `CardGroundName` would let
+ * `bucketForItem` return it and quietly break that invariant. (TAC-486.)
+ */
+export type GroundName = CardGroundName | 'resting' | 'auth' | 'slate';
 
 export const CARD_GROUND_NAMES: readonly CardGroundName[] = [
   'obligation',
@@ -59,6 +68,7 @@ export const GROUND_NAMES: readonly GroundName[] = [
   ...CARD_GROUND_NAMES,
   'resting',
   'auth',
+  'slate',
 ];
 
 const TOP_TO_BOTTOM = { start: { x: 0.5, y: 0 }, end: { x: 0.5, y: 1 } } as const;
@@ -192,6 +202,14 @@ const HUE_BY_ROLE: Record<CardGroundName, Hue> = {
 const CARD_HIGHLIGHT = 0.26;
 const CLAY_HIGHLIGHT = 0.12;
 
+/**
+ * Slate runs its highlight quieter than a card ground. The design hand-off
+ * specifies `rgba(247,241,227,0.14)` rather than the card grounds' 0.26: an
+ * expired card has left play, and the lift that makes a live card look
+ * actionable is exactly what this ground should not do.
+ */
+const SLATE_HIGHLIGHT = 0.14;
+
 function buildGround(
   ramp: readonly [string, string, string],
   tint: string,
@@ -243,6 +261,18 @@ const CLAY: Ground = buildGround(
   CLAY_HIGHLIGHT,
 );
 
+/**
+ * Slate: the ground an EXPIRED Instagram card sits on, whatever bucket it was
+ * in. Built by the same function as every other ground, so it composites
+ * identically and `__tests__/lib/ground-contrast.test.ts` can measure it.
+ * (TAC-486.)
+ */
+const SLATE: Ground = buildGround(
+  ['#4D4A46', '#383633', '#1F1E1C'],
+  CREAM_TINT,
+  SLATE_HIGHLIGHT,
+);
+
 export const GROUNDS: Record<GroundName, Ground> = {
   obligation: cardGround('obligation'),
   outsideDraft: cardGround('outsideDraft'),
@@ -261,6 +291,11 @@ export const GROUNDS: Record<GroundName, Ground> = {
    * separate role, but the same object: one clay. (TAC-364.)
    */
   auth: CLAY,
+  /**
+   * An expired Instagram card, whatever its bucket. Not a `CardGroundName` —
+   * see the note on `GroundName` above.
+   */
+  slate: SLATE,
 };
 
 /** The card flag strip's fill, one per card ground. */
@@ -271,6 +306,20 @@ export const STRIP_COLORS: Record<CardGroundName, string> = {
   midThread: HUE_BY_ROLE.midThread.strip,
   headsUp: HUE_BY_ROLE.headsUp.strip,
 };
+
+/**
+ * The flag strip on an EXPIRED card: ink, not a bucket colour.
+ *
+ * Its own constant rather than an entry in `STRIP_COLORS`, because that map is
+ * keyed by `CardGroundName` and expiry is not one (see `GroundName`).
+ *
+ * **The hand-off contradicts itself here and this is the correction.** Its
+ * README A3 gives slate a `strip token #2B2926`, while README A4's expired-card
+ * table and the artwork itself both render `#1C1814`. Ruled 2026-09-23 in favour
+ * of A4 and the artwork. `#2B2926` is slate's nominal strip and nothing uses it,
+ * so it is not defined here rather than sitting unused. (TAC-486.)
+ */
+export const EXPIRED_STRIP_COLOR = '#1C1814';
 
 /**
  * iMessage blue, as the fill of the "Chat with Jaipal" pill (see `HelpFooter`).

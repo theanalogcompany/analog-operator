@@ -4,7 +4,13 @@ import * as fixtures from '@/lib/fixtures/conversations';
 
 import { authedFetch, parseHttpError } from './client';
 import { type ApiError, type Result, err, ok } from './errors';
-import { RecognitionStateSchema, ThreadMessageSchema, isFixtureMode, type ThreadMessage } from './queue';
+import {
+  GuestChannelSchema,
+  RecognitionStateSchema,
+  ThreadMessageSchema,
+  isFixtureMode,
+  type ThreadMessage,
+} from './queue';
 
 // Not `.strict()` — same reasoning as ThreadMessageSchema/RecentContextEntrySchema:
 // additive server fields must not break every pre-update client on every fetch.
@@ -16,6 +22,19 @@ export const ConversationSummarySchema = z.object({
   agentName: z.string(),
   name: z.string().nullable(),
   phoneFallback: z.string(),
+  // TAC-473 Contract, all three ALWAYS PRESENT, same shapes as on a queue draft.
+  //
+  // On a conversation summary there is no draft to read a channel off, so the
+  // server resolves it from the guest by its own single rule
+  // (`resolveConversationChannel`, TAC-495): one identifier decides, and a guest
+  // with both is on the channel they last messaged on. It is DERIVED IN
+  // TYPESCRIPT from `guest_has_instagram_id`, `last_inbound_channel` and
+  // `guest_phone` — there is no SQL column called `guestChannel`, so don't go
+  // looking for one. The two derivations agree in every real case, because the
+  // draft's channel was written by that same rule at generation time.
+  guestChannel: GuestChannelSchema,
+  replyWindowExpiresAt: z.string().nullable(),
+  instagramUsername: z.string().nullable(),
   recognitionState: RecognitionStateSchema.nullable(),
   lastMessageAt: z.string(),
   lastMessageDirection: z.enum(['inbound', 'outbound']),

@@ -1,5 +1,6 @@
 import {
   CARD_GROUND_NAMES,
+  EXPIRED_STRIP_COLOR,
   GROUNDS,
   MESSAGES_BLUE,
   STRIP_COLORS,
@@ -191,6 +192,50 @@ describe('where text sits on the grounds', () => {
  * y=230 while Honey's limit is y=217, 13pt past it. Nothing here checks the SE.
  * Recorded on TAC-364, not fixed.
  */
+/**
+ * Slate, the ground an expired Instagram card sits on (TAC-486).
+ *
+ * Deliberately NOT in `CARD_GROUND_NAMES` — expiry is an override, not a kind
+ * of decision — so it needs its own rows rather than riding the `it.each`
+ * blocks above, and a change to it cannot be caught by them.
+ *
+ * An expired card still shows the nav row and still shows the hint row, which
+ * keeps the "Chat with Jaipal" pill: the side hints go, but the one escape
+ * hatch on the card most likely to confuse an operator stays. So white has to
+ * clear 4.5:1 in both rows, and the pill sits on this ground too.
+ */
+describe('slate, the expired card ground', () => {
+  it('keeps white nav and hint text at 4.5:1 across the whole row', () => {
+    expect(minWhite(GROUNDS.slate, NAV_XS, NAV_Y)).toBeGreaterThanOrEqual(4.5);
+    expect(minWhite(GROUNDS.slate, HINT_XS, HINT_Y)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps an inactive nav tab at 4.5:1', () => {
+    expect(
+      minWhite(GROUNDS.slate, NAV_XS, NAV_Y, alphaOf(nav.inactiveColor)),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // The expired strip carries the same 9.5px white caps as every other strip
+  // ("Reply window closed"), which is not large text, so it needs 4.5:1 on its
+  // own rather than inheriting the ground's figure.
+  it('keeps the expired strip white caps at 4.5:1', () => {
+    const [r, g, b] = parseColor(EXPIRED_STRIP_COLOR);
+    expect(whiteOn([r, g, b])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // Checked everywhere rather than at two rows: the blocked-hint line and any
+  // ground-level copy on an expired card can sit low on the screen.
+  it('keeps body copy at 4.5:1 anywhere on the screen', () => {
+    const xs = span(26, W - 26, 10);
+    for (const y of span(layout.mockTopInsetPx, H - 20, 40)) {
+      expect(
+        minWhite(GROUNDS.slate, xs, y, alphaOf(groundText.body)),
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
 describe('the edit takeover header', () => {
   const HEADER_XS = span(
     takeoverHeader.blockPaddingHorizontalPx,
@@ -400,6 +445,10 @@ describe('the help pill', () => {
     headsUp: 1.88,
     resting: 2.48,
     auth: 2.48,
+    // TAC-486, measured rather than transcribed. The highest of the seven, and
+    // still under 3:1 like every other ground — accepted for the same reason:
+    // the readable white label identifies the control (WCAG 1.4.11).
+    slate: 2.98,
   };
 
   it.each(Object.entries(RECORDED_EDGE))(

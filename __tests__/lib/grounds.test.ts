@@ -86,7 +86,7 @@ function cssDegrees(layer: GradientLayer): number {
 }
 
 describe('grounds — names', () => {
-  it('declares five card grounds and the two clay roles', () => {
+  it('declares five card grounds, the two clay roles and slate', () => {
     expect(CARD_GROUND_NAMES).toEqual([
       'obligation',
       'outsideDraft',
@@ -94,7 +94,28 @@ describe('grounds — names', () => {
       'midThread',
       'headsUp',
     ]);
-    expect(GROUND_NAMES).toEqual([...CARD_GROUND_NAMES, 'resting', 'auth']);
+    expect(GROUND_NAMES).toEqual([
+      ...CARD_GROUND_NAMES,
+      'resting',
+      'auth',
+      'slate',
+    ]);
+  });
+
+  /**
+   * Slate is a ground but NOT a card ground, and that separation is the point:
+   * a `CardGroundName` names a kind of DECISION, and "the reply window closed"
+   * is not one. An expired card keeps its bucket and wears slate over the top.
+   *
+   * If slate ever appears in `CARD_GROUND_NAMES`, `bucketForItem` can return it
+   * and every `it.each(CARD_GROUND_NAMES)` in the contrast suite silently
+   * starts covering a ground that has its own explicit rows — which is how the
+   * two sets of figures would drift apart without anything failing. (TAC-486.)
+   */
+  it('keeps slate out of the card grounds', () => {
+    expect(CARD_GROUND_NAMES).not.toContain('slate');
+    expect(GROUND_NAMES).toContain('slate');
+    expect(GROUNDS.slate).toBeDefined();
   });
 
   // The veil is a gradient but not a screen ground: no screen names it, it is

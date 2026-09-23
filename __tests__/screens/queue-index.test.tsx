@@ -198,6 +198,10 @@ const draftWithTone = (
   guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
   guestDisplayName: 'A',
   guestPhoneFallback: '+15550001',
+  guestChannel: 'text',
+  replyWindowExpiresAt: null,
+  instagramUsername: null,
+  replacedDraft: null,
   draftBody: 'x',
   category: null,
   voiceFidelity: null,
@@ -372,7 +376,7 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
   const OTHER_GUEST_ID = 'bb11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
   const THIRD_GUEST_ID = 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
 
-  const draftFor = (guestId: string, messageId: string) => ({
+  const draftFor = (guestId: string, messageId: string): PendingDraft => ({
     messageId,
     venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
     venueSlug: 'mock',
@@ -380,6 +384,10 @@ describe('QueueScreen — surface-on-top from notification tap', () => {
     guestId,
     guestDisplayName: guestId.slice(0, 2).toUpperCase(),
     guestPhoneFallback: '+15550001',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: 'body',
     category: null,
     voiceFidelity: null,
@@ -519,6 +527,10 @@ describe('QueueScreen — handleApprove, the screen’s approve entry', () => {
     guestId: GUEST_ID,
     guestDisplayName: 'Priya N.',
     guestPhoneFallback: '+15551110004',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody,
     category: null,
     voiceFidelity: null,
@@ -591,6 +603,10 @@ describe('QueueScreen refusal path', () => {
     guestId: GUEST_ID,
     guestDisplayName: 'Priya N.',
     guestPhoneFallback: '+15551110004',
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: '',
     category: null,
     voiceFidelity: null,

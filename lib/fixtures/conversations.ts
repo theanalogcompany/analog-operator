@@ -4,6 +4,8 @@
 // established, so behavior (including the live-simulation trigger) is
 // consistent between the two fixture modules.
 
+import { DISPLAY_MARGIN_MS } from '@/lib/reply-window';
+
 import { fixtureUuid } from './queue';
 import { FIXTURE_CENTRAL_PERK_ID, FIXTURE_SEXTANT_ID } from './venues';
 
@@ -17,6 +19,10 @@ export interface ConversationSummary {
   agentName: string;
   name: string | null;
   phoneFallback: string;
+  /** TAC-473 Contract. Structurally mirrors `ConversationSummarySchema`. */
+  guestChannel: 'text' | 'instagram';
+  replyWindowExpiresAt: string | null;
+  instagramUsername: string | null;
   recognitionState: ConversationRecognitionState | null;
   lastMessageAt: string;
   lastMessageDirection: 'inbound' | 'outbound';
@@ -54,6 +60,17 @@ interface SeedGuest {
   guestId: string;
   name: string | null;
   phoneFallback: string;
+  /**
+   * Instagram identity (TAC-473). Defaults to a text guest, so every seed row
+   * written before TAC-486 renders exactly as it did.
+   *
+   * `windowMinutesLeft` is what the card should SHOW; the display margin is
+   * added back on in `buildRecord`. `undefined` leaves the deadline null, which
+   * on an Instagram guest reads as "unknown", never as expired.
+   */
+  guestChannel?: 'text' | 'instagram';
+  instagramUsername?: string | null;
+  windowMinutesLeft?: number;
   recognitionState: ConversationRecognitionState;
   conversationCount: number;
   firstConversationDaysAgo: number;
@@ -377,6 +394,14 @@ function buildRecord(seed: SeedGuest, now: number): ConversationRecord {
     agentName: venue.agentName,
     name: seed.name,
     phoneFallback: seed.phoneFallback,
+    guestChannel: seed.guestChannel ?? 'text',
+    replyWindowExpiresAt:
+      seed.windowMinutesLeft === undefined
+        ? null
+        : new Date(
+            now + seed.windowMinutesLeft * 60_000 + DISPLAY_MARGIN_MS,
+          ).toISOString(),
+    instagramUsername: seed.instagramUsername ?? null,
     recognitionState: seed.recognitionState,
     lastMessageAt: at(describes),
     lastMessageDirection: describes.direction,

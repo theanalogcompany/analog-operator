@@ -33,6 +33,21 @@ export function buildDeclineHandoffDraft(
     guestId: commitment.guestId,
     guestDisplayName: headsUpGuestName(commitment),
     guestPhoneFallback: '',
+    // Placeholders, like `recentContext: []` below: a commitment carries none of
+    // TAC-473's three fields ("Heads-up commitments get none of these three" in
+    // its Contract), so the channel and the window are genuinely unknown here.
+    //
+    // `'text'` is the value that CLAIMS LEAST. It renders no drain bar and no
+    // timer pill, which is the honest output for "we don't know yet", and the
+    // real row replaces all of this within a frame or two of the realtime
+    // reload. `'instagram'` with a null deadline would render identically today
+    // but asserts a channel nobody established. Neither ever reaches
+    // `windowState`'s `closed` branch, so the decline draft stays sendable,
+    // which it must be. (TAC-486.)
+    guestChannel: 'text',
+    replyWindowExpiresAt: null,
+    instagramUsername: null,
+    replacedDraft: null,
     draftBody: declined.body,
     category: null,
     voiceFidelity: null,
