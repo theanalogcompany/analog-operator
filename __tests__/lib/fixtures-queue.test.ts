@@ -24,9 +24,13 @@ function topMessageId(): string {
 }
 
 describe('lib/fixtures/queue idempotency', () => {
-  it('seeds 4 drafts ordered FIFO by pendingSinceMs (largest first)', () => {
+  it('seeds 8 drafts ordered FIFO by pendingSinceMs (largest first)', () => {
+    // Four text drafts, plus TAC-486's four Instagram ones: Mia's three cards
+    // for one guest (the sub-queue row, an urgent timer, a replaced draft) and
+    // one expired card for an unnamed guest (slate, copy-and-open, the
+    // blank-name case).
     const list = listQueueFixture();
-    expect(list).toHaveLength(4);
+    expect(list).toHaveLength(8);
     for (let i = 1; i < list.length; i++) {
       expect(list[i - 1].pendingSinceMs >= list[i].pendingSinceMs).toBe(true);
     }

@@ -46,12 +46,37 @@ const BUCKET_BY_CODE: Readonly<Record<string, DraftBucket>> = {
   comp_regex_backstop: 'obligation',
   complaint_commitment_floor: 'obligation',
   mechanic_offer_backstop: 'obligation',
+  // Ruled 2026-09-23. Both mean approving this card does something: the agent
+  // promised in prose with no carrier (TAC-401), or a real commitment is being
+  // cancelled (TAC-513).
+  prose_promise_backstop: 'obligation',
+  commitment_cancellation_gated: 'obligation',
   // 02 Something outside the draft needs you.
   knowledge_gap: 'outsideDraft',
   knowledge_gap_backstop: 'outsideDraft',
   grounding_check_failed: 'outsideDraft',
   hold_all_outbound: 'outsideDraft',
   category_requires_approval: 'outsideDraft',
+  unverified_url: 'outsideDraft',
+  prose_promise_check_failed: 'outsideDraft',
+  /**
+   * The one worth understanding rather than copying (ruled 2026-09-23).
+   *
+   * It fires when a reply SAYS something is cancelled and nothing in the reply
+   * cancels anything, so approving it changes nothing — which is precisely the
+   * defect. An obligation card means "approving this does something"; this one
+   * means "this text claims something we cannot back up", and the operator's
+   * move is to fix the wording. Seen live 2026-09-21: the agent told a guest
+   * "the comp for the blossom tonic is cancelled" and the comp stayed open.
+   *
+   * Note that it and `commitment_cancellation_gated` below read as neighbours
+   * to an operator while sitting in different buckets: one is a real
+   * cancellation, the other a claimed one. Accepted by Jaipal, with the caveat
+   * that their wording and treatment have to be obviously different at a
+   * glance or the distinction that matters is the one that gets missed. The
+   * wording is the server's.
+   */
+  prose_cancellation_backstop: 'outsideDraft',
   // 03 The draft came out wrong.
   model_flagged: 'draftWrong',
   self_talk_detected: 'draftWrong',
@@ -67,6 +92,49 @@ const BUCKET_BY_CODE: Readonly<Record<string, DraftBucket>> = {
  * "Needs review" label fallback. Never a flag colour.
  */
 export const FALLBACK_BUCKET: DraftBucket = 'midThread';
+
+/**
+ * Every reason code `analog-guest` can emit, transcribed from its
+ * `APPROVAL_TRIGGERS` and its extra review reasons.
+ *
+ * A HAND-KEPT MIRROR, like `BUCKET_BY_CODE` itself, and it has the same limit:
+ * it catches a code we know about and forgot to map, NOT a code the server
+ * added and we never heard about. Nothing in this repo can reach that enum, so
+ * a new server code still arrives as unknown and lands on `FALLBACK_BUCKET`
+ * until someone adds it here. That is the safe direction, and the test over
+ * this list is what turns "someone adds it" into a red build rather than a
+ * card that quietly renders on the wrong ground for a release.
+ *
+ * TAC-511 filed exactly that: five codes shipped server-side and every one of
+ * their cards rendered as an ordinary mid-thread draft.
+ */
+export const SERVER_REASON_CODES: readonly string[] = [
+  'commitment_type_gated',
+  'comp_regex_backstop',
+  'complaint_commitment_floor',
+  'mechanic_offer_backstop',
+  'prose_promise_backstop',
+  'commitment_cancellation_gated',
+  'knowledge_gap',
+  'knowledge_gap_backstop',
+  'grounding_check_failed',
+  'hold_all_outbound',
+  'category_requires_approval',
+  'unverified_url',
+  'prose_promise_check_failed',
+  'prose_cancellation_backstop',
+  'model_flagged',
+  'self_talk_detected',
+  'fidelity_below_auto_send_floor',
+  'generation_failed',
+  'previous_pending_held',
+  'operator_decline_initiated',
+];
+
+/** Whether a code has an EXPLICIT bucket rather than falling back. */
+export function hasExplicitBucket(code: string): boolean {
+  return knownBucket(code) !== null;
+}
 
 const STRIP_LABELS: Record<DraftBucket, string> = {
   obligation: CARD_COPY.strip.obligation,

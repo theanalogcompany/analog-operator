@@ -106,6 +106,53 @@ const CENTRAL_PERK: FixtureVenue = {
 
 function seedGuests(): SeedGuest[] {
   return [
+    // Instagram guests (TAC-486). One named, one not: the unnamed row is the
+    // blank-name case, which now reads as the handle rather than as nothing.
+    {
+      guestId: 'c0999999-9999-4999-8999-999999999999',
+      name: 'Mia B.',
+      phoneFallback: '',
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      windowMinutesLeft: 51,
+      recognitionState: 'regular',
+      conversationCount: 4,
+      firstConversationDaysAgo: 110,
+      messages: [
+        {
+          direction: 'inbound',
+          body: 'the flat white on saturday was cold, we were pretty disappointed',
+          minsAgo: 14,
+        },
+        {
+          direction: 'outbound',
+          body: 'Sorry about Saturday. Your next round is on us, come in any time this week.',
+          minsAgo: 10,
+        },
+        {
+          direction: 'inbound',
+          body: 'also is there parking near you in the evening?',
+          minsAgo: 6,
+        },
+      ],
+    },
+    {
+      guestId: 'c0888888-8888-4888-8888-888888888888',
+      name: null,
+      phoneFallback: '',
+      guestChannel: 'instagram',
+      instagramUsername: 'lena.eats',
+      recognitionState: 'new',
+      conversationCount: 1,
+      firstConversationDaysAgo: 1,
+      messages: [
+        {
+          direction: 'inbound',
+          body: 'do you take walk-ins on saturdays',
+          minsAgo: 27 * 60,
+        },
+      ],
+    },
     {
       guestId: 'c0111111-1111-4111-8111-111111111111',
       name: 'Maya R.',

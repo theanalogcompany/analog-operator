@@ -252,6 +252,44 @@ export function QueueCard({
             guestName={guestFirstName(identity)}
           />
         ) : null}
+        {/* What a regen replaced, when the guest corrected the question this
+            card was answering (TAC-397's `replacedDraft`, via TAC-402).
+
+            Placed in the hand-off's amend-caption slot — under the reason, on a
+            left rule — rather than literally beneath the composer, which is the
+            wording TAC-402 uses. The card is fixed-height with only the thread
+            flexing, so a block under the composer would squeeze the
+            conversation away, and this is the one slot the approved design has
+            for a quoted earlier text. Both are on screen together either way,
+            which is what "so the operator can check the new draft still answers
+            everything" needs. */}
+        {draft.replacedDraft && !expired ? (
+          <View
+            testID="replaced-draft"
+            style={{
+              marginTop: 9,
+              paddingLeft: 11,
+              borderLeftWidth: 1,
+              borderLeftColor: 'rgba(28,24,20,0.22)',
+            }}
+          >
+            <TrackedCaps {...typePresets.amendLabel} color={metaInk}>
+              {CARD_COPY.replacedDraft}
+            </TrackedCaps>
+            <Text
+              allowFontScaling={false}
+              className="font-inter-tight"
+              style={{
+                marginTop: 4,
+                fontSize: bodyType.preview.size,
+                lineHeight: bodyType.preview.lineHeight,
+                color: '#4A4339',
+              }}
+            >
+              {draft.replacedDraft.body}
+            </Text>
+          </View>
+        ) : null}
         {expired ? (
           // A4: the window explanation REPLACES the held-reason on an expired
           // card. Why it was held stopped being the operator's next move the

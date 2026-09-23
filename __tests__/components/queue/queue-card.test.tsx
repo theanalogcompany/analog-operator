@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native';
 import { QueueCard } from '@/components/queue/queue-card';
 import { __resetNowClockForTests } from '@/hooks/use-now';
 import { type PendingDraft } from '@/lib/api/queue';
+import { CARD_COPY } from '@/lib/card-copy';
 import { card } from '@/lib/theme';
 
 function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
@@ -584,5 +585,53 @@ describe('QueueCard and a guest with no name', () => {
     expect(
       screen.getByLabelText('Pending draft for +15551110001.'),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * The draft a regen replaced (TAC-397's `replacedDraft`, via TAC-402).
+ *
+ * Not the same thing as the hand-off's "corrected message" caption, which
+ * quotes the GUEST's own edit of their DM. No contract carries that field, so
+ * it is filed separately; this one is the agent's previous draft text.
+ */
+describe('QueueCard and a replaced draft', () => {
+  it('shows what the draft replaced, labelled', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          replacedDraft: {
+            body: 'we have oat and whole milk',
+            replacedAt: '2026-09-21T16:10:29.000Z',
+          },
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getByTestId('replaced-draft')).toBeTruthy();
+    expect(screen.getByText('we have oat and whole milk')).toBeTruthy();
+    expect(screen.getByLabelText(CARD_COPY.replacedDraft)).toBeTruthy();
+  });
+
+  it('shows nothing extra when there is nothing to compare against', () => {
+    render(<QueueCard draft={makeDraft({ replacedDraft: null })} height={HEIGHT} />);
+    expect(screen.queryByTestId('replaced-draft')).toBeNull();
+  });
+
+  it('keeps the new draft on screen beside it, which is the whole point', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          draftBody: 'we have oat, whole and soy',
+          replacedDraft: {
+            body: 'we have oat and whole milk',
+            replacedAt: '2026-09-21T16:10:29.000Z',
+          },
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getByText('we have oat and whole milk')).toBeTruthy();
+    expect(screen.getByText('we have oat, whole and soy')).toBeTruthy();
   });
 });

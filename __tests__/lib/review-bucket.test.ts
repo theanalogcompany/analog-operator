@@ -8,9 +8,11 @@ import { CARD_GROUND_NAMES, STRIP_COLORS } from '@/lib/grounds';
 import { buildQueueItems, draftItem, headsUpItem } from '@/lib/queue-items';
 import {
   FALLBACK_BUCKET,
+  SERVER_REASON_CODES,
   bucketForDraft,
   bucketForItem,
   formatProgress,
+  hasExplicitBucket,
   isReviewBucket,
   planAlsoLines,
   secondaryTriggerLabels,
@@ -404,5 +406,68 @@ describe('planAlsoLines', () => {
       shown: [],
       hidden: 2,
     });
+  });
+});
+
+/**
+ * Every reason code the server can emit has an EXPLICIT bucket (TAC-511).
+ *
+ * The defect this exists for: five codes shipped in `analog-guest` and every
+ * one of their cards rendered as an ordinary mid-thread draft, silently, for a
+ * release. `FALLBACK_BUCKET` is the right behaviour for a code we have never
+ * heard of, but it is the wrong behaviour for one we have, and nothing told
+ * anyone the difference.
+ *
+ * **What this can and cannot catch.** `SERVER_REASON_CODES` is a hand-kept
+ * mirror, like `BUCKET_BY_CODE`, so it catches a code we know about and forgot
+ * to map. It cannot catch a code the server added and we never heard about:
+ * nothing in this repo can reach that enum. Stating the limit rather than
+ * letting a green run imply a guarantee it does not give.
+ */
+describe('every server reason code is mapped', () => {
+  it.each(SERVER_REASON_CODES)('%s has an explicit bucket', (code) => {
+    expect(hasExplicitBucket(code)).toBe(true);
+  });
+
+  it('does not silently drop to the mid-thread fallback', () => {
+    const unmapped = SERVER_REASON_CODES.filter((code) => !hasExplicitBucket(code));
+    expect(unmapped).toEqual([]);
+  });
+
+  /**
+   * The ruling of 2026-09-23, transcribed. Its two bucket names are plainer
+   * English for the two that exist in the code: "commitment" is `obligation`,
+   * "knowledge confirmation" is `outsideDraft`.
+   */
+  it.each([
+    ['unverified_url', 'outsideDraft'],
+    ['prose_promise_check_failed', 'outsideDraft'],
+    ['prose_cancellation_backstop', 'outsideDraft'],
+    ['prose_promise_backstop', 'obligation'],
+    ['commitment_cancellation_gated', 'obligation'],
+  ] as const)('%s lands on %s', (reviewReasonCode, bucket) => {
+    expect(bucketForDraft({ reviewReasonCode })).toBe(bucket);
+  });
+
+  /**
+   * The pairing worth understanding rather than copying. A real cancellation
+   * means approving the card does something; a CLAIMED one means the text says
+   * something we cannot back up and approving it changes nothing. Different
+   * decisions, so different buckets, even though they read as neighbours.
+   */
+  it('separates a real cancellation from a claimed one', () => {
+    expect(bucketForDraft({ reviewReasonCode: 'commitment_cancellation_gated' })).toBe(
+      'obligation',
+    );
+    expect(bucketForDraft({ reviewReasonCode: 'prose_cancellation_backstop' })).toBe(
+      'outsideDraft',
+    );
+  });
+
+  it('still sends a code it has never seen to the fallback, not to a flag colour', () => {
+    expect(bucketForDraft({ reviewReasonCode: 'something_invented_later' })).toBe(
+      FALLBACK_BUCKET,
+    );
+    expect(hasExplicitBucket('something_invented_later')).toBe(false);
   });
 });
