@@ -4,8 +4,11 @@ import { type LayoutChangeEvent, Text, View } from 'react-native';
 import { MessageBubble } from '@/components/ui/message-bubble';
 import { SendGlyph } from '@/components/ui/send-glyph';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
+import { useNow } from '@/hooks/use-now';
 import { type PendingDraft } from '@/lib/api/queue';
 import { CARD_COPY } from '@/lib/card-copy';
+import { type GuestIdentity, guestIdentity } from '@/lib/guest-identity';
+import { windowState } from '@/lib/reply-window';
 import {
   bucketForDraft,
   formatProgress,
@@ -16,13 +19,22 @@ import { body as bodyType, card, typePresets } from '@/lib/theme';
 import { computeItems, deviceTimezone } from '@/lib/thread-cluster';
 
 import { RecognitionBadge } from './recognition-badge';
+import { ReplyWindowBar } from './reply-window-bar';
+import { ReplyWindowPill } from './reply-window-pill';
 import { ReviewDetail } from './review-detail';
 
-function displayName(draft: PendingDraft): string {
-  if (draft.guestDisplayName && draft.guestDisplayName.trim().length > 0) {
-    return draft.guestDisplayName;
-  }
-  return draft.guestPhoneFallback;
+/**
+ * Who the card is for. One chain for every surface (`lib/guest-identity.ts`),
+ * which is also what stops an unnamed Instagram guest rendering blank: their
+ * `guestPhoneFallback` is `''`, and `??` does not fall back on an empty string.
+ */
+function identityFor(draft: PendingDraft): GuestIdentity {
+  return guestIdentity({
+    displayName: draft.guestDisplayName,
+    instagramUsername: draft.instagramUsername,
+    phoneFallback: draft.guestPhoneFallback,
+    channel: draft.guestChannel,
+  });
 }
 
 /** "just now" / "4 min" / "2 hrs". Shared with the heads-up card's head. */
@@ -83,7 +95,24 @@ export function QueueCard({
   overlay,
 }: Props) {
   const bucket = bucketForDraft(draft);
-  const name = displayName(draft);
+  const identity = identityFor(draft);
+  const name = identity.name;
+
+  // One clock for every timer on screen, ticking once a minute (never once a
+  // second) and refreshed on foreground. See hooks/use-now.ts.
+  //
+  // The window is recomputed on every tick, INCLUDING the transition to
+  // expired, which therefore happens under the operator's eyes rather than
+  // waiting for them to leave the card. Ruled 2026-09-23: truth beats
+  // stability here, because the alternative is a card that still looks
+  // sendable after the deadline and a swipe that fails at the server. The
+  // client's 5 minute display margin is what makes that safe, since roughly
+  // five real minutes of window remain at the moment it converts.
+  const window = windowState({
+    expiresAt: draft.replyWindowExpiresAt,
+    channel: draft.guestChannel,
+    nowMs: useNow(),
+  });
 
   // A blank draftBody is a real server state (the agent declined to draft, or
   // the row landed before generation finished). The design gives it its own
@@ -160,6 +189,11 @@ export function QueueCard({
         ) : null}
       </View>
 
+      {/* Instagram's reply window, draining left to right. Directly under the
+          strip and above the head, inside the card's clip. Renders nothing on a
+          text card, or on an Instagram card whose window nobody measured. */}
+      <ReplyWindowBar state={window} />
+
       {/* b. Head — who, and what the agent made of it. No hairline beneath:
           with a fixed-height card and a bottom-anchored thread, a rule here
           would point at empty space. */}
@@ -171,13 +205,19 @@ export function QueueCard({
             {name}
           </TrackedCaps>
           <RecognitionBadge state={draft.recognitionState} variant="card" />
-          <TrackedCaps
-            {...typePresets.elapsed}
-            color="#6F6658"
-            style={{ marginLeft: 'auto' }}
-          >
-            {minutesPending(draft)}
-          </TrackedCaps>
+          {/* The timer REPLACES the elapsed pill on an Instagram card, in the
+              same slot. A text card is untouched and keeps "14 min", and so
+              does an Instagram card whose window was never measured: elapsed
+              time is the only true thing we can say about either. */}
+          <View style={{ marginLeft: 'auto' }}>
+            {window.kind === 'none' || window.kind === 'unknown' ? (
+              <TrackedCaps {...typePresets.elapsed} color="#6F6658">
+                {minutesPending(draft)}
+              </TrackedCaps>
+            ) : (
+              <ReplyWindowPill state={window} />
+            )}
+          </View>
         </View>
         <ReviewDetail draft={draft} surface="card" style={{ marginTop: 12 }} />
         {reasoning ? (
@@ -302,7 +342,20 @@ export function QueueCard({
   );
 }
 
+/**
+ * What to call this guest, as one string.
+ *
+ * Kept as a named export because the edit takeover's header and the undo toast
+ * both name a guest and both carried the same `?? phoneFallback` bug: routing
+ * them through `identityFor` fixes the blank name on those two surfaces as
+ * well, rather than only on the card.
+ */
+function displayName(draft: PendingDraft): string {
+  return identityFor(draft).name;
+}
+
 export {
   displayName as queueCardDisplayName,
+  identityFor as queueCardIdentity,
   minutesPending as queueCardMinutesPending,
 };

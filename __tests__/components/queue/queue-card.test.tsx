@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import { QueueCard } from '@/components/queue/queue-card';
+import { __resetNowClockForTests } from '@/hooks/use-now';
 import { type PendingDraft } from '@/lib/api/queue';
 import { card } from '@/lib/theme';
 
@@ -418,5 +419,170 @@ describe('QueueCard — geometry', () => {
       ? Object.assign({}, ...root.props.style)
       : root?.props?.style;
     expect(style.height).toBe(HEIGHT);
+  });
+});
+
+/**
+ * The reply window on the card itself (TAC-486, A).
+ *
+ * The component tests for the bar and the pill live in
+ * `reply-window.test.tsx`; these are about the CARD's wiring — that an
+ * Instagram card swaps the elapsed pill for the timer and draws the bar, and
+ * that a text card is left exactly as it ships.
+ */
+describe('QueueCard and the Instagram reply window', () => {
+  const HIDDEN = { includeHiddenElements: true } as const;
+
+  /**
+   * Time is frozen so each threshold lands exactly where it is aimed.
+   *
+   * Without this the deadline is built a few milliseconds before `useNow()`
+   * reads the clock, so a window aimed at exactly 18h renders as "17h left" —
+   * correct behaviour (the label rounds DOWN so a card never overstates what is
+   * left), but it makes a boundary test race the clock.
+   */
+  const NOW = Date.parse('2026-09-23T12:00:00.000Z');
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    __resetNowClockForTests();
+  });
+
+  afterEach(() => {
+    __resetNowClockForTests();
+    jest.useRealTimers();
+  });
+
+  /** A deadline leaving `minutes` of window AFTER the 5 minute display margin. */
+  const leaving = (minutes: number): string =>
+    new Date(NOW + (minutes + 5) * 60_000).toISOString();
+
+  const instagramDraft = (overrides: Partial<PendingDraft> = {}): PendingDraft =>
+    makeDraft({
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      guestPhoneFallback: '',
+      replyWindowExpiresAt: leaving(18 * 60),
+      ...overrides,
+    });
+
+  it('shows the timer in place of the elapsed pill', () => {
+    render(<QueueCard draft={instagramDraft()} height={HEIGHT} />);
+    expect(screen.getByTestId('reply-window-pill')).toBeTruthy();
+    expect(screen.getByLabelText('18h left')).toBeTruthy();
+    // The elapsed reading is gone: two clocks in one slot would be two answers
+    // to the same question.
+    expect(screen.queryByLabelText('4 min')).toBeNull();
+  });
+
+  it('draws the drain bar under the flag strip', () => {
+    render(<QueueCard draft={instagramDraft()} height={HEIGHT} />);
+    expect(screen.getByTestId('reply-window-bar', HIDDEN)).toBeTruthy();
+  });
+
+  it('escalates the label as the window runs down', () => {
+    for (const [minutes, label] of [
+      [18 * 60, '18h left'],
+      [4 * 60 + 20, '4h 20m left'],
+      [42, 'Urgent · 42m left'],
+    ] as const) {
+      const view = render(
+        <QueueCard
+          draft={instagramDraft({ replyWindowExpiresAt: leaving(minutes) })}
+          height={HEIGHT}
+        />,
+      );
+      expect(screen.getByLabelText(label)).toBeTruthy();
+      view.unmount();
+    }
+  });
+
+  it('reads Closed once the window has shut', () => {
+    render(
+      <QueueCard
+        draft={instagramDraft({ replyWindowExpiresAt: leaving(-3 * 60) })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getByLabelText('Closed 3h ago')).toBeTruthy();
+  });
+
+  // The hand-off's binding constraint: text cards don't change.
+  it('leaves a text card with its elapsed pill and no bar', () => {
+    render(<QueueCard draft={makeDraft()} height={HEIGHT} />);
+    expect(screen.queryByTestId('reply-window-pill')).toBeNull();
+    expect(screen.queryByTestId('reply-window-bar', HIDDEN)).toBeNull();
+    expect(screen.getByLabelText('4 min')).toBeTruthy();
+  });
+
+  /**
+   * TAC-473's Contract: a null deadline on an INSTAGRAM guest means the window
+   * was never measured, not that it shut. The card says the only true thing it
+   * can — how long the draft has been waiting — rather than claiming "Closed"
+   * about a guest who is still reachable.
+   */
+  it('keeps the elapsed pill when the window was never measured', () => {
+    render(
+      <QueueCard
+        draft={instagramDraft({ replyWindowExpiresAt: null })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.queryByTestId('reply-window-pill')).toBeNull();
+    expect(screen.queryByTestId('reply-window-bar', HIDDEN)).toBeNull();
+    expect(screen.getByLabelText('4 min')).toBeTruthy();
+  });
+});
+
+describe('QueueCard and a guest with no name', () => {
+  /**
+   * The live defect. `guestPhoneFallback` is `''` for a phoneless Instagram
+   * guest (ruled non-nullable in TAC-473 so one such guest cannot empty the
+   * queue), and the old chain was `guestDisplayName || guestPhoneFallback`,
+   * which rendered BLANK.
+   */
+  it('names an unnamed Instagram guest by their handle, never blank', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          guestChannel: 'instagram',
+          guestDisplayName: null,
+          instagramUsername: 'lena.eats',
+          guestPhoneFallback: '',
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getByLabelText('Pending draft for @lena.eats.')).toBeTruthy();
+  });
+
+  it('falls back to a plain label when there is no name and no handle', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          guestChannel: 'instagram',
+          guestDisplayName: null,
+          instagramUsername: null,
+          guestPhoneFallback: '',
+        })}
+        height={HEIGHT}
+      />,
+    );
+    expect(
+      screen.getByLabelText('Pending draft for Instagram guest.'),
+    ).toBeTruthy();
+  });
+
+  it('still names a text guest by their phone, as it ships today', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({ guestDisplayName: null })}
+        height={HEIGHT}
+      />,
+    );
+    expect(
+      screen.getByLabelText('Pending draft for +15551110001.'),
+    ).toBeTruthy();
   });
 });
