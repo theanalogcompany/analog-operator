@@ -334,6 +334,59 @@ describe('the edit takeover date dividers', () => {
 });
 
 /**
+ * The takeover's "Replying to" row, which quotes the guest message a draft is
+ * answering. (TAC-533.)
+ *
+ * It sits on the card's ground like the date dividers, takes the same
+ * `dividerBacking` scrim, and carries `groundText.body` in 8.5pt tracked caps
+ * (the label) and 12.5px (the quote). Both are NORMAL text under WCAG — 12.5px
+ * is about 9.4pt, nowhere near the 18pt / 14pt-bold large-text threshold — so
+ * 4.5:1 governs both. The two differ in size but never in ratio: contrast
+ * depends on colour alone and both carry the same one.
+ *
+ * Asserted separately rather than leaned on the divider case above, although
+ * the arithmetic is identical today. That case is named and scoped to dividers;
+ * if their alpha or their backing ever changes, the test moves with them and
+ * this row would silently lose its only gate. CLAUDE.md's rule is to point at
+ * the thing that enforces a property rather than to assert the property, so
+ * this row points at a case of its own.
+ */
+describe('the edit takeover reply-quote row', () => {
+  const XS = span(20, W - 20, 24);
+  const YS = span(layout.mockTopInsetPx, H, 120);
+  const backing = parseColor(dividerBacking.color);
+
+  function minQuote(name: CardGroundName, backed: boolean): number {
+    const a = backed ? backing[3] : 0;
+    let min = Infinity;
+    for (const y of YS) {
+      for (const x of XS) {
+        const [r, g, b] = composite(GROUNDS[name], x, y);
+        const under: RGB = [
+          r * (1 - a) + backing[0] * a,
+          g * (1 - a) + backing[1] * a,
+          b * (1 - a) + backing[2] * a,
+        ];
+        min = Math.min(min, whiteOn(under, alphaOf(groundText.body)));
+      }
+    }
+    return min;
+  }
+
+  it.each(CARD_GROUND_NAMES)('%s keeps the backed row at 4.5:1 anywhere on the screen', (name) => {
+    expect(minQuote(name, true)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // The row sits low, against the composer, which is where Honey is weakest:
+  // white holds 4.5:1 there only in the top third of the screen. Unbacked it
+  // fails, so the scrim is load-bearing rather than decoration inherited from
+  // the divider beside it.
+  it('needs the backing: Honey misses 4.5:1 without it', () => {
+    expect(minQuote('midThread', false)).toBeLessThan(4.5);
+  });
+});
+
+/**
  * The "Chat with Jaipal" pill: iMessage blue with a white label, over every
  * ground it renders on. (TAC-388.)
  *

@@ -22,6 +22,7 @@ import { computeItems, deviceTimezone } from '@/lib/thread-cluster';
 
 import { ExpiredComposer } from './expired-composer';
 import { CardHead } from './card-head';
+import { ReplyQuote, lastRenderedMessageId } from './reply-quote';
 import { ReplyWindowBar } from './reply-window-bar';
 import { SubQueueRow } from './sub-queue-row';
 import { ReviewDetail } from './review-detail';
@@ -364,6 +365,24 @@ export function QueueCard({
           ),
         )}
       </View>
+
+      {/* c2. What this draft is answering, when the thread does not already end
+          on it. Between the conversation and the composer, so the question and
+          the reply to it touch, which is the whole point: the operator's job on
+          this card is to judge one against the other. (TAC-533.)
+
+          Sits OUTSIDE the `expired` branch below, deliberately and unlike the
+          replaced-draft block in the head: that block explains why the card was
+          held, which stops mattering once the window shuts, whereas what the
+          draft answers still has to be judged before it is copied into
+          Instagram. */}
+      <ReplyQuote
+        replyingTo={draft.replyingTo}
+        lastRenderedMessageId={lastRenderedMessageId(items)}
+        surface="card"
+        metaInk={metaInk}
+        style={{ paddingHorizontal: card.regionInsetPx, marginTop: 10 }}
+      />
 
       {/* d. Composer — a preview of the draft, not an input. Tapping it opens
           the edit takeover; the tap is hoisted into the stack's gesture.

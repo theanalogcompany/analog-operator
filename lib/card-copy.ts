@@ -121,4 +121,13 @@ export const CARD_COPY = {
   },
   /** Above the text a regen replaced. (TAC-402, via TAC-397's `replacedDraft`.) */
   replacedDraft: 'What this replaced',
+  /**
+   * Leads the quoted guest message a draft is answering. (TAC-533.)
+   *
+   * Deliberately NOT "What this answers", which was the first proposal: that
+   * asserts the draft does answer the question, and whether it does is the
+   * judgement the card exists to hand the operator. This states a fact and
+   * leaves the judgement alone. (Ruled 2026-09-23.)
+   */
+  replyingTo: 'Replying to',
 } as const;

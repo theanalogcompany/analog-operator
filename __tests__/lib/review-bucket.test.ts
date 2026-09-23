@@ -34,6 +34,7 @@ function draftWith(overrides: Partial<PendingDraft>): PendingDraft {
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    replyingTo: null,
     draftBody: 'body',
     category: null,
     voiceFidelity: null,

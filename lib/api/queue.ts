@@ -44,6 +44,28 @@ export const ReplacedDraftSchema = z.object({
 });
 export type ReplacedDraft = z.infer<typeof ReplacedDraftSchema>;
 
+/**
+ * The guest message this draft is answering. (TAC-533 Contract; TAC-534 is the
+ * server half.)
+ *
+ * The BODY is on the wire, not just the id, and that is the whole point of the
+ * pair. `recentContext` is the last three messages; since TAC-397 gave each
+ * unanswered question its own card, the message a given card answers is
+ * routinely older than that, which is the defect being fixed. An id alone
+ * would name a message the client does not hold and so could not quote.
+ *
+ * `.catch(null)` for the same reason `replacedDraft` uses it, plus one more: it
+ * also absorbs the field being ABSENT, which it is until TAC-534 deploys. The
+ * client ships ahead and the quote simply does not render until the server
+ * starts sending it, which is exactly today's card. No tighten is owed later.
+ */
+export const ReplyingToSchema = z.object({
+  messageId: z.string().uuid(),
+  body: z.string(),
+  createdAt: z.string(),
+});
+export type ReplyingTo = z.infer<typeof ReplyingToSchema>;
+
 export const RecentContextEntrySchema = z.object({
   id: z.string().uuid(),
   direction: z.enum(['inbound', 'outbound']),
@@ -142,6 +164,10 @@ export const PendingDraftSchema = z
     // instead — which is venue-filtered and reflects optimistic removals, so it
     // can never disagree with the cards actually on screen. (TAC-486.)
     replacedDraft: ReplacedDraftSchema.nullable().catch(null),
+    // TAC-533 Contract. Absent until TAC-534 deploys; `.catch(null)` treats
+    // absent, null and unreadable alike, so the quote is withheld rather than
+    // the whole queue failing to parse.
+    replyingTo: ReplyingToSchema.nullable().catch(null),
     pendingSinceMs: z.number(),
     recentContext: z.array(RecentContextEntrySchema).default([]),
     langfuseTraceId: z.string().nullable(),

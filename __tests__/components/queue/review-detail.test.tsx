@@ -35,6 +35,7 @@ function draftFiring(codes: string[]): PendingDraft {
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    replyingTo: null,
     draftBody: 'On the house next time.',
     category: null,
     voiceFidelity: 0.81,

@@ -21,6 +21,7 @@ function makeDraft(): PendingDraft {
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    replyingTo: null,
     draftBody: 'agent reply',
     category: null,
     voiceFidelity: null,

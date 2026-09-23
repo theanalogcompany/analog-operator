@@ -204,6 +204,7 @@ describe('lib/api/queue HTTP shape', () => {
       replyWindowExpiresAt: null,
       instagramUsername: null,
       replacedDraft: null,
+      replyingTo: null,
       draftBody: "yes, patio's open until 9",
       category: 'reservation',
       voiceFidelity: 0.81,
@@ -266,6 +267,7 @@ describe('lib/api/queue HTTP shape', () => {
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    replyingTo: null,
     draftBody: "yes, patio's open until 9",
     category: null,
     voiceFidelity: 0.55,
@@ -364,6 +366,7 @@ describe('lib/api/queue HTTP shape', () => {
       replyWindowExpiresAt: null,
       instagramUsername: null,
       replacedDraft: null,
+      replyingTo: null,
       draftBody: 'reply',
       category: null,
       voiceFidelity: null,
@@ -391,6 +394,94 @@ describe('lib/api/queue HTTP shape', () => {
     }
   });
 
+  // TAC-533 Contract. Every payload below is transcribed from the ticket's
+  // `## Contract` block, not from PendingDraftSchema — a shape read off the
+  // client can only ever confirm the client agrees with itself, which is how
+  // TAC-310 certified a field the server never read.
+  describe('replyingTo, per the TAC-533 Contract', () => {
+    const contractDraft = (replyingTo: unknown) => ({
+      messageId: '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueId: 'cc11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      venueSlug: 'mock-sextant',
+      guestId: 'aa11d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d',
+      guestDisplayName: 'Maya R.',
+      guestPhoneFallback: '+15551110001',
+      guestChannel: 'text',
+      replyWindowExpiresAt: null,
+      instagramUsername: null,
+      replacedDraft: null,
+      ...(replyingTo === undefined ? {} : { replyingTo }),
+      draftBody: 'reply',
+      category: null,
+      voiceFidelity: null,
+      reviewReason: null,
+      recognitionState: 'returning',
+      pendingSinceMs: 240_000,
+      recentContext: [],
+      langfuseTraceId: null,
+      reviewReasonCode: '',
+      reviewTriggers: [],
+      reviewTriggerLabels: [],
+      ungroundedClaims: [],
+    });
+
+    const respondWith = (replyingTo: unknown) =>
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ drafts: [contractDraft(replyingTo)] }), {
+          status: 200,
+        }),
+      );
+
+    it('parses the Contract’s object form exactly as sent', async () => {
+      respondWith({
+        messageId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+        body: 'do you have oat milk for any drink?',
+        createdAt: '2026-09-23T18:04:11.271Z',
+      });
+
+      const result = await listQueue();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.drafts[0].replyingTo).toEqual({
+          messageId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+          body: 'do you have oat milk for any drink?',
+          createdAt: '2026-09-23T18:04:11.271Z',
+        });
+      }
+    });
+
+    it('parses the Contract’s null, which is every proactive card', async () => {
+      respondWith(null);
+
+      const result = await listQueue();
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.data.drafts[0].replyingTo).toBeNull();
+    });
+
+    it('parses cleanly while the field is absent, which it is until TAC-534 deploys', async () => {
+      // The client ships ahead of the server half. An absent field must read as
+      // "nothing to quote" and cost nothing else — not a PARSE that would take
+      // the whole queue down on every poll.
+      respondWith(undefined);
+
+      const result = await listQueue();
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.data.drafts[0].replyingTo).toBeNull();
+    });
+
+    it('degrades a malformed replyingTo to null instead of failing the draft', async () => {
+      // Display-only, so an unreadable one costs the quote, never the card.
+      respondWith({ messageId: 'not-a-uuid', body: 'x' });
+
+      const result = await listQueue();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.drafts).toHaveLength(1);
+        expect(result.data.drafts[0].replyingTo).toBeNull();
+      }
+    });
+  });
+
   it('listQueue sorts recentContext ascending by createdAt regardless of server order', async () => {
     // The server RPC returns recentContext newest-first (`order by created_at
     // desc`). The Zod transform in PendingDraftSchema flips it once at the
@@ -407,6 +498,7 @@ describe('lib/api/queue HTTP shape', () => {
       replyWindowExpiresAt: null,
       instagramUsername: null,
       replacedDraft: null,
+      replyingTo: null,
       draftBody: 'reply',
       category: null,
       voiceFidelity: null,
@@ -558,6 +650,7 @@ describe('lib/api/queue HTTP shape', () => {
       replyWindowExpiresAt: null,
       instagramUsername: null,
       replacedDraft: null,
+      replyingTo: null,
       draftBody: 'reply',
       category: null,
       voiceFidelity: null,
@@ -834,6 +927,7 @@ describe('lib/api/queue against the TAC-473 and TAC-397 Contracts', () => {
     reviewReasonCode: 'commitment_type_gated',
     otherPendingDraftsForGuest: 0,
     replacedDraft: null,
+    replyingTo: null,
     ...ELIDED,
   };
 

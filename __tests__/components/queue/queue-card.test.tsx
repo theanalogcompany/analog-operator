@@ -20,6 +20,7 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
     replyWindowExpiresAt: null,
     instagramUsername: null,
     replacedDraft: null,
+    replyingTo: null,
     draftBody: "Yes — patio's open until 9.",
     category: 'reservation',
     voiceFidelity: 0.81,
@@ -633,5 +634,115 @@ describe('QueueCard and a replaced draft', () => {
     );
     expect(screen.getByText('we have oat and whole milk')).toBeTruthy();
     expect(screen.getByText('we have oat, whole and soy')).toBeTruthy();
+  });
+});
+
+describe('QueueCard — what the draft is answering (TAC-533)', () => {
+  const OAT = 'a1b2c3d4-4444-4a5b-8c6d-7e8f9a0b1c2d';
+  const SUNDAY = 'a1b2c3d4-4446-4a5b-8c6d-7e8f9a0b1c2d';
+
+  /** The ticket's own shape: the question, then two newer unrelated ones. */
+  const threeQuestions = [
+    {
+      id: OAT,
+      direction: 'inbound' as const,
+      body: 'do you have oat milk for any drink?',
+      createdAt: '2026-09-23T18:00:00.000Z',
+    },
+    {
+      id: 'a1b2c3d4-4445-4a5b-8c6d-7e8f9a0b1c2d',
+      direction: 'inbound' as const,
+      body: 'do you have any events coming up in november?',
+      createdAt: '2026-09-23T18:04:00.000Z',
+    },
+    {
+      id: SUNDAY,
+      direction: 'inbound' as const,
+      body: 'and are you open on sunday mornings?',
+      createdAt: '2026-09-23T18:06:00.000Z',
+    },
+  ];
+
+  const answeringOat = {
+    messageId: OAT,
+    body: 'do you have oat milk for any drink?',
+    createdAt: '2026-09-23T18:00:00.000Z',
+  };
+
+  it('names the question when it is buried under newer, unrelated ones', () => {
+    // The defect: the draft sat directly under "are you open on sunday
+    // mornings?" and read as a non-sequitur.
+    render(
+      <QueueCard
+        draft={makeDraft({
+          draftBody: 'yeah, any drink',
+          recentContext: threeQuestions,
+          replyingTo: answeringOat,
+        })}
+        height={HEIGHT}
+      />,
+    );
+
+    expect(screen.getByTestId('reply-quote')).toBeTruthy();
+    expect(
+      screen.getByLabelText(`${CARD_COPY.replyingTo}: ${answeringOat.body}`),
+    ).toBeTruthy();
+    // The later messages are still there, in order: the quote says which one is
+    // being answered, it does not hide the rest.
+    expect(screen.getByText('and are you open on sunday mornings?')).toBeTruthy();
+  });
+
+  it('adds nothing when the draft already answers the last message shown', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({
+          recentContext: [threeQuestions[0]],
+          replyingTo: answeringOat,
+        })}
+        height={HEIGHT}
+      />,
+    );
+
+    expect(screen.queryByTestId('reply-quote')).toBeNull();
+  });
+
+  it('shows both quotes on a correction the guest then wrote under, head first', () => {
+    const { toJSON } = render(
+      <QueueCard
+        draft={makeDraft({
+          recentContext: threeQuestions,
+          replyingTo: answeringOat,
+          replacedDraft: {
+            body: 'we have oat and whole milk',
+            replacedAt: '2026-09-21T16:10:29.000Z',
+          },
+        })}
+        height={HEIGHT}
+      />,
+    );
+
+    expect(screen.getByTestId('replaced-draft')).toBeTruthy();
+    expect(screen.getByTestId('reply-quote')).toBeTruthy();
+
+    // They sit in different regions with the thread between them, so they can
+    // never stack: the replaced draft is in the head, the reply quote is
+    // against the composer.
+    const order = renderedTextInOrder(toJSON());
+    expect(order.indexOf(CARD_COPY.replacedDraft.toUpperCase())).toBeLessThan(
+      order.indexOf(CARD_COPY.replyingTo.toUpperCase()),
+    );
+  });
+
+  it('does not change the card’s height', () => {
+    // The card is fixed-height with only the thread flexing. If the row could
+    // grow, it would silently eat the conversation it exists to make readable.
+    const withQuote = render(
+      <QueueCard
+        draft={makeDraft({ recentContext: threeQuestions, replyingTo: answeringOat })}
+        height={HEIGHT}
+      />,
+    );
+    const outer = StyleSheet.flatten(withQuote.toJSON()!.props.style) as { height?: number };
+    expect(outer.height).toBe(HEIGHT);
   });
 });

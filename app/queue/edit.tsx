@@ -20,6 +20,7 @@ import { GroundScreen } from '@/components/ground/ground-screen';
 import { EmptyState } from '@/components/queue/empty-state';
 import { queueCardDisplayName } from '@/components/queue/queue-card';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
+import { ReplyQuote, lastRenderedMessageId } from '@/components/queue/reply-quote';
 import { ReviewDetail } from '@/components/queue/review-detail';
 import { ThreadBubbleList } from '@/components/thread/thread-bubble-list';
 import { SendGlyph } from '@/components/ui/send-glyph';
@@ -560,6 +561,18 @@ export default function EditScreen() {
               )}
             </ScrollView>
           </View>
+
+          {/* What this draft is answering, when the thread does not already end
+              on it. Same rule and same component as the card, on the broader
+              reading of TAC-533's "a card": this is where the operator rewrites
+              the reply, so it is where the question matters most. Ruled
+              2026-09-23. */}
+          <ReplyQuote
+            replyingTo={draft?.replyingTo ?? null}
+            lastRenderedMessageId={lastRenderedMessageId(items)}
+            surface="takeover"
+            style={{ paddingHorizontal: 20, paddingTop: 10 }}
+          />
 
           <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: insets.bottom + 8 }}>
             <View style={{ position: 'relative' }}>

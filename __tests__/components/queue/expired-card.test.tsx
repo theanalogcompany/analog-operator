@@ -27,6 +27,7 @@ function makeDraft(overrides: Partial<PendingDraft> = {}): PendingDraft {
     replyWindowExpiresAt: leaving(-3 * 60),
     instagramUsername: 'mia.brews',
     replacedDraft: null,
+    replyingTo: null,
     draftBody:
       'Sorry about Saturday. Your next round is on us, come in any time this week.',
     category: null,
