@@ -7,17 +7,19 @@ import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { useNow } from '@/hooks/use-now';
 import { type PendingDraft } from '@/lib/api/queue';
 import { CARD_COPY } from '@/lib/card-copy';
+import { EXPIRED_STRIP_COLOR } from '@/lib/grounds';
 import { type GuestIdentity, guestIdentity } from '@/lib/guest-identity';
-import { windowState } from '@/lib/reply-window';
+import { closedAgoPhrase, windowState } from '@/lib/reply-window';
 import {
   bucketForDraft,
   formatProgress,
   stripColorFor,
   stripLabelForDraft,
 } from '@/lib/review-bucket';
-import { body as bodyType, card, typePresets } from '@/lib/theme';
+import { body as bodyType, card, replyWindow, typePresets } from '@/lib/theme';
 import { computeItems, deviceTimezone } from '@/lib/thread-cluster';
 
+import { ExpiredComposer } from './expired-composer';
 import { RecognitionBadge } from './recognition-badge';
 import { ReplyWindowBar } from './reply-window-bar';
 import { ReplyWindowPill } from './reply-window-pill';
@@ -53,6 +55,12 @@ function minutesPending(draft: PendingDraft): string {
 
 type Props = {
   draft: PendingDraft;
+  /**
+   * Fires the expired card's one action: put the draft on the clipboard and
+   * open the guest's Instagram thread. Absent on a peek render, where the card
+   * is scenery and nothing on it is pressable.
+   */
+  onCopyAndOpen?: () => void;
   /** Resolved by `resolveCardLayout` — fixed, so every card in the deck is
    *  the same size regardless of how many messages it holds. */
   height: number;
@@ -92,6 +100,7 @@ export function QueueCard({
   position,
   total,
   onComposerLayout,
+  onCopyAndOpen,
   overlay,
 }: Props) {
   const bucket = bucketForDraft(draft);
@@ -113,6 +122,12 @@ export function QueueCard({
     channel: draft.guestChannel,
     nowMs: useNow(),
   });
+  const expired = window.kind === 'closed';
+
+  // The card surface stays WHITE when the window shuts. What changes is the
+  // ink and the chrome, so the thread and the draft stay readable and
+  // selectable: the draft is still good, it just has to go out from Instagram.
+  const metaInk = expired ? replyWindow.expired.metaInk : '#6F6658';
 
   // A blank draftBody is a real server state (the agent declined to draft, or
   // the row landed before generation finished). The design gives it its own
@@ -163,7 +178,9 @@ export function QueueCard({
           gap: 12,
           paddingVertical: 11,
           paddingHorizontal: card.regionInsetPx,
-          backgroundColor: stripColorFor(bucket),
+          // An expired card leaves its bucket colour with the rest of its
+          // status: it has left play, so the strip goes to ink and says so.
+          backgroundColor: expired ? EXPIRED_STRIP_COLOR : stripColorFor(bucket),
           // Matches the card's own corners rather than relying solely on the
           // parent's clip.
           borderTopLeftRadius: card.radiusPx,
@@ -176,7 +193,7 @@ export function QueueCard({
           numberOfLines={2}
           style={{ flex: 1 }}
         >
-          {stripLabelForDraft(draft)}
+          {expired ? CARD_COPY.replyWindow.strip : stripLabelForDraft(draft)}
         </TrackedCaps>
         {position !== undefined && total !== undefined ? (
           <TrackedCaps
@@ -219,8 +236,29 @@ export function QueueCard({
             )}
           </View>
         </View>
-        <ReviewDetail draft={draft} surface="card" style={{ marginTop: 12 }} />
-        {reasoning ? (
+        {expired ? (
+          // A4: the window explanation REPLACES the held-reason on an expired
+          // card. Why it was held stopped being the operator's next move the
+          // moment it stopped being sendable from here; what to do about it is.
+          <Text
+            allowFontScaling={false}
+            testID="expired-reason"
+            className="font-inter-tight"
+            style={{
+              marginTop: 12,
+              fontSize: bodyType.reasoning.size,
+              lineHeight: bodyType.reasoning.lineHeight,
+              color: metaInk,
+            }}
+          >
+            {`Instagram stopped accepting replies ${closedAgoPhrase(
+              window.kind === 'closed' ? window.closedForMs : 0,
+            )}. The draft is still good, it just has to go out from Instagram.`}
+          </Text>
+        ) : (
+          <ReviewDetail draft={draft} surface="card" style={{ marginTop: 12 }} />
+        )}
+        {reasoning && !expired ? (
           <Text
         allowFontScaling={false}
             accessibilityLabel="Agent reasoning"
@@ -229,7 +267,7 @@ export function QueueCard({
               marginTop: 12,
               fontSize: bodyType.reasoning.size,
               lineHeight: bodyType.reasoning.lineHeight,
-              color: '#6F6658',
+              color: metaInk,
             }}
           >
             {reasoning}
@@ -258,7 +296,7 @@ export function QueueCard({
               key={item.key}
               style={{ alignItems: 'center', paddingTop: 14, paddingBottom: 10 }}
             >
-              <TrackedCaps {...typePresets.dateDivider} color="#6F6658">
+              <TrackedCaps {...typePresets.dateDivider} color={metaInk}>
                 {item.label}
               </TrackedCaps>
             </View>
@@ -267,14 +305,24 @@ export function QueueCard({
               key={item.key}
               direction={item.message.direction}
               body={item.message.body}
-              surface="card"
+              surface={expired ? 'expiredCard' : 'card'}
             />
           ),
         )}
       </View>
 
       {/* d. Composer — a preview of the draft, not an input. Tapping it opens
-          the edit takeover; the tap is hoisted into the stack's gesture. */}
+          the edit takeover; the tap is hoisted into the stack's gesture.
+
+          Once the window has shut it is replaced outright by the copy block:
+          there is nothing left to send from here, and a composer that still
+          looked like one would invite a swipe that cannot work. */}
+      {expired ? (
+        <ExpiredComposer
+          draftBody={draft.draftBody}
+          onCopyAndOpen={onCopyAndOpen ?? (() => {})}
+        />
+      ) : (
       <View
         testID="queue-card-composer"
         onLayout={onComposerLayout}
@@ -328,6 +376,7 @@ export function QueueCard({
           </TrackedCaps>
         </View>
       </View>
+      )}
 
         {overlay ? (
           <View

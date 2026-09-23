@@ -263,6 +263,8 @@ describe('QueueCardStack — wiring', () => {
           onAcknowledge={noop}
           onDecline={noop}
           onPressHelp={noop}
+          onCopyAndOpen={noop}
+          onBlockedExpired={noop}
         />
       </Wrapper>,
     );
@@ -293,6 +295,8 @@ describe('QueueCardStack — wiring', () => {
           onAcknowledge={noop}
           onDecline={noop}
           onPressHelp={noop}
+          onCopyAndOpen={noop}
+          onBlockedExpired={noop}
         />
       </Wrapper>,
     );
@@ -324,6 +328,8 @@ describe('QueueCardStack — wiring', () => {
           onAcknowledge={noop}
           onDecline={noop}
           onPressHelp={noop}
+          onCopyAndOpen={noop}
+          onBlockedExpired={noop}
         />
       </Wrapper>,
     );
@@ -355,6 +361,8 @@ describe('QueueCardStack — wiring', () => {
           onAcknowledge={noop}
           onDecline={noop}
           onPressHelp={noop}
+          onCopyAndOpen={noop}
+          onBlockedExpired={noop}
         />
       </Wrapper>,
     );
@@ -385,6 +393,8 @@ describe('QueueCardStack — wiring', () => {
           onAcknowledge={noop}
           onDecline={noop}
           onPressHelp={noop}
+          onCopyAndOpen={noop}
+          onBlockedExpired={noop}
         />
       </Wrapper>,
     );
@@ -406,6 +416,8 @@ describe('QueueCardStack — wiring', () => {
           onAcknowledge={noop}
           onDecline={noop}
           onPressHelp={noop}
+          onCopyAndOpen={noop}
+          onBlockedExpired={noop}
         />
       </Wrapper>,
     );
@@ -426,6 +438,8 @@ describe('QueueCardStack — wiring', () => {
           onAcknowledge={noop}
           onDecline={noop}
           onPressHelp={noop}
+          onCopyAndOpen={noop}
+          onBlockedExpired={noop}
         />
       </Wrapper>,
     );
@@ -452,6 +466,8 @@ describe('QueueCardStack — wiring', () => {
           onAcknowledge={noop}
           onDecline={noop}
           onPressHelp={noop}
+          onCopyAndOpen={noop}
+          onBlockedExpired={noop}
         />
       </Wrapper>,
     );

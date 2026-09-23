@@ -128,6 +128,31 @@ function closedLabel(closedForMs: number): string {
   return `Closed ${floorDiv(closedForMs, DAY_MS)}d ago`;
 }
 
+/**
+ * "3 hours ago", for the expired card's body line.
+ *
+ * A separate register from the pill's "Closed 3h ago" on purpose. The pill is
+ * a chip read at a glance and clips its units; this sits in a sentence the
+ * operator reads ("Instagram stopped accepting replies 3 hours ago"), where
+ * "3h" would read as shorthand dropped into prose.
+ *
+ * Rounds down like everything else here, so the sentence never overstates how
+ * long the window has been shut.
+ */
+export function closedAgoPhrase(closedForMs: number): string {
+  if (closedForMs < MINUTE_MS) return 'a moment ago';
+  if (closedForMs < HOUR_MS) {
+    const minutes = floorDiv(closedForMs, MINUTE_MS);
+    return minutes === 1 ? 'a minute ago' : `${minutes} minutes ago`;
+  }
+  if (closedForMs < DAY_MS) {
+    const hours = floorDiv(closedForMs, HOUR_MS);
+    return hours === 1 ? 'an hour ago' : `${hours} hours ago`;
+  }
+  const days = floorDiv(closedForMs, DAY_MS);
+  return days === 1 ? 'a day ago' : `${days} days ago`;
+}
+
 function clamp01(value: number): number {
   return value < 0 ? 0 : value > 1 ? 1 : value;
 }

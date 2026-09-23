@@ -3,6 +3,7 @@ import { type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { QueueCardStack } from '@/components/queue/queue-card-stack';
+import { __resetNowClockForTests } from '@/hooks/use-now';
 import { type UseQueueSwipeArgs } from '@/hooks/use-queue-swipe';
 import {
   type HeadsUpCommitment,
@@ -131,6 +132,8 @@ function renderStack(items: QueueItem[], busyKey: string | null = null) {
     onAcknowledge: jest.fn(),
     onDecline: jest.fn(),
     onPressHelp: jest.fn(),
+    onCopyAndOpen: jest.fn(),
+    onBlockedExpired: jest.fn(),
   };
   render(
     <Wrapper>
@@ -291,5 +294,98 @@ describe('what a heads-up card shows', () => {
     renderStack([headsUpItem(commitment)]);
     expect(await screen.findByText('omw now!')).toBeTruthy();
     expect(getThreadMock).toHaveBeenCalledWith(commitment.sourceMessageId);
+  });
+});
+
+/**
+ * The expired guard at the same seam (TAC-486).
+ *
+ * **What this can and cannot prove.** The real guard is structural: an expired
+ * card is rendered OUTSIDE the `GestureDetector` entirely, so there is no
+ * gesture to start. That is not observable from Jest — a probe comparing the
+ * rendered host-component types of a live card and an expired one found them
+ * identical, because `GestureDetector` contributes no host node of its own. So
+ * the structural half is carried by the code and by device UAT, and what is
+ * asserted here is the second guard: the arguments the stack hands the gesture,
+ * and what its callbacks do if one somehow fires.
+ *
+ * That second guard is the one that matters for the case the structure cannot
+ * cover anyway — a card that expires WHILE a pan is already in flight.
+ */
+describe('a draft whose reply window has shut', () => {
+  const NOW = Date.parse('2026-09-23T12:00:00.000Z');
+  /** A deadline leaving `minutes` of window AFTER the 5 minute display margin. */
+  const leaving = (minutes: number): string =>
+    new Date(NOW + (minutes + 5) * 60_000).toISOString();
+
+  const expiredDraft = () =>
+    draftItem(
+      makeDraft({
+        guestChannel: 'instagram',
+        instagramUsername: 'mia.brews',
+        guestPhoneFallback: '',
+        replyWindowExpiresAt: leaving(-3 * 60),
+        draftBody: 'a perfectly good draft',
+      }),
+    );
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    __resetNowClockForTests();
+  });
+
+  afterEach(() => {
+    __resetNowClockForTests();
+    jest.useRealTimers();
+  });
+
+  it('turns the gesture off rather than leaving it armed', () => {
+    renderStack([expiredDraft()]);
+    expect(swipe().enabled).toBe(false);
+  });
+
+  it('refuses a right-commit even though the draft has a body', () => {
+    renderStack([expiredDraft()]);
+    // Not the blank-draft refusal: the body is fine, the window is not.
+    expect(swipe().canCommitRight).toBe(false);
+  });
+
+  it('never reaches the send path if a commit fires anyway', () => {
+    const handlers = renderStack([expiredDraft()]);
+    act(() => {
+      swipe().onCommitRight();
+    });
+    expect(handlers.onApprove).not.toHaveBeenCalled();
+    expect(handlers.onBlockedExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it('never opens the composer if a left-commit fires anyway', () => {
+    // Opening the editor would offer an edit that ends in a send that cannot
+    // happen.
+    const handlers = renderStack([expiredDraft()]);
+    act(() => {
+      swipe().onCommitLeft();
+    });
+    expect(handlers.onEdit).not.toHaveBeenCalled();
+    expect(handlers.onBlockedExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it('still sends and edits normally while the window is open', () => {
+    const live = draftItem(
+      makeDraft({
+        guestChannel: 'instagram',
+        instagramUsername: 'mia.brews',
+        replyWindowExpiresAt: leaving(4 * 60),
+        draftBody: 'a perfectly good draft',
+      }),
+    );
+    const handlers = renderStack([live]);
+    expect(swipe().enabled).toBe(true);
+    act(() => {
+      swipe().onCommitRight();
+    });
+    expect(handlers.onApprove).toHaveBeenCalledTimes(1);
+    expect(handlers.onBlockedExpired).not.toHaveBeenCalled();
   });
 });

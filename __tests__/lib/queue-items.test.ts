@@ -77,26 +77,26 @@ describe('swipeActionFor — a heads-up card never reaches the send path', () =>
 
   it.each(ALL_OUTCOMES)('%s never approves, edits or refuses a draft', (outcome) => {
     expect(['approve', 'edit', 'refuse-approve']).not.toContain(
-      swipeActionFor(card, outcome).type,
+      swipeActionFor(card, outcome, { expired: false }).type,
     );
   });
 
   it('acknowledges on swipe-right', () => {
-    expect(swipeActionFor(card, 'right')).toEqual({ type: 'acknowledge', commitment });
+    expect(swipeActionFor(card, 'right', { expired: false })).toEqual({ type: 'acknowledge', commitment });
   });
 
   it('declines on swipe-left', () => {
-    expect(swipeActionFor(card, 'left')).toEqual({ type: 'decline', commitment });
+    expect(swipeActionFor(card, 'left', { expired: false })).toEqual({ type: 'decline', commitment });
   });
 
   it('does nothing on a refusal, which the gesture never produces for this card', () => {
     // Refusing is how a draft card says "nothing to send". A heads-up card has
     // nothing to send by design, so a refusal arriving anyway must be inert.
-    expect(swipeActionFor(card, 'refuse-right')).toEqual({ type: 'none' });
+    expect(swipeActionFor(card, 'refuse-right', { expired: false })).toEqual({ type: 'none' });
   });
 
   it('does nothing on a short drag', () => {
-    expect(swipeActionFor(card, 'return')).toEqual({ type: 'none' });
+    expect(swipeActionFor(card, 'return', { expired: false })).toEqual({ type: 'none' });
   });
 });
 
@@ -105,39 +105,43 @@ describe('swipeActionFor — a draft card routes as it always has', () => {
   const card = draftItem(draft);
 
   it('approves on swipe-right', () => {
-    expect(swipeActionFor(card, 'right')).toEqual({ type: 'approve', draft });
+    expect(swipeActionFor(card, 'right', { expired: false })).toEqual({ type: 'approve', draft });
   });
 
   it('opens the editor on swipe-left', () => {
-    expect(swipeActionFor(card, 'left')).toEqual({ type: 'edit', draft });
+    expect(swipeActionFor(card, 'left', { expired: false })).toEqual({ type: 'edit', draft });
   });
 
   it('explains a refused swipe-right', () => {
-    expect(swipeActionFor(card, 'refuse-right')).toEqual({ type: 'refuse-approve', draft });
+    expect(swipeActionFor(card, 'refuse-right', { expired: false })).toEqual({ type: 'refuse-approve', draft });
   });
 
   it('does nothing on a short drag', () => {
-    expect(swipeActionFor(card, 'return')).toEqual({ type: 'none' });
+    expect(swipeActionFor(card, 'return', { expired: false })).toEqual({ type: 'none' });
   });
 
   it.each(ALL_OUTCOMES)('%s never acknowledges or declines a commitment', (outcome) => {
-    expect(['acknowledge', 'decline']).not.toContain(swipeActionFor(card, outcome).type);
+    expect(['acknowledge', 'decline']).not.toContain(swipeActionFor(card, outcome, { expired: false }).type);
   });
 });
 
 describe('canCommitRightFor', () => {
   it('always lets a heads-up card be acknowledged, however bare', () => {
     expect(
-      canCommitRightFor(headsUpItem(makeCommitment({ description: '', code: null }))),
+      canCommitRightFor(headsUpItem(makeCommitment({ description: '', code: null })), {
+        expired: false,
+      }),
     ).toBe(true);
   });
 
   it('lets a draft with a body be sent', () => {
-    expect(canCommitRightFor(draftItem(makeDraft()))).toBe(true);
+    expect(canCommitRightFor(draftItem(makeDraft()), { expired: false })).toBe(true);
   });
 
   it.each(['', '   \n '])('refuses a draft whose body is %j', (draftBody) => {
-    expect(canCommitRightFor(draftItem(makeDraft({ draftBody })))).toBe(false);
+    expect(
+      canCommitRightFor(draftItem(makeDraft({ draftBody })), { expired: false }),
+    ).toBe(false);
   });
 });
 
@@ -262,5 +266,81 @@ describe('surfaceTappedItem — a draft push names one of the guest’s two draf
         draftId: '6ba7b810-9dad-41d1-80b4-00c04fd430c8',
       }),
     ).toEqual([OTHER_ID, SAM_A_ID, SAM_B_ID]);
+  });
+});
+
+/**
+ * The expired guard, over every outcome the gesture can produce (TAC-486).
+ *
+ * Exhaustive on purpose. TAC-312's lesson is that the swipe decision is the one
+ * place this behaviour lives, so a guard that covered "right" and left "left"
+ * open would hand an expired card a working edit, and the composer it opened
+ * would end in a send that cannot happen.
+ */
+describe('swipeActionFor on an expired card', () => {
+  const expiredDraft = draftItem(makeDraft({ draftBody: 'still a good draft' }));
+
+  it.each(['right', 'left', 'refuse-right'] as const)(
+    'refuses %s and asks for the explanation instead',
+    (outcome) => {
+      expect(swipeActionFor(expiredDraft, outcome, { expired: true })).toEqual({
+        type: 'blocked-expired',
+      });
+    },
+  );
+
+  it('owes nothing for a short drag that committed to nothing', () => {
+    expect(swipeActionFor(expiredDraft, 'return', { expired: true })).toEqual({
+      type: 'none',
+    });
+  });
+
+  it('can never reach approve or edit, whatever the outcome', () => {
+    const reachable = (['right', 'left', 'refuse-right', 'return'] as const).map(
+      (outcome) => swipeActionFor(expiredDraft, outcome, { expired: true }).type,
+    );
+    expect(reachable).not.toContain('approve');
+    expect(reachable).not.toContain('edit');
+    expect(reachable).not.toContain('refuse-approve');
+  });
+
+  it('still behaves normally when the window is open', () => {
+    expect(swipeActionFor(expiredDraft, 'right', { expired: false }).type).toBe(
+      'approve',
+    );
+    expect(swipeActionFor(expiredDraft, 'left', { expired: false }).type).toBe('edit');
+  });
+
+  /**
+   * A heads-up card has no reply window of its own — TAC-473's Contract gives
+   * commitments none of the three fields — so the expired flag is never true
+   * for one, and the heads-up branch is checked first regardless.
+   */
+  it('leaves a heads-up card alone even if the flag is somehow set', () => {
+    const headsUp = headsUpItem(makeCommitment());
+    expect(swipeActionFor(headsUp, 'right', { expired: true }).type).toBe(
+      'acknowledge',
+    );
+    expect(swipeActionFor(headsUp, 'left', { expired: true }).type).toBe('decline');
+  });
+});
+
+describe('canCommitRightFor on an expired card', () => {
+  it('refuses a right-swipe even on a card with a perfectly good draft', () => {
+    // Nothing can be sent from analog once the window has shut, so the reason
+    // it refuses is the window, not the body.
+    expect(
+      canCommitRightFor(draftItem(makeDraft({ draftBody: 'a good draft' })), {
+        expired: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('still allows it while the window is open', () => {
+    expect(
+      canCommitRightFor(draftItem(makeDraft({ draftBody: 'a good draft' })), {
+        expired: false,
+      }),
+    ).toBe(true);
   });
 });

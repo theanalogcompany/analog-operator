@@ -1,8 +1,8 @@
 import { Text, View } from 'react-native';
 
-import { body as bodyType, card } from '@/lib/theme';
+import { body as bodyType, card, replyWindow } from '@/lib/theme';
 
-export type BubbleSurface = 'card' | 'thread';
+export type BubbleSurface = 'card' | 'thread' | 'expiredCard';
 
 type Props = {
   direction: 'inbound' | 'outbound';
@@ -12,6 +12,9 @@ type Props = {
    * hairline border so they read against the card's white fill.
    * `thread` — the read-only text thread: outgoing bubbles have no border,
    * because there is no white surface behind them to separate from.
+   * `expiredCard` — the queue card once its Instagram reply window has shut.
+   * The card stays white, so the bubbles keep their border and lose a little
+   * warmth: this conversation is no longer live from here. (TAC-486, A4.)
    */
   surface?: BubbleSurface;
   /** Square off the tail corner, for chained same-direction bubbles. */
@@ -29,15 +32,29 @@ export function MessageBubble({
 }: Props) {
   const inbound = direction === 'inbound';
   const showTail = !chained;
+  const expired = surface === 'expiredCard';
+  // An outgoing bubble needs its hairline wherever it sits on a white card, so
+  // the border follows the surface being a CARD rather than being live.
+  const onCard = surface === 'card' || expired;
+
+  const fill = expired
+    ? inbound
+      ? replyWindow.expired.inboundBubble
+      : replyWindow.expired.outboundBubble
+    : inbound
+      ? '#E3DCCE'
+      : '#FFFFFF';
 
   return (
     <View
       style={{
         alignSelf: inbound ? 'flex-start' : 'flex-end',
         maxWidth: `${card.bubbleMaxWidthPct}%`,
-        backgroundColor: inbound ? '#E3DCCE' : '#FFFFFF',
-        borderWidth: !inbound && surface === 'card' ? 1 : 0,
-        borderColor: 'rgba(28,24,20,0.14)',
+        backgroundColor: fill,
+        borderWidth: !inbound && onCard ? 1 : 0,
+        borderColor: expired
+          ? replyWindow.expired.outboundBorder
+          : 'rgba(28,24,20,0.14)',
         borderRadius: RADIUS,
         borderBottomLeftRadius: inbound && showTail ? TAIL_RADIUS : RADIUS,
         borderBottomRightRadius: !inbound && showTail ? TAIL_RADIUS : RADIUS,

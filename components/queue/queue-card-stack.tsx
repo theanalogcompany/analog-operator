@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { type LayoutChangeEvent, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -11,8 +11,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCommitmentThread } from '@/hooks/use-commitment-thread';
 import { useHaptics } from '@/hooks/use-haptics';
+import { useNow } from '@/hooks/use-now';
 import { type SwipeOutcome, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type HeadsUpCommitment, type PendingDraft } from '@/lib/api/queue';
+import { windowState } from '@/lib/reply-window';
 import { cardRiseAt, fadeInAt } from '@/lib/entrance';
 import { useEntrance, useRidesEntranceSlot } from '@/lib/entrance-context';
 import {
@@ -20,7 +22,7 @@ import {
   canCommitRightFor,
   swipeActionFor,
 } from '@/lib/queue-items';
-import { card, entrance, layout, peek } from '@/lib/theme';
+import { card, entrance, layout, peek, swipe } from '@/lib/theme';
 
 import { HeadsUpCard } from './heads-up-card';
 import { QueueCard } from './queue-card';
@@ -108,6 +110,14 @@ type CardActions = {
   /** Heads-up swipe-left. Starts a decline draft; sends nothing itself. */
   onDecline: (commitment: HeadsUpCommitment) => void;
   onPressHelp: () => void;
+  /** The expired card's one action: copy the draft, open the guest's thread. */
+  onCopyAndOpen: (draft: PendingDraft) => void;
+  /**
+   * A swipe was in flight when the reply window shut under it. Owes the
+   * operator the one line explaining why the card stopped accepting the
+   * gesture. (Ruled 2026-09-23.)
+   */
+  onBlockedExpired: () => void;
 };
 
 type FrontCardProps = CardActions & {
@@ -150,14 +160,29 @@ function FrontCard({
   onAcknowledge,
   onDecline,
   onPressHelp,
+  onCopyAndOpen,
+  onBlockedExpired,
 }: FrontCardProps) {
   const haptics = useHaptics();
+
+  // The same clock and the same pure function the card renders from, so what
+  // the operator sees and what the gesture allows cannot disagree about
+  // whether the window is shut.
+  const nowMs = useNow();
+  const expired =
+    item.kind === 'draft' &&
+    windowState({
+      expiresAt: item.draft.replyWindowExpiresAt,
+      channel: item.draft.guestChannel,
+      nowMs,
+    }).kind === 'closed';
 
   // A draft with nothing in it can't be sent, so the gesture must not complete.
   // Same predicate the card render uses to choose between the draft body and
   // the placeholder, so what the operator sees and what the swipe allows can't
-  // disagree. (TAC-312.) A heads-up card can always be acknowledged.
-  const canCommitRight = canCommitRightFor(item);
+  // disagree. (TAC-312.) A heads-up card can always be acknowledged, and an
+  // expired card can commit nothing in either direction.
+  const canCommitRight = canCommitRightFor(item, { expired });
 
   const composerTop = useSharedValue<number>(-1);
 
@@ -167,8 +192,12 @@ function FrontCard({
   // shares this chassis, and a swipe-right routed like a draft's would send a
   // real message to a guest. (TAC-364.)
   const dispatch = (outcome: SwipeOutcome): void => {
-    const action = swipeActionFor(item, outcome);
+    const action = swipeActionFor(item, outcome, { expired });
     switch (action.type) {
+      case 'blocked-expired':
+        haptics.swipeRefused();
+        onBlockedExpired();
+        return;
       case 'approve':
         haptics.swipeRightSuccess();
         onApprove(action.draft);
@@ -201,7 +230,7 @@ function FrontCard({
     if (item.kind === 'draft') dispatch('left');
   };
 
-  const { pan, translateX, rotation, direction, intensity } = useQueueSwipe({
+  const { pan, translateX, rotation, direction, intensity, isPanning } = useQueueSwipe({
     onCommitRight: () => dispatch('right'),
     onCommitLeft: () => dispatch('left'),
     onRefuseRight: () => dispatch('refuse-right'),
@@ -209,8 +238,38 @@ function FrontCard({
       haptics.swipeThresholdCrossed();
     },
     canCommitRight,
-    enabled: !busy,
+    // Off entirely once the window has shut. The expired card is also rendered
+    // outside the GestureDetector below, so this is belt and braces rather
+    // than the only guard.
+    enabled: !busy && !expired,
   });
+
+  /**
+   * The window shutting under the operator's hands.
+   *
+   * Ruled 2026-09-23: the card converts the moment it expires, even mid-read,
+   * and a gesture in flight when it crosses is cancelled and explained. The
+   * conversion itself is just the re-render; this is the explanation, and it
+   * fires ONLY when a finger was actually down. A card that expires while
+   * nobody is touching it owes nothing, because nobody tried anything.
+   *
+   * The shared values are reset here too: a pan abandoned at 60px would
+   * otherwise leave the expired card sitting off-centre, since `FrontCard` is
+   * keyed by the item and does not remount when the window state changes.
+   */
+  useEffect(() => {
+    if (!expired) return;
+    const wasPanning = isPanning.value;
+    isPanning.value = false;
+    translateX.value = 0;
+    rotation.value = swipe.residualRotationDeg;
+    direction.value = 0;
+    intensity.value = 0;
+    if (wasPanning) onBlockedExpired();
+    // `onBlockedExpired` is intentionally not a dependency: this fires on the
+    // transition into expiry, not whenever the screen hands down a new closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expired, isPanning, translateX, rotation, direction, intensity]);
 
   const { clock: entranceClock } = useEntrance();
   const riseRides = useRidesEntranceSlot(entrance.cardDelayMs);
@@ -249,9 +308,12 @@ function FrontCard({
     return {
       opacity: rise.opacity,
       transform: [
-        { translateX: translateX.value },
+        // An expired card never carries a swipe offset. It cannot be dragged,
+        // and a card left transformed by a pan that was cancelled mid-flight
+        // would sit crooked with nothing able to straighten it.
+        { translateX: expired ? 0 : translateX.value },
         { translateY: rise.translateY },
-        { rotate: `${rotation.value}deg` },
+        { rotate: expired ? '0deg' : `${rotation.value}deg` },
       ],
     };
   });
@@ -275,6 +337,36 @@ function FrontCard({
             intensity={intensity}
             item={next}
           />
+          {/* An EXPIRED card is rendered outside the GestureDetector
+              entirely, not inside a disabled one.
+
+              That is the only arrangement that gives its copy button a real
+              `Pressable`: a Pressable inside a GestureDetector wins RN's
+              responder race and kills both the pan and any tap composed with it
+              (CLAUDE.md, TAC-37). It also makes "this card cannot be swiped"
+              structural rather than a flag someone can flip: with no detector
+              in the tree there is no gesture to accidentally re-enable.
+
+              No SwipeOverlay either — the washes exist to preview a swipe, and
+              there is no swipe to preview. */}
+          {expired && item.kind === 'draft' ? (
+            <Animated.View
+              testID="queue-front-card"
+              collapsable={false}
+              style={[
+                { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 3 },
+                cardStyle,
+              ]}
+            >
+              <QueueCard
+                draft={item.draft}
+                height={cardHeight}
+                position={position}
+                total={total}
+                onCopyAndOpen={() => onCopyAndOpen(item.draft)}
+              />
+            </Animated.View>
+          ) : (
           <GestureDetector gesture={gesture}>
             {/* collapsable={false} is mandatory: RN flattens views with no
                 native interactable descendant, gesture-handler's ref then
@@ -315,6 +407,7 @@ function FrontCard({
               )}
             </Animated.View>
           </GestureDetector>
+          )}
         </View>
       </View>
 
@@ -327,7 +420,7 @@ function FrontCard({
           intensity={intensity}
           canSend={canCommitRight}
           onPressHelp={onPressHelp}
-          kind={item.kind}
+          kind={expired ? 'expired' : item.kind}
         />
       </View>
     </View>

@@ -45,6 +45,9 @@ export const CARD_COPY = {
     declineWriting: 'Writing the decline…',
     declineFailed: "Couldn't write the decline. Try again.",
     alreadyHandled: 'That one was already handled.',
+    /** The copy-and-open action could not finish. (TAC-486.) */
+    noInstagramHandle: "We don't have this guest's Instagram handle yet.",
+    instagramOpenFailed: "Couldn't open Instagram. The draft is on your clipboard.",
   },
   /** What VoiceOver announces for the swipe hints. */
   hints: {

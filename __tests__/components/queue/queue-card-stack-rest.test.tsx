@@ -79,6 +79,8 @@ describe('QueueCardStack: the front card at rest', () => {
           onAcknowledge={jest.fn()}
           onDecline={jest.fn()}
           onPressHelp={jest.fn()}
+      onCopyAndOpen={jest.fn()}
+      onBlockedExpired={jest.fn()}
         />
       </Wrapper>,
     );
