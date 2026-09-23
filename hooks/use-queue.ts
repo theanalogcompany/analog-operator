@@ -27,10 +27,8 @@ export type UseQueueResult = {
   restoreCommitment: (commitment: HeadsUpCommitment) => void;
 };
 
-// Queue priority: most important guest first, then oldest-waiting within a
-// tier. `recognitionState` ranks raving_fan > regular > returning > new; a
-// null/unknown tier sorts last. `pendingSinceMs` is elapsed ms since the draft
-// was created, so larger = older and breaks ties oldest-first.
+// Recognition tier, as a tiebreak. `recognitionState` ranks
+// raving_fan > regular > returning > new; a null/unknown tier sorts last.
 const TIER_RANK: Record<string, number> = {
   raving_fan: 3,
   regular: 2,
@@ -42,12 +40,73 @@ function importanceRank(draft: PendingDraft): number {
   return draft.recognitionState ? (TIER_RANK[draft.recognitionState] ?? -1) : -1;
 }
 
+/**
+ * When this card stops being sendable, as an absolute instant.
+ *
+ * `Infinity` for a card with no deadline: a text guest, or an Instagram guest
+ * whose window nobody measured. Those sort AFTER every card that has one,
+ * because a card that can wait indefinitely should never sit above one that
+ * cannot.
+ */
+function deadlineMs(draft: PendingDraft): number {
+  if (draft.guestChannel !== 'instagram' || draft.replyWindowExpiresAt === null) {
+    return Infinity;
+  }
+  const parsed = Date.parse(draft.replyWindowExpiresAt);
+  return Number.isNaN(parsed) ? Infinity : parsed;
+}
+
+/**
+ * Queue order: **time left first, most urgent at the top.**
+ *
+ * Ruled 2026-09-23. **This CHANGES the observable order**, and the ticket's own
+ * note said it would not, so it is worth being explicit: this used to sort by
+ * recognition tier FIRST and age second, which put a raving fan with twenty
+ * hours of window above a new guest with forty minutes. The queue buried
+ * exactly the card that was about to become unsendable. Recognition tier is now
+ * a tiebreak within equal urgency, not the primary key.
+ *
+ * Sorted by GUEST rather than by card, which is what makes a guest's cards
+ * consecutive in the deck by construction. The sub-queue row ("2 / 3 cards for
+ * Mia") claims they sit together; a per-card comparator would make that usually
+ * true, and untrue whenever another guest's card happened to tie between them.
+ *
+ * A guest ranks by their soonest deadline, then their strongest recognition
+ * tier, then their oldest waiting card. Within a guest, oldest first.
+ *
+ * Do not "simplify" the deadline step away once a second channel exists. Today
+ * Le Mil's is Instagram-only so every card has a window and the mixed case is
+ * TAC-528, but the intent is that urgency leads, and it is expressed here on
+ * purpose.
+ */
 function sortByPriority(list: PendingDraft[]): PendingDraft[] {
-  return [...list].sort((a, b) => {
-    const byImportance = importanceRank(b) - importanceRank(a);
-    if (byImportance !== 0) return byImportance;
-    return b.pendingSinceMs - a.pendingSinceMs;
+  const byGuest = new Map<string, PendingDraft[]>();
+  for (const draft of list) {
+    const existing = byGuest.get(draft.guestId);
+    if (existing) existing.push(draft);
+    else byGuest.set(draft.guestId, [draft]);
+  }
+
+  const groups = [...byGuest.values()].map((cards) => ({
+    // Oldest first within one guest, so their cards read in the order they
+    // arrived.
+    cards: [...cards].sort((a, b) => b.pendingSinceMs - a.pendingSinceMs),
+    deadline: Math.min(...cards.map(deadlineMs)),
+    tier: Math.max(...cards.map(importanceRank)),
+    oldest: Math.max(...cards.map((card) => card.pendingSinceMs)),
+  }));
+
+  groups.sort((a, b) => {
+    const byDeadline = a.deadline - b.deadline;
+    // Infinity - Infinity is NaN, which would leave the no-deadline group in an
+    // arbitrary order rather than falling through to the tiebreaks.
+    if (byDeadline !== 0 && !Number.isNaN(byDeadline)) return byDeadline;
+    const byTier = b.tier - a.tier;
+    if (byTier !== 0) return byTier;
+    return b.oldest - a.oldest;
   });
+
+  return groups.flatMap((group) => group.cards);
 }
 
 // Oldest promise first, the order the server already sends them in, so a

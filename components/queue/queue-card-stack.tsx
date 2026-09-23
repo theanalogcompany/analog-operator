@@ -22,6 +22,7 @@ import {
   canCommitRightFor,
   swipeActionFor,
 } from '@/lib/queue-items';
+import { subQueuePositionFor } from '@/lib/sub-queue';
 import { card, entrance, layout, peek, swipe } from '@/lib/theme';
 
 import { HeadsUpCard } from './heads-up-card';
@@ -171,6 +172,8 @@ type CardActions = {
 
 type FrontCardProps = CardActions & {
   item: QueueItem;
+  /** The whole deck, so a card can tell where it sits among its guest's. */
+  items: readonly QueueItem[];
   /** The card behind this one, shown in the near peek. */
   next?: QueueItem;
   cardHeight: number;
@@ -196,6 +199,7 @@ type FrontCardProps = CardActions & {
  */
 function FrontCard({
   item,
+  items,
   next,
   cardHeight,
   hintReserve,
@@ -218,6 +222,7 @@ function FrontCard({
   // The same clock and the same pure function the card renders from, so what
   // the operator sees and what the gesture allows cannot disagree about
   // whether the window is shut.
+  const subQueueSpot = subQueuePositionFor(items, item);
   const nowMs = useNow();
   const expired =
     item.kind === 'draft' &&
@@ -429,6 +434,7 @@ function FrontCard({
                 // No GestureDetector above this card, so the handle can be a
                 // real Pressable rather than a hoisted hit-test.
                 onPressHandle={() => onOpenHandle(item.draft)}
+                subQueueSpot={subQueueSpot}
               />
             </Animated.View>
           ) : (
@@ -458,6 +464,7 @@ function FrontCard({
                     const { x, y, width, height } = event.nativeEvent.layout;
                     handleRect.value = { x, y, width, height };
                   }}
+                  subQueueSpot={subQueueSpot}
                   overlay={
                     <SwipeOverlay direction={direction} intensity={intensity} />
                   }
@@ -616,6 +623,7 @@ export function QueueCardStack({
         <FrontCard
           key={top.key}
           item={top}
+          items={items}
           next={next}
           cardHeight={cardHeight}
           hintReserve={hintReserve}

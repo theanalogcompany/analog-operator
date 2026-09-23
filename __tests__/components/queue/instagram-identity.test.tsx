@@ -5,11 +5,13 @@ import {
   UNMEASURED_RECT,
   isHandleTap,
 } from '@/components/queue/queue-card-stack';
+import { SubQueueRow } from '@/components/queue/sub-queue-row';
 import { HandleLink } from '@/components/ui/handle-link';
 import { InstagramGlyph } from '@/components/ui/instagram-glyph';
 import { CARD_COPY } from '@/lib/card-copy';
 import { guestIdentity } from '@/lib/guest-identity';
 import { windowState } from '@/lib/reply-window';
+import { subQueue } from '@/lib/theme';
 
 const NOW = Date.parse('2026-09-23T12:00:00.000Z');
 
@@ -200,5 +202,47 @@ describe('the card head', () => {
     screen.unmount();
     renderHead({ identity: textIdentity(), window: noWindow });
     expect(screen.getByLabelText('Recognition: Regular')).toBeTruthy();
+  });
+});
+
+/**
+ * The sub-queue row (TAC-486, C1). Which card is which is covered by
+ * `subQueuePositionFor`'s own tests; this is what the operator sees.
+ */
+describe('the sub-queue row', () => {
+  const HIDDEN = { includeHiddenElements: true } as const;
+
+  it('reads the way the hand-off writes it', () => {
+    render(<SubQueueRow spot={{ position: 1, total: 3 }} guestName="Mia" />);
+    expect(screen.getByLabelText('1 / 3 cards for Mia')).toBeTruthy();
+  });
+
+  it('draws one segment per card, with the current one filled', () => {
+    render(<SubQueueRow spot={{ position: 2, total: 3 }} guestName="Mia" />);
+    const row = screen.getByTestId('sub-queue-row', HIDDEN);
+    type StyledNode = { type: unknown; props: { style?: Record<string, unknown> } };
+    const segments = row.findAll(
+      (node: StyledNode) =>
+        typeof node.type === 'string' &&
+        typeof node.props.style === 'object' &&
+        node.props.style !== null &&
+        node.props.style.width === subQueue.segment.widthPx,
+    );
+    expect(segments).toHaveLength(3);
+    const fills = segments.map(
+      (segment: StyledNode) => segment.props.style?.backgroundColor,
+    );
+    expect(fills).toEqual([
+      subQueue.segment.offColor,
+      subQueue.segment.onColor,
+      subQueue.segment.offColor,
+    ]);
+  });
+
+  it('names a guest with no name by their handle', () => {
+    render(
+      <SubQueueRow spot={{ position: 1, total: 2 }} guestName="@lena.eats" />,
+    );
+    expect(screen.getByLabelText('1 / 2 cards for @lena.eats')).toBeTruthy();
   });
 });

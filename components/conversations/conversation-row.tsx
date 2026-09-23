@@ -1,8 +1,10 @@
 import { Pressable, Text, View } from 'react-native';
 
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
+import { InstagramGlyph } from '@/components/ui/instagram-glyph';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type ConversationSummary } from '@/lib/api/conversations';
+import { guestIdentity } from '@/lib/guest-identity';
 import {
   formatConversationTime,
   isConversationActive,
@@ -11,6 +13,7 @@ import {
   body as bodyType,
   conversations as conversationsTheme,
   groundText,
+  instagramIdentity,
   typePresets,
 } from '@/lib/theme';
 
@@ -32,7 +35,20 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
     conversation.lastMessageDirection === 'inbound'
       ? 'Guest'
       : conversation.agentName;
-  const displayName = conversation.name ?? conversation.phoneFallback;
+  /**
+   * One chain for every surface (`lib/guest-identity.ts`). This row used
+   * `name ?? phoneFallback`, which renders BLANK for an unnamed Instagram
+   * guest: their `phoneFallback` is `''` and `??` does not fall back on an
+   * empty string. (TAC-486.)
+   */
+  const identity = guestIdentity({
+    displayName: conversation.name,
+    instagramUsername: conversation.instagramUsername,
+    phoneFallback: conversation.phoneFallback,
+    channel: conversation.guestChannel,
+  });
+  const displayName = identity.name;
+  const isInstagram = conversation.guestChannel === 'instagram';
 
   return (
     <Pressable
@@ -60,9 +76,44 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
             backgroundColor: active ? '#E5B19C' : 'rgba(255,255,255,0.32)',
           }}
         />
-        <TrackedCaps {...typePresets.rowName} color="#FFFFFF" decorative>
-          {displayName}
-        </TrackedCaps>
+        {/* A handle standing in for a missing name keeps its own case: nobody
+            can look up `@LENA.EATS`, and uppercasing someone's handle
+            misrepresents it. A real name stays tracked caps like every other
+            name in the app. */}
+        {identity.nameIsSubstitute && identity.handle ? (
+          <Text
+            allowFontScaling={false}
+            numberOfLines={1}
+            className="font-inter-tight-medium"
+            style={{
+              fontSize: typePresets.rowName.size,
+              letterSpacing: instagramIdentity.handleAsNameTrackingPx,
+              color: '#FFFFFF',
+            }}
+          >
+            {displayName}
+          </Text>
+        ) : (
+          <TrackedCaps {...typePresets.rowName} color="#FFFFFF" decorative>
+            {displayName}
+          </TrackedCaps>
+        )}
+        {/* Marks the Instagram rows. Text is the default channel and carries no
+            mark, so the glyph means "this one is different" rather than
+            labelling every row with its channel.
+
+            DEVIATION from the hand-off, which specifies `#4A4339`: that figure
+            is for its white-card Texts list, and this app's list has been
+            banded rows of white text on clay since TAC-364. `#4A4339` on clay
+            would be all but invisible. The glyph takes the row's own ink
+            instead. */}
+        {isInstagram ? (
+          <InstagramGlyph
+            size={instagramIdentity.glyph.rowSizePx}
+            color="#FFFFFF"
+            decorative
+          />
+        ) : null}
         <RecognitionBadge
           state={conversation.recognitionState}
           variant="ground"

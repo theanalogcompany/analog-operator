@@ -13,7 +13,13 @@ import { GroundScreen } from '@/components/ground/ground-screen';
 import { ThreadBubbleList } from '@/components/thread/thread-bubble-list';
 import { EmptyState } from '@/components/queue/empty-state';
 import { RecognitionBadge } from '@/components/queue/recognition-badge';
+import { HandleLink } from '@/components/ui/handle-link';
+import { InstagramGlyph } from '@/components/ui/instagram-glyph';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
+import { showToast } from '@/components/auth/toast';
+import { CARD_COPY } from '@/lib/card-copy';
+import { guestIdentity } from '@/lib/guest-identity';
+import { openInstagramThread } from '@/lib/instagram';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { getGuestThread } from '@/lib/api/conversations';
 import { type ThreadMessage } from '@/lib/api/queue';
@@ -22,6 +28,7 @@ import { formatConversationsSince, isConversationActive } from '@/lib/conversati
 import {
   body as bodyType,
   conversations as conversationsTheme,
+  instagramIdentity,
   typePresets,
 } from '@/lib/theme';
 import { computeItems } from '@/lib/thread-cluster';
@@ -243,7 +250,21 @@ export default function ConversationThreadScreen() {
   }
 
   const active = isConversationActive(guest.lastMessageAt, conversationsTheme.activeWindowMins);
-  const displayName = guest.name ?? guest.phoneFallback;
+  // One chain for every surface. The old `name ?? phoneFallback` rendered
+  // BLANK for an unnamed Instagram guest, whose phoneFallback is ''. (TAC-486.)
+  const identity = guestIdentity({
+    displayName: guest.name,
+    instagramUsername: guest.instagramUsername,
+    phoneFallback: guest.phoneFallback,
+    channel: guest.guestChannel,
+  });
+  const displayName = identity.name;
+  const isInstagram = guest.guestChannel === 'instagram';
+  const since = formatConversationsSince(
+    guest.conversationCount,
+    guest.firstConversationAt,
+    timezone,
+  );
   // The old "Sent by Sana · 7:14 PM" trailer is gone: the redesign carries
   // that information in the cluster dividers and the Live/Quiet pill, and a
   // third timestamp treatment on one screen was noise.
@@ -269,30 +290,93 @@ export default function ConversationThreadScreen() {
           <Text allowFontScaling={false} style={{ fontSize: 20, lineHeight: 22, color: '#FFFFFF' }}>‹</Text>
         </Pressable>
 
-        <View style={{ flex: 1, gap: 4 }}>
+        {/* An Instagram thread gains the avatar. A text thread is unchanged. */}
+        {isInstagram ? (
+          <View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            testID="thread-avatar"
+            style={{
+              width: instagramIdentity.avatarSizePx,
+              height: instagramIdentity.avatarSizePx,
+              borderRadius: instagramIdentity.avatarSizePx / 2,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: instagramIdentity.avatarBgOnGround,
+            }}
+          >
+            <Text
+              allowFontScaling={false}
+              className="font-inter-tight-medium"
+              style={{ fontSize: 12, letterSpacing: 0.6, color: '#FFFFFF' }}
+            >
+              {identity.initial}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={{ flex: 1, gap: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TrackedCaps {...typePresets.cardName} color="#FFFFFF">
               {displayName}
             </TrackedCaps>
+            {isInstagram ? (
+              <InstagramGlyph
+                size={instagramIdentity.glyph.rowSizePx}
+                color="#FFFFFF"
+              />
+            ) : null}
             <RecognitionBadge state={guest.recognitionState} variant="ground" />
           </View>
-          <Text
-        allowFontScaling={false}
-            className="font-inter-tight"
-            numberOfLines={1}
-            style={{
-              fontSize: 10.5,
-              letterSpacing: 0.3,
-              color: 'rgba(255,255,255,0.92)',
-            }}
-          >
-            {guest.phoneFallback} ·{' '}
-            {formatConversationsSince(
-              guest.conversationCount,
-              guest.firstConversationAt,
-              timezone,
-            )}
-          </Text>
+          {/* Line 2. An Instagram thread replaces the phone number with the
+              handle, as a link out of the app; a text thread keeps it. There is
+              no GestureDetector on this screen, so the link is a real
+              Pressable. */}
+          {isInstagram && identity.handle ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <HandleLink
+                handle={identity.handle}
+                ink="#FFFFFF"
+                underlineColor={instagramIdentity.handle.underlineOnGround}
+                mode="button"
+                onPress={() => {
+                  void openInstagramThread(guest.instagramUsername ?? '').then(
+                    (result) => {
+                      if (!result.ok) {
+                        showToast(CARD_COPY.toast.instagramOpenFailed);
+                      }
+                    },
+                  );
+                }}
+              />
+              <Text
+                allowFontScaling={false}
+                className="font-inter-tight"
+                numberOfLines={1}
+                style={{
+                  flex: 1,
+                  fontSize: instagramIdentity.handle.sizePx,
+                  letterSpacing: 0.3,
+                  color: 'rgba(255,255,255,0.92)',
+                }}
+              >
+                {`· ${since}`}
+              </Text>
+            </View>
+          ) : (
+            <Text
+              allowFontScaling={false}
+              className="font-inter-tight"
+              numberOfLines={1}
+              style={{
+                fontSize: 10.5,
+                letterSpacing: 0.3,
+                color: 'rgba(255,255,255,0.92)',
+              }}
+            >
+              {`${guest.phoneFallback} · ${since}`}
+            </Text>
+          )}
         </View>
 
         <View

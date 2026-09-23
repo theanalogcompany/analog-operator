@@ -8,7 +8,8 @@ import { useNow } from '@/hooks/use-now';
 import { type PendingDraft } from '@/lib/api/queue';
 import { CARD_COPY } from '@/lib/card-copy';
 import { EXPIRED_STRIP_COLOR } from '@/lib/grounds';
-import { type GuestIdentity, guestIdentity } from '@/lib/guest-identity';
+import { type GuestIdentity, guestFirstName, guestIdentity } from '@/lib/guest-identity';
+import { type SubQueuePosition } from '@/lib/sub-queue';
 import { closedAgoPhrase, windowState } from '@/lib/reply-window';
 import {
   bucketForDraft,
@@ -22,6 +23,7 @@ import { computeItems, deviceTimezone } from '@/lib/thread-cluster';
 import { ExpiredComposer } from './expired-composer';
 import { CardHead } from './card-head';
 import { ReplyWindowBar } from './reply-window-bar';
+import { SubQueueRow } from './sub-queue-row';
 import { ReviewDetail } from './review-detail';
 
 /**
@@ -68,6 +70,11 @@ type Props = {
   onHandleLayout?: (event: LayoutChangeEvent) => void;
   /** Passed instead where no `GestureDetector` is above the card. */
   onPressHandle?: () => void;
+  /**
+   * Where this card sits among the guest's other cards, or null when it is
+   * their only one. Derived from the deck by `lib/sub-queue.ts`.
+   */
+  subQueueSpot?: SubQueuePosition | null;
   /** Resolved by `resolveCardLayout` — fixed, so every card in the deck is
    *  the same size regardless of how many messages it holds. */
   height: number;
@@ -110,6 +117,7 @@ export function QueueCard({
   onCopyAndOpen,
   onHandleLayout,
   onPressHandle,
+  subQueueSpot = null,
   overlay,
 }: Props) {
   const bucket = bucketForDraft(draft);
@@ -235,6 +243,15 @@ export function QueueCard({
           onHandleLayout={onHandleLayout}
           onPressHandle={onPressHandle}
         />
+        {/* C1: shown only when the deck holds more than one card for this
+            guest. Above the reason, so the operator knows this is one of a set
+            before they read what it is about. */}
+        {subQueueSpot ? (
+          <SubQueueRow
+            spot={subQueueSpot}
+            guestName={guestFirstName(identity)}
+          />
+        ) : null}
         {expired ? (
           // A4: the window explanation REPLACES the held-reason on an expired
           // card. Why it was held stopped being the operator's next move the
