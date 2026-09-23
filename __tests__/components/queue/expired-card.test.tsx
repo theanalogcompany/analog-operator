@@ -69,6 +69,7 @@ function renderStack(draft: PendingDraft, over: Record<string, unknown> = {}) {
       onDecline={noop}
       onPressHelp={noop}
       onCopyAndOpen={noop}
+      onOpenHandle={noop}
       onBlockedExpired={noop}
       {...over}
     />,

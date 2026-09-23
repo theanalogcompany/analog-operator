@@ -264,6 +264,7 @@ describe('QueueCardStack — wiring', () => {
           onDecline={noop}
           onPressHelp={noop}
           onCopyAndOpen={noop}
+      onOpenHandle={noop}
           onBlockedExpired={noop}
         />
       </Wrapper>,
@@ -296,6 +297,7 @@ describe('QueueCardStack — wiring', () => {
           onDecline={noop}
           onPressHelp={noop}
           onCopyAndOpen={noop}
+      onOpenHandle={noop}
           onBlockedExpired={noop}
         />
       </Wrapper>,
@@ -329,6 +331,7 @@ describe('QueueCardStack — wiring', () => {
           onDecline={noop}
           onPressHelp={noop}
           onCopyAndOpen={noop}
+      onOpenHandle={noop}
           onBlockedExpired={noop}
         />
       </Wrapper>,
@@ -362,6 +365,7 @@ describe('QueueCardStack — wiring', () => {
           onDecline={noop}
           onPressHelp={noop}
           onCopyAndOpen={noop}
+      onOpenHandle={noop}
           onBlockedExpired={noop}
         />
       </Wrapper>,
@@ -394,6 +398,7 @@ describe('QueueCardStack — wiring', () => {
           onDecline={noop}
           onPressHelp={noop}
           onCopyAndOpen={noop}
+      onOpenHandle={noop}
           onBlockedExpired={noop}
         />
       </Wrapper>,
@@ -417,6 +422,7 @@ describe('QueueCardStack — wiring', () => {
           onDecline={noop}
           onPressHelp={noop}
           onCopyAndOpen={noop}
+      onOpenHandle={noop}
           onBlockedExpired={noop}
         />
       </Wrapper>,
@@ -439,6 +445,7 @@ describe('QueueCardStack — wiring', () => {
           onDecline={noop}
           onPressHelp={noop}
           onCopyAndOpen={noop}
+      onOpenHandle={noop}
           onBlockedExpired={noop}
         />
       </Wrapper>,
@@ -467,6 +474,7 @@ describe('QueueCardStack — wiring', () => {
           onDecline={noop}
           onPressHelp={noop}
           onCopyAndOpen={noop}
+      onOpenHandle={noop}
           onBlockedExpired={noop}
         />
       </Wrapper>,

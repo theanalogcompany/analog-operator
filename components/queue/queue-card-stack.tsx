@@ -101,6 +101,47 @@ export function isComposerTap(tapY: number, composerTop: number): boolean {
   return composerTop >= 0 && tapY >= composerTop;
 }
 
+/** A rectangle in card-local coordinates. `width < 0` means "not measured". */
+export type TapRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export const UNMEASURED_RECT: TapRect = { x: 0, y: 0, width: -1, height: -1 };
+
+/**
+ * Whether a tap landed on the handle link.
+ *
+ * The handle cannot be a `Pressable` on a live card for the same reason the
+ * composer cannot: RN's responder system would claim the touch before
+ * gesture-handler could recognise the pan, killing both (CLAUDE.md, TAC-37).
+ * So the tap is hoisted into the gesture and hit-tested here.
+ *
+ * Unlike the composer this needs a full rectangle: the composer runs to the
+ * card's bottom edge so one boundary is enough, while the handle is a short
+ * run of text in the middle of the head with the timer pill beside it.
+ * Hit-testing it by its top edge alone would swallow every tap on the lower
+ * two thirds of the card.
+ *
+ * An unmeasured rect must never match, which is what the negative width means.
+ */
+export function isHandleTap(
+  tapX: number,
+  tapY: number,
+  rect: TapRect,
+): boolean {
+  'worklet';
+  if (rect.width < 0 || rect.height < 0) return false;
+  return (
+    tapX >= rect.x &&
+    tapX <= rect.x + rect.width &&
+    tapY >= rect.y &&
+    tapY <= rect.y + rect.height
+  );
+}
+
 type CardActions = {
   onApprove: (draft: PendingDraft) => void;
   onEdit: (draft: PendingDraft) => void;
@@ -112,6 +153,14 @@ type CardActions = {
   onPressHelp: () => void;
   /** The expired card's one action: copy the draft, open the guest's thread. */
   onCopyAndOpen: (draft: PendingDraft) => void;
+  /**
+   * The handle link. Opens the guest's Instagram thread and NOTHING else.
+   *
+   * Deliberately not the same action as the copy button: an operator tapping a
+   * handle is looking at who this is, and silently replacing their clipboard
+   * would be a side effect they did not ask for and would not see.
+   */
+  onOpenHandle: (draft: PendingDraft) => void;
   /**
    * A swipe was in flight when the reply window shut under it. Owes the
    * operator the one line explaining why the card stopped accepting the
@@ -161,6 +210,7 @@ function FrontCard({
   onDecline,
   onPressHelp,
   onCopyAndOpen,
+  onOpenHandle,
   onBlockedExpired,
 }: FrontCardProps) {
   const haptics = useHaptics();
@@ -185,6 +235,7 @@ function FrontCard({
   const canCommitRight = canCommitRightFor(item, { expired });
 
   const composerTop = useSharedValue<number>(-1);
+  const handleRect = useSharedValue<TapRect>(UNMEASURED_RECT);
 
   // Every finished swipe resolves through `swipeActionFor`, the one place that
   // decides what a gesture does to each kind of card. There is deliberately no
@@ -228,6 +279,10 @@ function FrontCard({
   // a stray tap can never reach `onDecline` either: a tap is not a decline.
   const openEditor = (): void => {
     if (item.kind === 'draft') dispatch('left');
+  };
+
+  const openHandle = (): void => {
+    if (item.kind === 'draft') onOpenHandle(item.draft);
   };
 
   const { pan, translateX, rotation, direction, intensity, isPanning } = useQueueSwipe({
@@ -283,6 +338,13 @@ function FrontCard({
     .onEnd((event, success) => {
       'worklet';
       if (!success) return;
+      // The handle is tested FIRST: it sits inside the head, which the
+      // composer's single-boundary test does not cover, and a tap can only
+      // mean one thing.
+      if (isHandleTap(event.x, event.y, handleRect.value)) {
+        runOnJS(openHandle)();
+        return;
+      }
       if (isComposerTap(event.y, composerTop.value)) {
         runOnJS(openEditor)();
       }
@@ -364,6 +426,9 @@ function FrontCard({
                 position={position}
                 total={total}
                 onCopyAndOpen={() => onCopyAndOpen(item.draft)}
+                // No GestureDetector above this card, so the handle can be a
+                // real Pressable rather than a hoisted hit-test.
+                onPressHandle={() => onOpenHandle(item.draft)}
               />
             </Animated.View>
           ) : (
@@ -388,6 +453,10 @@ function FrontCard({
                   total={total}
                   onComposerLayout={(event: LayoutChangeEvent) => {
                     composerTop.value = event.nativeEvent.layout.y;
+                  }}
+                  onHandleLayout={(event: LayoutChangeEvent) => {
+                    const { x, y, width, height } = event.nativeEvent.layout;
+                    handleRect.value = { x, y, width, height };
                   }}
                   overlay={
                     <SwipeOverlay direction={direction} intensity={intensity} />

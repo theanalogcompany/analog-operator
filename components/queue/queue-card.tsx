@@ -20,9 +20,8 @@ import { body as bodyType, card, replyWindow, typePresets } from '@/lib/theme';
 import { computeItems, deviceTimezone } from '@/lib/thread-cluster';
 
 import { ExpiredComposer } from './expired-composer';
-import { RecognitionBadge } from './recognition-badge';
+import { CardHead } from './card-head';
 import { ReplyWindowBar } from './reply-window-bar';
-import { ReplyWindowPill } from './reply-window-pill';
 import { ReviewDetail } from './review-detail';
 
 /**
@@ -61,6 +60,14 @@ type Props = {
    * is scenery and nothing on it is pressable.
    */
   onCopyAndOpen?: () => void;
+  /**
+   * Reports the handle link's frame, so the stack can hit-test a tap against
+   * it. Passed on a LIVE card, where the link cannot be a real `Pressable`
+   * without killing the pan (CLAUDE.md, TAC-37).
+   */
+  onHandleLayout?: (event: LayoutChangeEvent) => void;
+  /** Passed instead where no `GestureDetector` is above the card. */
+  onPressHandle?: () => void;
   /** Resolved by `resolveCardLayout` — fixed, so every card in the deck is
    *  the same size regardless of how many messages it holds. */
   height: number;
@@ -101,6 +108,8 @@ export function QueueCard({
   total,
   onComposerLayout,
   onCopyAndOpen,
+  onHandleLayout,
+  onPressHandle,
   overlay,
 }: Props) {
   const bucket = bucketForDraft(draft);
@@ -217,25 +226,15 @@ export function QueueCard({
       <View
         style={{ paddingHorizontal: card.regionInsetPx, paddingTop: 20 }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TrackedCaps {...typePresets.cardName} color="#1C1814">
-            {name}
-          </TrackedCaps>
-          <RecognitionBadge state={draft.recognitionState} variant="card" />
-          {/* The timer REPLACES the elapsed pill on an Instagram card, in the
-              same slot. A text card is untouched and keeps "14 min", and so
-              does an Instagram card whose window was never measured: elapsed
-              time is the only true thing we can say about either. */}
-          <View style={{ marginLeft: 'auto' }}>
-            {window.kind === 'none' || window.kind === 'unknown' ? (
-              <TrackedCaps {...typePresets.elapsed} color="#6F6658">
-                {minutesPending(draft)}
-              </TrackedCaps>
-            ) : (
-              <ReplyWindowPill state={window} />
-            )}
-          </View>
-        </View>
+        <CardHead
+          identity={identity}
+          recognitionState={draft.recognitionState}
+          window={window}
+          expired={expired}
+          elapsedLabel={minutesPending(draft)}
+          onHandleLayout={onHandleLayout}
+          onPressHandle={onPressHandle}
+        />
         {expired ? (
           // A4: the window explanation REPLACES the held-reason on an expired
           // card. Why it was held stopped being the operator's next move the

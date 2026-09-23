@@ -51,6 +51,27 @@ function messageOf(error: unknown): string {
 }
 
 /**
+ * Open the guest's thread, copying nothing.
+ *
+ * What the handle link does. Separate from `copyAndOpenInstagram` because an
+ * operator tapping a handle is looking at who this is; replacing their
+ * clipboard on the way would be a side effect they never asked for and would
+ * not notice until they pasted something else.
+ */
+export async function openInstagramThread(
+  username: string,
+): Promise<Result<void, InstagramOpenError>> {
+  const trimmed = username.trim();
+  if (trimmed.length === 0) return err<InstagramOpenError>({ kind: 'NO_HANDLE' });
+  try {
+    await Linking.openURL(instagramMessageUrl(trimmed));
+  } catch (e) {
+    return err<InstagramOpenError>({ kind: 'OPEN_FAILED', message: messageOf(e) });
+  }
+  return ok(undefined);
+}
+
+/**
  * Put the draft on the clipboard, then open the guest's thread.
  *
  * The order matters. Copying first means that if the open fails the operator

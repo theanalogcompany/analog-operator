@@ -33,7 +33,7 @@ import {
   stageDeclineHandoff,
 } from '@/lib/decline-handoff';
 import { openHelpSms } from '@/lib/help';
-import { copyAndOpenInstagram } from '@/lib/instagram';
+import { copyAndOpenInstagram, openInstagramThread } from '@/lib/instagram';
 import { setBadgeCount } from '@/lib/notifications/badge';
 import {
   type TapTarget,
@@ -258,6 +258,21 @@ export default function QueueScreen() {
     );
   };
 
+  /**
+   * The handle link. Opens the guest's Instagram thread and nothing else: no
+   * copy, because an operator tapping a handle is looking at who this is, and
+   * quietly replacing their clipboard is a side effect they never asked for.
+   */
+  const handleOpenHandle = async (draft: PendingDraft): Promise<void> => {
+    const username = draft.instagramUsername;
+    if (!username) {
+      showToast(CARD_COPY.toast.noInstagramHandle);
+      return;
+    }
+    const result = await openInstagramThread(username);
+    if (!result.ok) showToast(CARD_COPY.toast.instagramOpenFailed);
+  };
+
   // A swipe was in flight when the window shut under it. Nothing to remove and
   // nothing to restore: all this owes the operator is the explanation.
   const handleBlockedExpired = (): void => {
@@ -427,6 +442,7 @@ export default function QueueScreen() {
           onDecline={handleDecline}
           onPressHelp={handleHelp}
           onCopyAndOpen={handleCopyAndOpen}
+          onOpenHandle={handleOpenHandle}
           onBlockedExpired={handleBlockedExpired}
         />
       )}

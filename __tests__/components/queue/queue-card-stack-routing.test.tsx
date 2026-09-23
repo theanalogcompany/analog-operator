@@ -133,6 +133,7 @@ function renderStack(items: QueueItem[], busyKey: string | null = null) {
     onDecline: jest.fn(),
     onPressHelp: jest.fn(),
     onCopyAndOpen: jest.fn(),
+    onOpenHandle: jest.fn(),
     onBlockedExpired: jest.fn(),
   };
   render(
