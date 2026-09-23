@@ -466,18 +466,58 @@ describe('every server reason code is mapped', () => {
   });
 
   /**
-   * The six the server can emit that nobody has ruled a bucket for. They are
+   * The 2026-09-23 rulings for the codes that were unmapped at review time.
+   * Five are knowledge confirmation; the sixth is deliberately not a bucket at
+   * all (below).
+   */
+  it.each([
+    ['closed_venue_arrival_emitted', 'outsideDraft'],
+    ['closed_venue_arrival_backstop', 'outsideDraft'],
+    ['grounding_check_degraded', 'outsideDraft'],
+    ['prose_cancellation_check_failed', 'outsideDraft'],
+    ['unresolved_cancellation_id', 'outsideDraft'],
+  ] as const)('%s lands on %s', (reviewReasonCode, bucket) => {
+    expect(bucketForDraft({ reviewReasonCode })).toBe(bucket);
+  });
+
+  /**
+   * Both lists together account for every code the server had on 2026-09-23.
+   * The number is the point: if `REVIEW_REASON_LABELS` grows and nobody
+   * transcribes it, this is the line that should look stale.
+   */
+  it('accounts for all 26 codes the server had when it was transcribed', () => {
+    expect(
+      SERVER_REASON_CODES.length + UNRULED_SERVER_REASON_CODES.length,
+    ).toBe(26);
+  });
+
+  /**
+   * The codes the server can emit that nobody has ruled a bucket for. They are
    * asserted as unmapped so the gap is a fact in the suite rather than a
    * sentence in a comment, and so that moving one across flips a test in both
    * directions at once.
    */
   it.each(UNRULED_SERVER_REASON_CODES)(
-    '%s is knowingly unmapped, pending a ruling',
+    '%s is knowingly unmapped, and that is a decision',
     (code) => {
       expect(hasExplicitBucket(code)).toBe(false);
       expect(bucketForDraft({ reviewReasonCode: code })).toBe(FALLBACK_BUCKET);
     },
   );
+
+  /**
+   * `instagram_send_failed` is the only one, and it is unmapped on purpose
+   * rather than pending: the message already failed to send, so there is
+   * nothing to approve, and every bucket here names a kind of decision about a
+   * draft still about to go out. Ruled 2026-09-23 that it belongs on the slate
+   * ground with the copy-and-open block instead, which needs the deferred
+   * "send failed" card type. Pinned so that adding it to `BUCKET_BY_CODE`
+   * without building that surface fails here.
+   */
+  it('leaves the send failure out of the buckets entirely', () => {
+    expect(UNRULED_SERVER_REASON_CODES).toEqual(['instagram_send_failed']);
+    expect(hasExplicitBucket('instagram_send_failed')).toBe(false);
+  });
 
   it('keeps the two lists disjoint, so a code cannot be in both', () => {
     const overlap = SERVER_REASON_CODES.filter((code) =>

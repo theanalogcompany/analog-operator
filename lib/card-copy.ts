@@ -96,7 +96,7 @@ export const CARD_COPY = {
      * repeated the body line, while this says something new and actionable.
      */
     copyRecordsNothing:
-      'Copying does not record anything here. If this promises the guest something, note it yourself.',
+      "Copying doesn't record anything here. If this promises the guest something, make a note yourself.",
     /**
      * Shown when a swipe is cancelled because the window shut under the
      * operator's hands. Ruled 2026-09-23: the card converts the moment it

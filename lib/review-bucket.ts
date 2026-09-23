@@ -77,6 +77,28 @@ const BUCKET_BY_CODE: Readonly<Record<string, DraftBucket>> = {
    * wording is the server's.
    */
   prose_cancellation_backstop: 'outsideDraft',
+  /**
+   * Ruled 2026-09-23. A check that could not RUN, which is the same family as
+   * `prose_promise_check_failed` above: nothing was found to be wrong, and
+   * nothing was verified either, so the operator's move is to confirm the fact
+   * rather than to authorise anything.
+   */
+  grounding_check_degraded: 'outsideDraft',
+  prose_cancellation_check_failed: 'outsideDraft',
+  /**
+   * Ruled 2026-09-23. The reply asserts something about the VENUE that is not
+   * true — that the guest can come over — so the operator checks the fact. It
+   * commits nothing, which is what keeps it out of the obligation bucket even
+   * though an arrival is involved.
+   */
+  closed_venue_arrival_emitted: 'outsideDraft',
+  closed_venue_arrival_backstop: 'outsideDraft',
+  /**
+   * Ruled 2026-09-23, on the same reasoning as `prose_cancellation_backstop`:
+   * the reply points at a promise that does not exist. Approving it changes
+   * nothing, so it is a claim to fix rather than an obligation to weigh.
+   */
+  unresolved_cancellation_id: 'outsideDraft',
   // 03 The draft came out wrong.
   model_flagged: 'draftWrong',
   self_talk_detected: 'draftWrong',
@@ -124,6 +146,11 @@ export const SERVER_REASON_CODES: readonly string[] = [
   'unverified_url',
   'prose_promise_check_failed',
   'prose_cancellation_backstop',
+  'grounding_check_degraded',
+  'prose_cancellation_check_failed',
+  'closed_venue_arrival_emitted',
+  'closed_venue_arrival_backstop',
+  'unresolved_cancellation_id',
   'model_flagged',
   'self_talk_detected',
   'fidelity_below_auto_send_floor',
@@ -133,29 +160,33 @@ export const SERVER_REASON_CODES: readonly string[] = [
 ];
 
 /**
- * Codes the server can emit that NOBODY HAS RULED A BUCKET FOR.
+ * The one code the server can emit that this app deliberately does NOT map.
  *
- * These reach a real pending card today and render on the mid-thread ground,
- * which is the TAC-511 defect still live for six codes. They are listed rather
- * than quietly omitted, because a list that claimed to be complete while
- * missing six would be exactly the kind of sentence CLAUDE.md's TAC-408 rule
- * exists to stop: checkable, checked, and false.
+ * **`instagram_send_failed` is not a draft-review reason at all.** The message
+ * already failed to send, so there is nothing to approve, and every bucket here
+ * names a kind of decision about a draft that is still about to go out. Ruled
+ * 2026-09-23: its operator action is identical to an expired card's — get the
+ * text out by hand — so it belongs on the slate ground with the copy-and-open
+ * block, NOT in `BUCKET_BY_CODE`.
  *
- * Raised to Jaipal 2026-09-23; a bucket is a product decision, not one to
- * infer. `instagram_send_failed` is the sharpest of them — it belongs to this
- * ticket's own deferred "send failed" card type, which has no surface yet, so
- * a bucket for it means little until that card exists.
+ * It is left unmapped rather than forced there, on Jaipal's own instruction
+ * that a named gap beats a card that reads wrong. Three things on the expired
+ * card would be false for it, and two of them are copy he has not approved:
  *
- * Moving one across to `SERVER_REASON_CODES` and into `BUCKET_BY_CODE` is the
- * whole change; the tests on both lists then flip together.
+ *  - the strip reads "Reply window closed", and a failed send can happen with
+ *    the window wide open;
+ *  - the body line reads "Instagram stopped accepting replies N ago", which
+ *    would be a specific, checkable, false claim about why;
+ *  - the timer would read "18h left" directly above a block saying the reply
+ *    has to go out by hand, which is two answers to the same question.
+ *
+ * Doing it properly means a `handOff` concept broader than `expired`, its own
+ * strip and body copy, and a suppressed timer. That is the ticket's deferred
+ * "send failed" card type, which has no surface yet. Until it does, this card
+ * sits on the mid-thread ground: wrong, but only vaguely wrong, and recorded.
  */
 export const UNRULED_SERVER_REASON_CODES: readonly string[] = [
-  'closed_venue_arrival_backstop',
-  'closed_venue_arrival_emitted',
-  'grounding_check_degraded',
   'instagram_send_failed',
-  'prose_cancellation_check_failed',
-  'unresolved_cancellation_id',
 ];
 
 /** Whether a code has an EXPLICIT bucket rather than falling back. */
