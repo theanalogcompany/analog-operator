@@ -36,9 +36,15 @@ export function wireNotifications(): () => void {
   // cheap — the no-op skip path is hit in steady state.
   //
   // Three toasts fire unconditionally so UAT can confirm the chain ran AND
-  // see the outcome — production builds can't bridge `console.log` to iOS
-  // unified logging without a native OSLog wrapper (separate ticket), so the
-  // toast is the only diagnostic surface available. UAT #2 after PR #25
+  // see the outcome. This used to say production builds "can't bridge
+  // `console.log` to iOS unified logging without a native OSLog wrapper", so
+  // the toast was the only diagnostic surface available. That was wrong, and
+  // TAC-419 disproved it on a production build. The bridge works; the log
+  // LEVEL is the catch. `console.log` and `console.warn` both land at
+  // OS_LOG_TYPE_INFO, which Console.app hides by default, so the lines were
+  // being written and filtered out. `logDiag(..., 'error')` is readable on a
+  // release build with no filter change. The toasts stay — they are readable
+  // without a Mac, which is their own argument. UAT #2 after PR #25
   // showed NO toast at all, which left us unable to distinguish "subscriber
   // never fired" from "registration succeeded (so no failure toast) but
   // server didn't persist." Surfacing every outcome resolves that ambiguity.
