@@ -1,4 +1,5 @@
-import { type LayoutChangeEvent, Pressable, Text, View } from 'react-native';
+import { type ComponentRef, type Ref } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { CARD_COPY } from '@/lib/card-copy';
@@ -44,8 +45,19 @@ type Props = {
   mode: 'button' | 'hoisted';
   /** `button` only. */
   onPress?: () => void;
-  /** `hoisted` only: the frame the stack hit-tests, in card-local coordinates. */
-  onLayout?: (event: LayoutChangeEvent) => void;
+  /**
+   * `hoisted` only: a Reanimated animated ref the stack measures on the UI
+   * thread when a tap lands.
+   *
+   * A ref rather than an `onLayout` callback, because `onLayout` reports
+   * coordinates relative to the IMMEDIATE PARENT and this view sits three
+   * levels inside the card's head. Those numbers are not comparable with the
+   * tap's, and the first version of this compared them anyway: the handle never
+   * matched, and a tap on the flag strip opened Instagram instead. `measure()`
+   * returns page coordinates, which pair with the gesture's `absoluteX/Y` with
+   * no arithmetic in between and nothing to drift.
+   */
+  hoistedRef?: Ref<ComponentRef<typeof View>>;
 };
 
 /**
@@ -60,7 +72,7 @@ export function HandleLink({
   underlineColor,
   mode,
   onPress,
-  onLayout,
+  hoistedRef,
 }: Props) {
   const label = CARD_COPY.replyWindow.openInInstagram.replace('{handle}', handle);
 
@@ -96,7 +108,11 @@ export function HandleLink({
     return (
       <View
         testID="handle-link"
-        onLayout={onLayout}
+        ref={hoistedRef}
+        // RN flattens a view with no native interactable descendant, and a
+        // flattened view cannot be measured — the same failure mode as a
+        // GestureDetector target losing its ref (CLAUDE.md, TAC-37).
+        collapsable={false}
         // Inert. The tap lives in the card stack's gesture; this only has to be
         // measurable and readable.
         accessible

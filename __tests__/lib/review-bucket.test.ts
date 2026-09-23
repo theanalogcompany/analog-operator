@@ -9,6 +9,7 @@ import { buildQueueItems, draftItem, headsUpItem } from '@/lib/queue-items';
 import {
   FALLBACK_BUCKET,
   SERVER_REASON_CODES,
+  UNRULED_SERVER_REASON_CODES,
   bucketForDraft,
   bucketForItem,
   formatProgress,
@@ -462,6 +463,27 @@ describe('every server reason code is mapped', () => {
     expect(bucketForDraft({ reviewReasonCode: 'prose_cancellation_backstop' })).toBe(
       'outsideDraft',
     );
+  });
+
+  /**
+   * The six the server can emit that nobody has ruled a bucket for. They are
+   * asserted as unmapped so the gap is a fact in the suite rather than a
+   * sentence in a comment, and so that moving one across flips a test in both
+   * directions at once.
+   */
+  it.each(UNRULED_SERVER_REASON_CODES)(
+    '%s is knowingly unmapped, pending a ruling',
+    (code) => {
+      expect(hasExplicitBucket(code)).toBe(false);
+      expect(bucketForDraft({ reviewReasonCode: code })).toBe(FALLBACK_BUCKET);
+    },
+  );
+
+  it('keeps the two lists disjoint, so a code cannot be in both', () => {
+    const overlap = SERVER_REASON_CODES.filter((code) =>
+      UNRULED_SERVER_REASON_CODES.includes(code),
+    );
+    expect(overlap).toEqual([]);
   });
 
   it('still sends a code it has never seen to the fallback, not to a flag colour', () => {

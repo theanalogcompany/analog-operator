@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { type ComponentRef, type ReactNode, type Ref } from 'react';
 import { type LayoutChangeEvent, Text, View } from 'react-native';
 
 import { MessageBubble } from '@/components/ui/message-bubble';
@@ -10,7 +10,7 @@ import { CARD_COPY } from '@/lib/card-copy';
 import { EXPIRED_STRIP_COLOR } from '@/lib/grounds';
 import { type GuestIdentity, guestFirstName, guestIdentity } from '@/lib/guest-identity';
 import { type SubQueuePosition } from '@/lib/sub-queue';
-import { closedAgoPhrase, windowState } from '@/lib/reply-window';
+import { closedAgoPhrase, isExpired, windowState } from '@/lib/reply-window';
 import {
   bucketForDraft,
   formatProgress,
@@ -63,11 +63,11 @@ type Props = {
    */
   onCopyAndOpen?: () => void;
   /**
-   * Reports the handle link's frame, so the stack can hit-test a tap against
-   * it. Passed on a LIVE card, where the link cannot be a real `Pressable`
-   * without killing the pan (CLAUDE.md, TAC-37).
+   * The handle link's animated ref, measured by the stack when a tap lands.
+   * Passed on a LIVE card, where the link cannot be a real `Pressable` without
+   * killing the pan (CLAUDE.md, TAC-37).
    */
-  onHandleLayout?: (event: LayoutChangeEvent) => void;
+  handleRef?: Ref<ComponentRef<typeof View>>;
   /** Passed instead where no `GestureDetector` is above the card. */
   onPressHandle?: () => void;
   /**
@@ -115,7 +115,7 @@ export function QueueCard({
   total,
   onComposerLayout,
   onCopyAndOpen,
-  onHandleLayout,
+  handleRef,
   onPressHandle,
   subQueueSpot = null,
   overlay,
@@ -139,7 +139,7 @@ export function QueueCard({
     channel: draft.guestChannel,
     nowMs: useNow(),
   });
-  const expired = window.kind === 'closed';
+  const expired = isExpired(window);
 
   // The card surface stays WHITE when the window shuts. What changes is the
   // ink and the chrome, so the thread and the draft stay readable and
@@ -240,7 +240,7 @@ export function QueueCard({
           window={window}
           expired={expired}
           elapsedLabel={minutesPending(draft)}
-          onHandleLayout={onHandleLayout}
+          handleRef={handleRef}
           onPressHandle={onPressHandle}
         />
         {/* C1: shown only when the deck holds more than one card for this
@@ -459,6 +459,5 @@ function displayName(draft: PendingDraft): string {
 
 export {
   displayName as queueCardDisplayName,
-  identityFor as queueCardIdentity,
   minutesPending as queueCardMinutesPending,
 };

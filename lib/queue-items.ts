@@ -152,6 +152,14 @@ export type SwipeAction =
  * entirely, so no swipe starts on one. This is the second guard, for the case
  * the gesture layer cannot prevent: a card that expires WHILE a pan is already
  * in flight.
+ *
+ * It is NOT the only place a send is stopped, and the difference matters. This
+ * guard stops an expired card being OPENED. A takeover opened while the window
+ * was still open outlives it entirely, and a long edit outlasts the 5-minute
+ * display margin easily, so `handleSend` in `app/queue/edit.tsx` re-checks the
+ * window at press time. Without that second check the send goes out, the server
+ * refuses it, and the operator gets a generic failure toast that says nothing
+ * about the window. (TAC-486.)
  */
 export function swipeActionFor(
   item: QueueItem,

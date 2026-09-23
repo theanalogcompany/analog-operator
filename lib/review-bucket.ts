@@ -94,19 +94,20 @@ const BUCKET_BY_CODE: Readonly<Record<string, DraftBucket>> = {
 export const FALLBACK_BUCKET: DraftBucket = 'midThread';
 
 /**
- * Every reason code `analog-guest` can emit, transcribed from its
- * `APPROVAL_TRIGGERS` and its extra review reasons.
+ * The reason codes we have RULED ON, each with an explicit bucket.
  *
- * A HAND-KEPT MIRROR, like `BUCKET_BY_CODE` itself, and it has the same limit:
- * it catches a code we know about and forgot to map, NOT a code the server
- * added and we never heard about. Nothing in this repo can reach that enum, so
- * a new server code still arrives as unknown and lands on `FALLBACK_BUCKET`
- * until someone adds it here. That is the safe direction, and the test over
- * this list is what turns "someone adds it" into a red build rather than a
- * card that quietly renders on the wrong ground for a release.
+ * Transcribed from `analog-guest`'s `REVIEW_REASON_LABELS`
+ * (`lib/operator/queue.ts`) on its merged `main`, 2026-09-23. Together with
+ * `UNRULED_SERVER_REASON_CODES` below this accounts for all 26 codes that
+ * enum holds on that date.
  *
- * TAC-511 filed exactly that: five codes shipped server-side and every one of
- * their cards rendered as an ordinary mid-thread draft.
+ * A HAND-KEPT MIRROR, like `BUCKET_BY_CODE` itself. It catches a code we know
+ * about and forgot to map. It CANNOT catch a code the server adds later:
+ * nothing in this repo can reach that enum, so a new one arrives as unknown and
+ * lands on `FALLBACK_BUCKET` until someone transcribes it. That is the safe
+ * direction, and the test over this list is what turns "someone adds it" into a
+ * red build rather than a release of cards on the wrong ground — the defect
+ * TAC-511 filed.
  */
 export const SERVER_REASON_CODES: readonly string[] = [
   'commitment_type_gated',
@@ -129,6 +130,32 @@ export const SERVER_REASON_CODES: readonly string[] = [
   'generation_failed',
   'previous_pending_held',
   'operator_decline_initiated',
+];
+
+/**
+ * Codes the server can emit that NOBODY HAS RULED A BUCKET FOR.
+ *
+ * These reach a real pending card today and render on the mid-thread ground,
+ * which is the TAC-511 defect still live for six codes. They are listed rather
+ * than quietly omitted, because a list that claimed to be complete while
+ * missing six would be exactly the kind of sentence CLAUDE.md's TAC-408 rule
+ * exists to stop: checkable, checked, and false.
+ *
+ * Raised to Jaipal 2026-09-23; a bucket is a product decision, not one to
+ * infer. `instagram_send_failed` is the sharpest of them — it belongs to this
+ * ticket's own deferred "send failed" card type, which has no surface yet, so
+ * a bucket for it means little until that card exists.
+ *
+ * Moving one across to `SERVER_REASON_CODES` and into `BUCKET_BY_CODE` is the
+ * whole change; the tests on both lists then flip together.
+ */
+export const UNRULED_SERVER_REASON_CODES: readonly string[] = [
+  'closed_venue_arrival_backstop',
+  'closed_venue_arrival_emitted',
+  'grounding_check_degraded',
+  'instagram_send_failed',
+  'prose_cancellation_check_failed',
+  'unresolved_cancellation_id',
 ];
 
 /** Whether a code has an EXPLICIT bucket rather than falling back. */

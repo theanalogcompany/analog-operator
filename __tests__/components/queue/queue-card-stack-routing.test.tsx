@@ -3,7 +3,7 @@ import { type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { QueueCardStack } from '@/components/queue/queue-card-stack';
-import { __resetNowClockForTests } from '@/hooks/use-now';
+import { TICK_MS, __resetNowClockForTests } from '@/hooks/use-now';
 import { type UseQueueSwipeArgs } from '@/hooks/use-queue-swipe';
 import {
   type HeadsUpCommitment,
@@ -38,7 +38,10 @@ import {
  * last point before the gesture system, so that is the seam.
  */
 
-const mockSwipe: { args: UseQueueSwipeArgs | null } = { args: null };
+const mockSwipe: {
+  args: UseQueueSwipeArgs | null;
+  result: ReturnType<typeof import('@/hooks/use-queue-swipe').useQueueSwipe> | null;
+} = { args: null, result: null };
 
 jest.mock('@/hooks/use-queue-swipe', () => {
   const actual = jest.requireActual('@/hooks/use-queue-swipe');
@@ -46,7 +49,12 @@ jest.mock('@/hooks/use-queue-swipe', () => {
     ...actual,
     useQueueSwipe: (args: UseQueueSwipeArgs) => {
       mockSwipe.args = args;
-      return actual.useQueueSwipe(args);
+      const result = actual.useQueueSwipe(args);
+      // The return value too, so the mid-pan expiry branch is drivable: it is
+      // the one case the structural guard (no GestureDetector on an expired
+      // card) cannot cover, because the pan started while the card was live.
+      mockSwipe.result = result;
+      return result;
     },
   };
 });
@@ -155,8 +163,14 @@ function swipe(): UseQueueSwipeArgs {
   return mockSwipe.args;
 }
 
+function swipeResult() {
+  if (!mockSwipe.result) throw new Error('the stack never mounted a swipe');
+  return mockSwipe.result;
+}
+
 beforeEach(() => {
   mockSwipe.args = null;
+  mockSwipe.result = null;
   getThreadMock.mockReset();
   getThreadMock.mockResolvedValue({ ok: true, data: [] });
 });
@@ -319,6 +333,14 @@ describe('a draft whose reply window has shut', () => {
   const leaving = (minutes: number): string =>
     new Date(NOW + (minutes + 5) * 60_000).toISOString();
 
+  const igDraft = (over: Partial<PendingDraft>): PendingDraft =>
+    makeDraft({
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      guestPhoneFallback: '',
+      ...over,
+    });
+
   const expiredDraft = () =>
     draftItem(
       makeDraft({
@@ -370,6 +392,60 @@ describe('a draft whose reply window has shut', () => {
     });
     expect(handlers.onEdit).not.toHaveBeenCalled();
     expect(handlers.onBlockedExpired).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The window shutting under the operator's hands, which the structure cannot
+   * prevent: the pan began while the card was live.
+   *
+   * Ruled 2026-09-23: the card converts the moment it expires, a gesture in
+   * flight is cancelled, and the operator is told why. A card that expires
+   * while nobody is touching it owes nothing, because nobody tried anything.
+   */
+  it('cancels an in-flight pan, resets it, and explains', () => {
+    const live = igDraft({
+      messageId: '44444444-4444-4444-8444-444444444444',
+      guestId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      replyWindowExpiresAt: leaving(1),
+      draftBody: 'a perfectly good draft',
+    });
+    const handlers = renderStack([draftItem(live)]);
+
+    // A finger goes down while the card is still live.
+    act(() => {
+      swipeResult().isPanning.value = true;
+      swipeResult().translateX.value = 60;
+    });
+    expect(handlers.onBlockedExpired).not.toHaveBeenCalled();
+
+    // The window shuts under it.
+    act(() => {
+      jest.setSystemTime(NOW + 2 * 60_000);
+      jest.advanceTimersByTime(TICK_MS);
+    });
+
+    expect(handlers.onBlockedExpired).toHaveBeenCalledTimes(1);
+    // A pan abandoned at 60px would otherwise leave the card sitting crooked:
+    // FrontCard is keyed by the item and does not remount on a window change.
+    expect(swipeResult().translateX.value).toBe(0);
+    expect(swipeResult().isPanning.value).toBe(false);
+  });
+
+  it('says nothing when a card expires with no finger on it', () => {
+    const live = igDraft({
+      messageId: '55555555-5555-4555-8555-555555555555',
+      guestId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      replyWindowExpiresAt: leaving(1),
+      draftBody: 'a perfectly good draft',
+    });
+    const handlers = renderStack([draftItem(live)]);
+
+    act(() => {
+      jest.setSystemTime(NOW + 2 * 60_000);
+      jest.advanceTimersByTime(TICK_MS);
+    });
+
+    expect(handlers.onBlockedExpired).not.toHaveBeenCalled();
   });
 
   it('still sends and edits normally while the window is open', () => {

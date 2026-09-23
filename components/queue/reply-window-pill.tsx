@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 
 import { TrackedCaps } from '@/components/ui/tracked-caps';
-import { type ReplyWindowState } from '@/lib/reply-window';
+import { type ReplyWindowState, hasWindow } from '@/lib/reply-window';
 import { replyWindow, typePresets } from '@/lib/theme';
 
 type Props = {
@@ -28,7 +28,7 @@ type Props = {
  * of reach.
  */
 export function ReplyWindowPill({ state }: Props) {
-  if (state.kind === 'none' || state.kind === 'unknown') return null;
+  if (!hasWindow(state)) return null;
 
   const colors = replyWindow.pillColors[state.kind];
 

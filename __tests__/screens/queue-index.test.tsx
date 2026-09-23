@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import QueueScreen from '@/app/queue/index';
 import { type GroundName } from '@/lib/grounds';
 import { type QueueContextValue } from '@/lib/queue-context';
+import { __resetNowClockForTests } from '@/hooks/use-now';
 import { clearUndoState } from '@/hooks/use-undo-state';
 import {
   type HeadsUpCommitment,
@@ -262,6 +263,67 @@ describe('QueueScreen — the ground follows the top card', () => {
     mockQueue.commitments = [arrival];
     renderScreen();
     expect(lastGroundName).toBe('headsUp');
+  });
+
+  /**
+   * Slate is an OVERRIDE on top of the bucket, not a bucket of its own: an
+   * expired card keeps its reason code and wears slate anyway. Both halves are
+   * pinned here, at the seam that already decides every other ground, because
+   * `grounds.test.ts` only asserts slate exists and `ground-contrast.test.ts`
+   * only that it is readable. (TAC-486.)
+   */
+  describe('and an expired Instagram card overrides it', () => {
+    const NOW = Date.parse('2026-09-23T12:00:00.000Z');
+    /** A deadline leaving `minutes` of window AFTER the display margin. */
+    const leaving = (minutes: number): string =>
+      new Date(NOW + (minutes + 5) * 60_000).toISOString();
+
+    const instagram = (minutes: number) =>
+      draftWithTone({
+        reviewReasonCode: 'commitment_type_gated',
+        guestChannel: 'instagram',
+        instagramUsername: 'mia.brews',
+        guestPhoneFallback: '',
+        replyWindowExpiresAt: leaving(minutes),
+      });
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(NOW);
+      __resetNowClockForTests();
+    });
+
+    afterEach(() => {
+      __resetNowClockForTests();
+      jest.useRealTimers();
+    });
+
+    it('puts an expired card on slate, whatever its bucket', () => {
+      mockQueue.drafts = [instagram(-3 * 60)];
+      renderScreen();
+      expect(lastGroundName).toBe('slate');
+    });
+
+    it('leaves a live Instagram card on its own bucket', () => {
+      mockQueue.drafts = [instagram(4 * 60)];
+      renderScreen();
+      expect(lastGroundName).toBe('obligation');
+    });
+
+    it('does not claim slate for an Instagram card whose window was never measured', () => {
+      // A null deadline means UNKNOWN, not shut (TAC-473's Contract).
+      mockQueue.drafts = [
+        draftWithTone({
+          reviewReasonCode: 'commitment_type_gated',
+          guestChannel: 'instagram',
+          instagramUsername: 'mia.brews',
+          guestPhoneFallback: '',
+          replyWindowExpiresAt: null,
+        }),
+      ];
+      renderScreen();
+      expect(lastGroundName).toBe('obligation');
+    });
   });
 
   /**

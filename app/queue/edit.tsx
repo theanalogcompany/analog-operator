@@ -27,6 +27,7 @@ import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { clearUndoState, setUndoState } from '@/hooks/use-undo-state';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { type ThreadMessage, editAndSend, getThread, skipDraft } from '@/lib/api/queue';
+import { windowState } from '@/lib/reply-window';
 import { CARD_COPY } from '@/lib/card-copy';
 import { clearDeclineHandoff, peekDeclineHandoff } from '@/lib/decline-handoff';
 import { useQueueContext } from '@/lib/queue-context';
@@ -354,6 +355,30 @@ export default function EditScreen() {
     const body = text.trim();
     if (!body) {
       showToast('Add some text or tap "Don\'t send anything"');
+      return;
+    }
+    /**
+     * The takeover is the SECOND send path, and it outlives the swipe that
+     * opened it.
+     *
+     * Swipe-left is blocked once the window has shut, but a takeover opened
+     * while it was open stays open and sendable across expiry, and a long edit
+     * outlasts the 5-minute display margin easily. Without this the send goes
+     * out, the server refuses it (`/edit` returns 502 for a closed Instagram
+     * window), and the operator gets a generic "couldn't send" toast that says
+     * nothing about the window, on a card that stays queued.
+     *
+     * Checked at press time rather than on a timer: nothing else on this screen
+     * needs the clock, and a takeover that rearranged itself mid-edit would
+     * throw away the operator's typed text, which is sacred here.
+     */
+    const window = windowState({
+      expiresAt: draft.replyWindowExpiresAt,
+      channel: draft.guestChannel,
+      nowMs: Date.now(),
+    });
+    if (window.kind === 'closed') {
+      showToast(CARD_COPY.replyWindow.closedMidSwipe);
       return;
     }
     setSubmitting('edit');

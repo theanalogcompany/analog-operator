@@ -1,17 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { CardHead } from '@/components/queue/card-head';
-import {
-  UNMEASURED_RECT,
-  isHandleTap,
-} from '@/components/queue/queue-card-stack';
+import { isHandleTap } from '@/components/queue/queue-card-stack';
 import { SubQueueRow } from '@/components/queue/sub-queue-row';
 import { HandleLink } from '@/components/ui/handle-link';
 import { InstagramGlyph } from '@/components/ui/instagram-glyph';
 import { CARD_COPY } from '@/lib/card-copy';
 import { guestIdentity } from '@/lib/guest-identity';
 import { windowState } from '@/lib/reply-window';
-import { subQueue } from '@/lib/theme';
+import { instagramIdentity, subQueue } from '@/lib/theme';
 
 const NOW = Date.parse('2026-09-23T12:00:00.000Z');
 
@@ -101,20 +98,22 @@ describe('the handle link', () => {
    * responder race and kills both the pan and the tap (CLAUDE.md, TAC-37).
    * It still has to be readable, so the label is asserted in both modes.
    */
-  it('reports its frame instead of pressing, in hoisted mode', () => {
-    const onLayout = jest.fn();
+  it('is inert and measurable in hoisted mode, rather than pressable', () => {
     render(
       <HandleLink
         handle="@mia.brews"
         ink="#6F6658"
         underlineColor="rgba(28,24,20,0.3)"
         mode="hoisted"
-        onLayout={onLayout}
       />,
     );
     const node = screen.getByLabelText('Open @mia.brews in Instagram');
     expect(node).toBeTruthy();
-    expect(node.props.onLayout).toBe(onLayout);
+    // No press handler: the tap belongs to the stack's gesture.
+    expect(node.props.onPress).toBeUndefined();
+    // RN flattens a view with no native interactable descendant, and a
+    // flattened view cannot be measured at all.
+    expect(node.props.collapsable).toBe(false);
   });
 });
 
@@ -126,31 +125,71 @@ describe('the handle link', () => {
  * the lower two thirds of the card, including every tap on the composer.
  */
 describe('isHandleTap', () => {
-  const rect = { x: 43, y: 20, width: 90, height: 14 };
+  const SLOP = instagramIdentity.handle.hitSlopPx;
+  // Page coordinates, which is what `measure()` returns and what the gesture's
+  // absoluteX/absoluteY are in. The handle sits partway down a card that is
+  // itself partway down the screen, so these are nothing like card-local.
+  const rect = { x: 104, y: 383, width: 90, height: 16 };
 
   it('matches a tap inside the handle', () => {
-    expect(isHandleTap(60, 26, rect)).toBe(true);
+    expect(isHandleTap(140, 390, rect, SLOP)).toBe(true);
   });
 
   it('matches the exact edges', () => {
-    expect(isHandleTap(43, 20, rect)).toBe(true);
-    expect(isHandleTap(133, 34, rect)).toBe(true);
+    expect(isHandleTap(104, 383, rect, SLOP)).toBe(true);
+    expect(isHandleTap(194, 399, rect, SLOP)).toBe(true);
   });
 
-  it('misses a tap to either side, where the avatar and the pill sit', () => {
-    expect(isHandleTap(20, 26, rect)).toBe(false);
-    expect(isHandleTap(300, 26, rect)).toBe(false);
+  /**
+   * The handle is ~16pt tall, well under the 44pt Apple asks for, and the real
+   * Pressable on the other two surfaces gets the same slop from RN.
+   */
+  it('accepts a near miss within the hit slop', () => {
+    expect(isHandleTap(104 - SLOP, 383 - SLOP, rect, SLOP)).toBe(true);
+    expect(isHandleTap(194 + SLOP, 399 + SLOP, rect, SLOP)).toBe(true);
   });
 
-  it('misses a tap above or below, including the whole composer', () => {
-    expect(isHandleTap(60, 10, rect)).toBe(false);
-    expect(isHandleTap(60, 400, rect)).toBe(false);
+  it('misses past the slop, on every side', () => {
+    expect(isHandleTap(104 - SLOP - 1, 390, rect, SLOP)).toBe(false);
+    expect(isHandleTap(194 + SLOP + 1, 390, rect, SLOP)).toBe(false);
+    expect(isHandleTap(140, 383 - SLOP - 1, rect, SLOP)).toBe(false);
+    expect(isHandleTap(140, 399 + SLOP + 1, rect, SLOP)).toBe(false);
   });
 
-  it('never matches before the handle has been measured', () => {
-    // A zero-width default would match the card's left edge on every tap.
-    expect(isHandleTap(0, 0, UNMEASURED_RECT)).toBe(false);
-    expect(isHandleTap(43, 26, UNMEASURED_RECT)).toBe(false);
+  /**
+   * The defect this signature exists to prevent, pinned as a coordinate-space
+   * check rather than as prose.
+   *
+   * The first version compared an `onLayout` rect against the gesture's
+   * card-local `event.x/y`. `onLayout` reports coordinates relative to the
+   * IMMEDIATE PARENT, and the handle sits three levels inside the card's head,
+   * so the rect came back at about (0, 0, 90, 16). Against that rect a tap in
+   * the card's top-left corner — on the flag strip — matches, and the real
+   * handle never does. Both halves are asserted, so a return to parent-relative
+   * measurement fails here rather than on a device.
+   */
+  it('does not treat a parent-relative rect as if it were the real one', () => {
+    const parentRelative = { x: 0, y: 0, width: 90, height: 16 };
+    // A tap on the flag strip, near the card's top-left corner.
+    expect(isHandleTap(30, 8, parentRelative, SLOP)).toBe(true);
+    // ...and the handle's real page position misses it entirely.
+    expect(isHandleTap(140, 390, parentRelative, SLOP)).toBe(false);
+    // Against a properly measured rect, both answers invert.
+    expect(isHandleTap(30, 8, rect, SLOP)).toBe(false);
+    expect(isHandleTap(140, 390, rect, SLOP)).toBe(true);
+  });
+
+  it('never matches a rect with no area, however the tap lands', () => {
+    // `measure()` returns null before layout, but a zero-sized rect must not
+    // swallow a tap either.
+    for (const empty of [
+      { x: 0, y: 0, width: 0, height: 0 },
+      { x: 104, y: 383, width: 0, height: 16 },
+      { x: 104, y: 383, width: 90, height: 0 },
+    ]) {
+      expect(isHandleTap(0, 0, empty, SLOP)).toBe(false);
+      expect(isHandleTap(104, 383, empty, SLOP)).toBe(false);
+    }
   });
 });
 

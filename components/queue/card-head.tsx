@@ -1,11 +1,12 @@
-import { type LayoutChangeEvent, Text, View } from 'react-native';
+import { type ComponentRef, type Ref } from 'react';
+import { Text, View } from 'react-native';
 
 import { HandleLink } from '@/components/ui/handle-link';
 import { InstagramGlyph } from '@/components/ui/instagram-glyph';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type RecognitionState } from '@/lib/api/queue';
 import { type GuestIdentity } from '@/lib/guest-identity';
-import { type ReplyWindowState } from '@/lib/reply-window';
+import { type ReplyWindowState, hasWindow } from '@/lib/reply-window';
 import { instagramIdentity, replyWindow, typePresets } from '@/lib/theme';
 
 import { RecognitionBadge } from './recognition-badge';
@@ -19,11 +20,11 @@ type Props = {
   /** What a text card shows where an Instagram card shows its timer. */
   elapsedLabel: string;
   /**
-   * Reports the handle link's frame so the card stack can hit-test a tap
-   * against it. Only passed on a LIVE card, where the link cannot be a real
+   * The handle link's animated ref, which the card stack measures when a tap
+   * lands. Only passed on a LIVE card, where the link cannot be a real
    * `Pressable`; see `HandleLink`'s `mode`.
    */
-  onHandleLayout?: (event: LayoutChangeEvent) => void;
+  handleRef?: Ref<ComponentRef<typeof View>>;
   /** Passed instead on a card with no `GestureDetector` above it. */
   onPressHandle?: () => void;
 };
@@ -108,14 +109,13 @@ export function CardHead({
   window,
   expired,
   elapsedLabel,
-  onHandleLayout,
+  handleRef,
   onPressHandle,
 }: Props) {
   const metaInk = expired ? replyWindow.expired.metaInk : '#6F6658';
   const nameInk = expired ? replyWindow.expired.metaInk : '#1C1814';
 
-  const timer =
-    window.kind === 'none' || window.kind === 'unknown' ? (
+  const timer = !hasWindow(window) ? (
       <TrackedCaps {...typePresets.elapsed} color={metaInk}>
         {elapsedLabel}
       </TrackedCaps>
@@ -155,7 +155,7 @@ export function CardHead({
                 }
                 mode={onPressHandle ? 'button' : 'hoisted'}
                 onPress={onPressHandle}
-                onLayout={onHandleLayout}
+                hoistedRef={handleRef}
               />
             </View>
           ) : null}

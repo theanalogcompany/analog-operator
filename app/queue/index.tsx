@@ -251,10 +251,15 @@ export default function QueueScreen() {
       username: draft.instagramUsername,
     });
     if (result.ok) return;
+    // One toast per failure. The open-failed string says the draft is on the
+    // clipboard, which is true only when the copy succeeded; using it for a
+    // failed copy would name the one thing that did not happen.
     showToast(
       result.error.kind === 'NO_HANDLE'
         ? CARD_COPY.toast.noInstagramHandle
-        : CARD_COPY.toast.instagramOpenFailed,
+        : result.error.kind === 'COPY_FAILED'
+          ? CARD_COPY.toast.instagramCopyFailed
+          : CARD_COPY.toast.instagramOpenFailed,
     );
   };
 

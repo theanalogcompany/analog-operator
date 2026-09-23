@@ -73,15 +73,25 @@ export type ReplyWindowState =
       readonly label: string;
     };
 
-/** The states that draw a drain bar and a timer pill. */
-export type LiveWindowKind = 'plenty' | 'close' | 'urgent';
+/** A window that draws a bar and a pill: every state but `none` and `unknown`. */
+export type DrawnWindowState = Extract<ReplyWindowState, { label: string }>;
 
-export function isExpired(state: ReplyWindowState): boolean {
+/** A window that has shut. */
+export type ClosedWindowState = Extract<ReplyWindowState, { kind: 'closed' }>;
+
+/**
+ * Both of these are type GUARDS rather than plain booleans, so a surface that
+ * has asked the question cannot then read `label` or `closedForMs` off a state
+ * that has neither. That is the whole reason to call them instead of inlining
+ * `kind === 'none' || kind === 'unknown'`: the inline form narrows nothing, so
+ * every consumer ends up re-proving the same thing to the compiler.
+ */
+export function isExpired(state: ReplyWindowState): state is ClosedWindowState {
   return state.kind === 'closed';
 }
 
 /** Whether this card shows the reply-window bar and pill at all. */
-export function hasWindow(state: ReplyWindowState): boolean {
+export function hasWindow(state: ReplyWindowState): state is DrawnWindowState {
   return state.kind !== 'none' && state.kind !== 'unknown';
 }
 

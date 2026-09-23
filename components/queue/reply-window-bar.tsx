@@ -8,7 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { type ReplyWindowState } from '@/lib/reply-window';
+import { type ReplyWindowState, hasWindow } from '@/lib/reply-window';
 import { easing, replyWindow } from '@/lib/theme';
 
 type Props = {
@@ -71,7 +71,7 @@ export function ReplyWindowBar({ state }: Props) {
 
   const style = useAnimatedStyle(() => ({ width: fillWidth.value }));
 
-  if (state.kind === 'none' || state.kind === 'unknown') return null;
+  if (!hasWindow(state)) return null;
 
   return (
     <View

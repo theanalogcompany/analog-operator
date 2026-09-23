@@ -47,7 +47,16 @@ export const CARD_COPY = {
     alreadyHandled: 'That one was already handled.',
     /** The copy-and-open action could not finish. (TAC-486.) */
     noInstagramHandle: "We don't have this guest's Instagram handle yet.",
+    /**
+     * The copy worked and the open did not, so saying the draft is on the
+     * clipboard is both true and the useful half.
+     */
     instagramOpenFailed: "Couldn't open Instagram. The draft is on your clipboard.",
+    /**
+     * The COPY failed, so the clipboard sentence above would name the one thing
+     * that did not happen. Separate string rather than a shared one.
+     */
+    instagramCopyFailed: "Couldn't copy the draft. Try again.",
   },
   /** What VoiceOver announces for the swipe hints. */
   hints: {

@@ -3,7 +3,9 @@ import { type LayoutChangeEvent, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   type SharedValue,
+  measure,
   runOnJS,
+  useAnimatedRef,
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
@@ -23,7 +25,14 @@ import {
   swipeActionFor,
 } from '@/lib/queue-items';
 import { subQueuePositionFor } from '@/lib/sub-queue';
-import { card, entrance, layout, peek, swipe } from '@/lib/theme';
+import {
+  card,
+  entrance,
+  instagramIdentity,
+  layout,
+  peek,
+  swipe,
+} from '@/lib/theme';
 
 import { HeadsUpCard } from './heads-up-card';
 import { QueueCard } from './queue-card';
@@ -102,7 +111,7 @@ export function isComposerTap(tapY: number, composerTop: number): boolean {
   return composerTop >= 0 && tapY >= composerTop;
 }
 
-/** A rectangle in card-local coordinates. `width < 0` means "not measured". */
+/** A rectangle, in whatever space the caller measured it. */
 export type TapRect = {
   x: number;
   y: number;
@@ -110,36 +119,47 @@ export type TapRect = {
   height: number;
 };
 
-export const UNMEASURED_RECT: TapRect = { x: 0, y: 0, width: -1, height: -1 };
-
 /**
- * Whether a tap landed on the handle link.
+ * Whether a tap landed on the handle link, within `hitSlop` of it.
  *
  * The handle cannot be a `Pressable` on a live card for the same reason the
  * composer cannot: RN's responder system would claim the touch before
  * gesture-handler could recognise the pan, killing both (CLAUDE.md, TAC-37).
  * So the tap is hoisted into the gesture and hit-tested here.
  *
- * Unlike the composer this needs a full rectangle: the composer runs to the
- * card's bottom edge so one boundary is enough, while the handle is a short
- * run of text in the middle of the head with the timer pill beside it.
- * Hit-testing it by its top edge alone would swallow every tap on the lower
- * two thirds of the card.
+ * **Both arguments must be in the SAME coordinate space, and the caller picks
+ * page coordinates.** The first version of this compared an `onLayout` rect
+ * against the gesture's card-local `event.x/y`, and `onLayout` reports
+ * coordinates relative to the IMMEDIATE PARENT — the handle sits three levels
+ * inside the head, so its rect came back at roughly (0, 0). The real handle
+ * never matched, and a tap in the card's top-left corner, on the flag strip,
+ * opened Instagram. `isComposerTap` gets away with a card-local `y` only
+ * because the composer happens to be a direct child of the card's inner
+ * column; this is not the same treatment, and pretending it was is what hid
+ * the defect. The caller now measures on the UI thread (`measure()`, page
+ * coordinates) and passes the gesture's `absoluteX/absoluteY`.
  *
- * An unmeasured rect must never match, which is what the negative width means.
+ * Unlike the composer this needs a full rectangle: the composer runs to the
+ * card's bottom edge so one boundary is enough, while the handle is a short run
+ * of text in the middle of the head with the timer pill beside it.
+ *
+ * The slop matters. The handle is about 16pt tall, well under the 44pt Apple
+ * asks for, and the real `Pressable` on the other two surfaces gets the same
+ * slop from RN.
  */
 export function isHandleTap(
   tapX: number,
   tapY: number,
   rect: TapRect,
+  hitSlop: number,
 ): boolean {
   'worklet';
-  if (rect.width < 0 || rect.height < 0) return false;
+  if (rect.width <= 0 || rect.height <= 0) return false;
   return (
-    tapX >= rect.x &&
-    tapX <= rect.x + rect.width &&
-    tapY >= rect.y &&
-    tapY <= rect.y + rect.height
+    tapX >= rect.x - hitSlop &&
+    tapX <= rect.x + rect.width + hitSlop &&
+    tapY >= rect.y - hitSlop &&
+    tapY <= rect.y + rect.height + hitSlop
   );
 }
 
@@ -240,7 +260,7 @@ function FrontCard({
   const canCommitRight = canCommitRightFor(item, { expired });
 
   const composerTop = useSharedValue<number>(-1);
-  const handleRect = useSharedValue<TapRect>(UNMEASURED_RECT);
+  const handleRef = useAnimatedRef<View>();
 
   // Every finished swipe resolves through `swipeActionFor`, the one place that
   // decides what a gesture does to each kind of card. There is deliberately no
@@ -346,7 +366,21 @@ function FrontCard({
       // The handle is tested FIRST: it sits inside the head, which the
       // composer's single-boundary test does not cover, and a tap can only
       // mean one thing.
-      if (isHandleTap(event.x, event.y, handleRect.value)) {
+      const handle = measure(handleRef);
+      if (
+        handle !== null &&
+        isHandleTap(
+          event.absoluteX,
+          event.absoluteY,
+          {
+            x: handle.pageX,
+            y: handle.pageY,
+            width: handle.width,
+            height: handle.height,
+          },
+          instagramIdentity.handle.hitSlopPx,
+        )
+      ) {
         runOnJS(openHandle)();
         return;
       }
@@ -460,10 +494,7 @@ function FrontCard({
                   onComposerLayout={(event: LayoutChangeEvent) => {
                     composerTop.value = event.nativeEvent.layout.y;
                   }}
-                  onHandleLayout={(event: LayoutChangeEvent) => {
-                    const { x, y, width, height } = event.nativeEvent.layout;
-                    handleRect.value = { x, y, width, height };
-                  }}
+                  handleRef={handleRef}
                   subQueueSpot={subQueueSpot}
                   overlay={
                     <SwipeOverlay direction={direction} intensity={intensity} />
