@@ -258,6 +258,18 @@ export default function ConversationThreadScreen() {
   });
   const displayName = identity.name;
   const isInstagram = guest.guestChannel === 'instagram';
+
+  // "Reshare on Instagram" under a story the guest tagged the venue in, while
+  // it is still up. The same link and the same rules as the edit takeover:
+  // `MediaBubble` decides whether a story gets one, this only says whose
+  // thread it opens. Null for a guest with no handle. (TAC-585.)
+  const reshareUsername = guest.instagramUsername?.trim() || null;
+  const handleReshareStory = async (): Promise<void> => {
+    if (!reshareUsername) return;
+    const result = await openInstagramThread(reshareUsername);
+    // Nothing was copied on the way, so not the clipboard wording.
+    if (!result.ok) showToast(CARD_COPY.media.openFailed);
+  };
   const since = formatConversationsSince(
     guest.conversationCount,
     guest.firstConversationAt,
@@ -421,6 +433,9 @@ export default function ConversationThreadScreen() {
             items={items}
             surface="thread"
             onMediaUrlExpired={handleMediaUrlExpired}
+            onReshareStory={
+              reshareUsername ? () => void handleReshareStory() : undefined
+            }
           />
         )}
       </ScrollView>
