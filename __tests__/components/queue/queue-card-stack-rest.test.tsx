@@ -82,6 +82,7 @@ describe('QueueCardStack: the front card at rest', () => {
           onPressHelp={jest.fn()}
           onCopyAndOpen={jest.fn()}
           onOpenHandle={jest.fn()}
+          onReshareStory={jest.fn()}
       onBlockedExpired={jest.fn()}
         />
       </Wrapper>,

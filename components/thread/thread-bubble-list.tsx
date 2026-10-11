@@ -22,6 +22,11 @@ type Props = {
    * screens answer by refetching the thread. (TAC-583.)
    */
   onMediaUrlExpired?: (attachmentId: string) => void;
+  /**
+   * Opens the guest's Instagram thread, for the "Reshare on Instagram" link
+   * under a live story mention. Omit it and no link is drawn. (TAC-585.)
+   */
+  onReshareStory?: () => void;
 };
 
 export function ThreadBubbleList({
@@ -29,6 +34,7 @@ export function ThreadBubbleList({
   surface = 'thread',
   dividerColor = groundText.body,
   onMediaUrlExpired,
+  onReshareStory,
 }: Props) {
   return (
     <>
@@ -71,6 +77,7 @@ export function ThreadBubbleList({
               message={item.message}
               surface={surface}
               onUrlExpired={onMediaUrlExpired}
+              onReshare={onReshareStory}
             />
           );
         }

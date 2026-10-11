@@ -1,4 +1,4 @@
-import { type Attachment } from '@/lib/api/queue';
+import { type Attachment, type ThreadMessage } from '@/lib/api/queue';
 
 /**
  * What one attachment renders as. (TAC-583; shapes from TAC-582's Contract.)
@@ -103,6 +103,43 @@ export function mediaVariantFor(attachment: Attachment, nowMs: number): MediaVar
     default:
       return { type: 'unsupported' };
   }
+}
+
+/**
+ * Whether this attachment is a story the guest tagged the venue in, and the
+ * story is still up. (TAC-585.)
+ *
+ * That is the one case Instagram offers "Add to your story" for, inside the
+ * guest's DM thread. A story REPLY is the guest answering the venue's own
+ * story, so there is nothing of theirs to reshare. "Still up" is the same
+ * answer `mediaVariantFor` gives, so the reshare link and the story tile can
+ * never disagree about whether a story has expired.
+ */
+export function isLiveStoryMention(attachment: Attachment, nowMs: number): boolean {
+  return (
+    attachment.kind === 'story_mention' &&
+    mediaVariantFor(attachment, nowMs).type === 'story'
+  );
+}
+
+/**
+ * The Instagram handle a "Reshare on Instagram" link should open, or null when
+ * there should be no link: no handle to open, or no live story mention among
+ * the messages the surface is showing.
+ */
+export function reshareHandleFor(
+  instagramUsername: string | null,
+  messages: readonly ThreadMessage[],
+  nowMs: number,
+): string | null {
+  const handle = instagramUsername?.trim() ?? '';
+  if (handle.length === 0) return null;
+  const live = messages.some((message) =>
+    (message.attachments ?? []).some((attachment) =>
+      isLiveStoryMention(attachment, nowMs),
+    ),
+  );
+  return live ? handle : null;
 }
 
 /**

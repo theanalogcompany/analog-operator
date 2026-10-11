@@ -11,12 +11,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCommitmentThread } from '@/hooks/use-commitment-thread';
-import { needsThreadExcerpt } from '@/lib/card-excerpt';
+import { ReshareLink } from '@/components/ui/reshare-link';
+import { cardExcerpt, needsThreadExcerpt } from '@/lib/card-excerpt';
 import { useHaptics } from '@/hooks/use-haptics';
 import { useNow } from '@/hooks/use-now';
 import { type SwipeOutcome, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type HeadsUpCommitment, type PendingDraft } from '@/lib/api/queue';
 import { guardGesture, measureIfAttached } from '@/lib/gesture-guard';
+import { reshareHandleFor } from '@/lib/media-variant';
 import { windowState } from '@/lib/reply-window';
 import { cardRiseAt, fadeInAt } from '@/lib/entrance';
 import { useEntrance, useRidesEntranceSlot } from '@/lib/entrance-context';
@@ -184,6 +186,14 @@ type CardActions = {
    */
   onOpenHandle: (draft: PendingDraft) => void;
   /**
+   * "Reshare on Instagram", on a card showing a story the guest tagged the
+   * venue in. Opens that guest's Instagram thread and NOTHING else: it does
+   * not approve, send, skip or dismiss the card. Takes the handle rather than
+   * the draft so it can never be mistaken for a route to `onApprove`.
+   * (TAC-585.)
+   */
+  onReshareStory: (username: string) => void;
+  /**
    * A swipe was in flight when the reply window shut under it. Owes the
    * operator the one line explaining why the card stopped accepting the
    * gesture. (Ruled 2026-09-23.)
@@ -236,6 +246,7 @@ function FrontCard({
   onPressHelp,
   onCopyAndOpen,
   onOpenHandle,
+  onReshareStory,
   onBlockedExpired,
 }: FrontCardProps) {
   const haptics = useHaptics();
@@ -366,6 +377,26 @@ function FrontCard({
     wantsThread,
   );
 
+  // Whose thread a "Reshare on Instagram" link opens, or null for no link.
+  // Decided over the same excerpt the card draws, so the link appears exactly
+  // when the story it is about is one of the card's messages. A heads-up card
+  // gets none: its payload carries no Instagram handle to open. (TAC-585.)
+  const reshareUsername =
+    item.kind === 'draft'
+      ? reshareHandleFor(
+          item.draft.instagramUsername,
+          cardExcerpt(item.draft.recentContext, thread),
+          nowMs,
+        )
+      : null;
+  // Where the card left room for it, card-local. Null until the card lays out.
+  const [reshareSlot, setReshareSlot] = useState<{ y: number; height: number } | null>(
+    null,
+  );
+  const pressReshare = (): void => {
+    if (reshareUsername) onReshareStory(reshareUsername);
+  };
+
   const tap = Gesture.Tap()
     .maxDuration(300)
     .onEnd(guardGesture('tap.onEnd', (event, success) => {
@@ -481,6 +512,8 @@ function FrontCard({
                 // No GestureDetector above this card, so the handle can be a
                 // real Pressable rather than a hoisted hit-test.
                 onPressHandle={() => onOpenHandle(item.draft)}
+                // Likewise a real Pressable, inside the card.
+                onPressReshare={reshareUsername ? pressReshare : undefined}
                 subQueueSpot={subQueueSpot}
                 thread={thread}
               />
@@ -509,6 +542,14 @@ function FrontCard({
                     composerTop.value = event.nativeEvent.layout.y;
                   }}
                   handleRef={handleRef}
+                  onReshareSlotLayout={
+                    reshareUsername
+                      ? (event: LayoutChangeEvent) => {
+                          const { y, height } = event.nativeEvent.layout;
+                          setReshareSlot({ y, height });
+                        }
+                      : undefined
+                  }
                   subQueueSpot={subQueueSpot}
                   thread={thread}
                   overlay={
@@ -530,6 +571,54 @@ function FrontCard({
             </Animated.View>
           </GestureDetector>
           )}
+          {/* "Reshare on Instagram" on a LIVE card. (TAC-585.)
+
+              A SIBLING of the GestureDetector, never a descendant: the link is
+              a real `Pressable`, and a Pressable under a detector wins RN's
+              responder race and kills the pan and the tap composed with it
+              (CLAUDE.md, TAC-37). Nothing is hoisted into the gesture either,
+              so no ref is measured on the UI thread and the tap worklet is
+              untouched (the build 55 crash, PR #66).
+
+              The card leaves an empty row and reports where it is; this layer
+              sits over the card, carries the same transform so it travels with
+              a drag, and draws the link in that row. `box-none`, so every
+              touch that is not on the link falls through to the card. The link
+              is drawn HERE and nowhere else, so what the operator sees and
+              what can be pressed cannot come apart. */}
+          {!expired && reshareUsername && reshareSlot ? (
+            <Animated.View
+              testID="reshare-layer"
+              pointerEvents="box-none"
+              style={[
+                {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: cardHeight,
+                  zIndex: 4,
+                },
+                cardStyle,
+              ]}
+            >
+              <View
+                testID="reshare-layer-row"
+                pointerEvents="box-none"
+                style={{
+                  position: 'absolute',
+                  top: reshareSlot.y,
+                  left: 0,
+                  right: 0,
+                  height: reshareSlot.height,
+                  paddingHorizontal: card.regionInsetPx,
+                  justifyContent: 'center',
+                }}
+              >
+                <ReshareLink onPress={pressReshare} />
+              </View>
+            </Animated.View>
+          ) : null}
         </View>
       </View>
 
