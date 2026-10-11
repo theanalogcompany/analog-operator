@@ -21,6 +21,7 @@ const ACTIVE: ConversationSummary = {
   lastMessageAt: new Date(Date.now() - 2 * 60_000).toISOString(),
   lastMessageDirection: 'outbound',
   lastMessagePreview: 'Done — got you down for two at 7:30.',
+  previewLabel: null,
   conversationCount: 4,
   firstConversationAt: new Date(Date.now() - 90 * 24 * 60 * 60_000).toISOString(),
 };
@@ -37,6 +38,7 @@ const QUIET_NEW: ConversationSummary = {
   lastMessageAt: new Date(Date.now() - 2900 * 60_000).toISOString(),
   lastMessageDirection: 'outbound',
   lastMessagePreview: 'Dogs are very welcome on the patio.',
+  previewLabel: null,
   conversationCount: 1,
 };
 

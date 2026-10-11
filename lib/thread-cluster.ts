@@ -15,7 +15,25 @@ export type ThreadItem =
       key: string;
       message: ThreadMessage;
       position: BubblePosition;
-    };
+    }
+  /**
+   * What a message carries besides text: its attachments, and the "can't show"
+   * card when Meta flagged it unsupported. One item per MESSAGE, not per
+   * attachment, so the renderer decides how several stack. A message with both
+   * media and text yields this item and then its bubble, which is how a story
+   * reply reads: the story, then what the guest said about it. (TAC-583.)
+   */
+  | { kind: 'media'; key: string; message: ThreadMessage };
+
+/**
+ * Whether a message has anything to show besides its text.
+ *
+ * Exported because the cards ask the same question to decide whether an
+ * excerpt is worth fetching media for.
+ */
+export function hasMedia(message: ThreadMessage): boolean {
+  return (message.attachments?.length ?? 0) > 0 || message.unsupported === true;
+}
 
 /**
  * Formats an instant as its calendar day in the given IANA zone. `en-CA`
@@ -43,8 +61,9 @@ function ms(iso: string): number {
 
 /**
  * Groups a chronological message array (oldest → newest, ASC by createdAt)
- * into rendered items: a day separator at each calendar-day boundary, and
- * bubbles annotated with their position in the same-direction chain.
+ * into rendered items: a day separator at each calendar-day boundary, a media
+ * item for a message that carries attachments, and bubbles annotated with
+ * their position in the same-direction chain.
  * Sequence chains break when direction flips or when consecutive
  * same-direction messages are >60s apart.
  *
@@ -100,12 +119,21 @@ export function computeItems(
       });
       previousDay = day;
     }
-    items.push({
-      kind: 'bubble',
-      key: `b-${msg.id}`,
-      message: msg,
-      position: positions[i],
-    });
+    const media = hasMedia(msg);
+    if (media) {
+      items.push({ kind: 'media', key: `m-${msg.id}`, message: msg });
+    }
+    // A media-only message has no text, so it gets no bubble: an empty one
+    // under a photo would read as a second, blank message. An empty body with
+    // NO media still draws its bubble, exactly as before this item existed.
+    if (!media || msg.body !== '') {
+      items.push({
+        kind: 'bubble',
+        key: `b-${msg.id}`,
+        message: msg,
+        position: positions[i],
+      });
+    }
   }
   return items;
 }

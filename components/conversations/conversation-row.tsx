@@ -49,6 +49,21 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
   });
   const displayName = identity.name;
   const isInstagram = conversation.guestChannel === 'instagram';
+  /**
+   * What the second line says. Text wins when there is any. `previewLabel` is
+   * the server's name for a last message that has no text to preview ("Photo",
+   * "Voice note", ...) and is used only when the preview is empty, so a text
+   * message can never be relabelled. Shown exactly as sent: the set of labels
+   * is the server's and grows without a client release.
+   *
+   * Both empty is still the TAC-411 case below: nothing has reached this guest.
+   * A label does NOT belong to that case. It describes a real message, so the
+   * row names its speaker like any other. (TAC-583; TAC-582 Contract.)
+   */
+  const preview =
+    conversation.lastMessagePreview !== ''
+      ? conversation.lastMessagePreview
+      : (conversation.previewLabel ?? '');
 
   return (
     <Pressable
@@ -127,7 +142,7 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
           {formatConversationTime(conversation.lastMessageAt)}
         </TrackedCaps>
       </View>
-      {conversation.lastMessagePreview === '' ? (
+      {preview === '' ? (
         // No message has reached this guest, so there is no speaker to name.
         // `lastMessageDirection` here comes from an unsent draft (TAC-395
         // Contract, conversations list), so printing "Sana — " would claim
@@ -152,7 +167,7 @@ export function ConversationRow({ conversation, onPress, banded }: Props) {
             color: groundText.body,
           }}
         >
-          {`${speaker} — ${conversation.lastMessagePreview}`}
+          {`${speaker} — ${preview}`}
         </Text>
       )}
     </Pressable>

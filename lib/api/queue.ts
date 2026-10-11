@@ -84,17 +84,81 @@ export const RecentContextEntrySchema = z.object({
 });
 export type RecentContextEntry = z.infer<typeof RecentContextEntrySchema>;
 
-// Full-thread message — same shape as RecentContextEntry, distinct type so
-// callers reading "thread" don't conflate it with the queue's last-3 preview.
+/**
+ * What a guest sent that is not text. (TAC-582 Contract; TAC-583 is this
+ * client half.)
+ *
+ * `kind` says WHAT it is and decides how it renders. `mimeType` never does:
+ * an Instagram voice note arrives as `kind: "audio"` with
+ * `mimeType: "video/mp4"`, so a renderer keyed on the MIME type would put a
+ * voice note in a video player. See `lib/media-variant.ts`.
+ *
+ * Every field carries a `.catch`, because `attachments` is one array on one
+ * message in one thread: a strict field would turn a single odd attachment
+ * into a thread that fails to load. The fallbacks are chosen to fail visibly
+ * and harmlessly. An unrecognised `kind` becomes `unknown`, which renders the
+ * "can't show" card, and an unrecognised `status` becomes `failed`, which
+ * renders "Couldn't load". Neither is ever mistaken for media that loaded.
+ */
+export const ATTACHMENT_KINDS = [
+  'image',
+  'gif',
+  'video',
+  'audio',
+  'file',
+  'share',
+  'story_mention',
+  'story_reply',
+  'unknown',
+] as const;
+export const ATTACHMENT_STATUSES = [
+  'ready',
+  'pending',
+  'link_only',
+  'expired',
+  'failed',
+] as const;
+
+export const AttachmentSchema = z.object({
+  id: z.string().catch(''),
+  kind: z.enum(ATTACHMENT_KINDS).catch('unknown'),
+  status: z.enum(ATTACHMENT_STATUSES).catch('failed'),
+  // A signed URL with a one-hour life for re-hosted media, a permanent one for
+  // a Giphy GIF, Meta's own link for a live story, and null otherwise.
+  url: z.string().nullable().catch(null),
+  urlExpiresAt: z.string().nullable().catch(null),
+  mimeType: z.string().nullable().catch(null),
+  // A reel share's caption.
+  title: z.string().nullable().catch(null),
+  // Where a share links out to. Null on story kinds, whose link is `url`.
+  linkUrl: z.string().nullable().catch(null),
+});
+export type Attachment = z.infer<typeof AttachmentSchema>;
+
+// Full-thread message — same shape as RecentContextEntry plus what TAC-582
+// added, distinct type so callers reading "thread" don't conflate it with the
+// queue's last-3 preview.
 // Intentionally NOT `.strict()`: TAC-277's Out-of-Scope preserves forward-compat
 // ("Response schema can be extended later without breaking existing clients"),
 // so any future additive field (editedAt, voiceFidelity, etc.) drops silently
 // instead of failing every pre-update client on every fetch. (TAC-290.)
+//
+// `attachments` and `unsupported` are ALWAYS PRESENT on the wire (TAC-582
+// Contract), yet optional in this type, on purpose. A `ThreadMessage` is also
+// built in places that have no attachments to give: the queue's
+// `recentContext`, a live Realtime row, the conversations-list fallback bubble.
+// Absent means "this source doesn't know", which `mergeThreadMessage` in
+// `lib/thread-messages.ts` relies on so a live row can't wipe the attachments a
+// fetch delivered. A value that is present but unreadable degrades to `[]` /
+// `false` rather than failing the thread.
 export const ThreadMessageSchema = z.object({
   id: z.string().uuid(),
   direction: z.enum(['inbound', 'outbound']),
+  // May be "" when `attachments` is non-empty or `unsupported` is true.
   body: z.string(),
   createdAt: z.string(),
+  attachments: z.array(AttachmentSchema).catch([]).optional(),
+  unsupported: z.boolean().catch(false).optional(),
 });
 export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;
 
@@ -372,7 +436,10 @@ export async function getThread(
     return ok(fixtures.getThreadFixture(messageId));
   }
   const result = await authedFetch(
-    `/api/operator/messages/${encodeURIComponent(messageId)}/thread`,
+    // `?attachments=1` is what makes the server include media-only messages
+    // and their attachments at all. Without it the response is the pre-TAC-582
+    // one. (TAC-582 Contract.)
+    `/api/operator/messages/${encodeURIComponent(messageId)}/thread?attachments=1`,
     { method: 'GET' },
   );
   if (!result.ok) return result;

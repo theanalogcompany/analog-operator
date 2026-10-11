@@ -12,6 +12,11 @@ import { type ThreadMessage, getThread } from '@/lib/api/queue';
  * time rather than one per card. A failed or missing fetch renders no bubbles;
  * the commitment block still says everything the operator has to act on.
  * (TAC-364, carrying TAC-298.)
+ *
+ * Also the source for a DRAFT card raised by media, keyed on the draft's own
+ * message id: the queue payload has no attachments, so the photo that card is
+ * about exists only on this endpoint. The name is older than that use.
+ * (TAC-583; see lib/card-excerpt.ts.)
  */
 export function useCommitmentThread(
   sourceMessageId: string | null,

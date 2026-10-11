@@ -19,6 +19,7 @@ const BASE: ConversationSummary = {
   lastMessageAt: new Date(Date.now() - 2 * 60_000).toISOString(),
   lastMessageDirection: 'outbound',
   lastMessagePreview: 'Done — got you down for two at 7:30.',
+  previewLabel: null,
   conversationCount: 4,
   firstConversationAt: new Date(Date.now() - 90 * 24 * 60 * 60_000).toISOString(),
 };
@@ -52,6 +53,60 @@ describe('ConversationRow', () => {
       />,
     );
     expect(screen.getByText(/Guest —/)).toBeTruthy();
+  });
+
+  // TAC-583. `previewLabel` is the server's name for a last message with no
+  // text (TAC-582 Contract: "Photo", "Voice note", ...). It fills the preview
+  // line only when there is no text to put there.
+  describe('previewLabel', () => {
+    const MEDIA: ConversationSummary = {
+      ...BASE,
+      lastMessageDirection: 'inbound',
+      lastMessagePreview: '',
+      previewLabel: 'Voice note',
+    };
+
+    it('shows the label, with the speaker, when the last message has no text', () => {
+      render(<ConversationRow conversation={MEDIA} onPress={() => {}} banded />);
+      expect(screen.getByText('Guest — Voice note')).toBeTruthy();
+      // It is a real message, so it is NOT the nothing-has-reached-them row.
+      expect(screen.queryByTestId('conversation-row-no-preview')).toBeNull();
+    });
+
+    it('shows the label exactly as the server sent it', () => {
+      render(
+        <ConversationRow
+          conversation={{ ...MEDIA, previewLabel: "Sent something we can't show" }}
+          onPress={() => {}}
+          banded
+        />,
+      );
+      expect(screen.getByText("Guest — Sent something we can't show")).toBeTruthy();
+    });
+
+    it('never relabels a text message: the text wins', () => {
+      render(
+        <ConversationRow
+          conversation={{ ...MEDIA, lastMessagePreview: 'hi!', previewLabel: 'Photo' }}
+          onPress={() => {}}
+          banded
+        />,
+      );
+      expect(screen.getByText('Guest — hi!')).toBeTruthy();
+      expect(screen.queryByText(/Photo/)).toBeNull();
+    });
+
+    it('keeps the speakerless row when both are empty (TAC-411)', () => {
+      render(
+        <ConversationRow
+          conversation={{ ...MEDIA, previewLabel: null }}
+          onPress={() => {}}
+          banded
+        />,
+      );
+      expect(screen.getByTestId('conversation-row-no-preview')).toBeTruthy();
+      expect(screen.queryByText(/Guest —/)).toBeNull();
+    });
   });
 
   // TAC-411. An empty preview means no message has reached this guest, so

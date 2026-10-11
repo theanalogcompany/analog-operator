@@ -27,8 +27,31 @@ export interface ConversationSummary {
   lastMessageAt: string;
   lastMessageDirection: 'inbound' | 'outbound';
   lastMessagePreview: string;
+  /** TAC-582 Contract. Null unless the last message is media with no text. */
+  previewLabel: string | null;
   conversationCount: number;
   firstConversationAt: string;
+}
+
+/** Structurally mirrors `AttachmentSchema` in lib/api/queue.ts. (TAC-582.) */
+export interface FixtureAttachment {
+  id: string;
+  kind:
+    | 'image'
+    | 'gif'
+    | 'video'
+    | 'audio'
+    | 'file'
+    | 'share'
+    | 'story_mention'
+    | 'story_reply'
+    | 'unknown';
+  status: 'ready' | 'pending' | 'link_only' | 'expired' | 'failed';
+  url: string | null;
+  urlExpiresAt: string | null;
+  mimeType: string | null;
+  title: string | null;
+  linkUrl: string | null;
 }
 
 export interface ThreadMessage {
@@ -36,6 +59,8 @@ export interface ThreadMessage {
   direction: 'inbound' | 'outbound';
   body: string;
   createdAt: string;
+  attachments: FixtureAttachment[];
+  unsupported: boolean;
 }
 
 interface SeedMessage {
@@ -54,6 +79,52 @@ interface SeedMessage {
    * expressed: the preview is derived from a message body. (TAC-411.)
    */
   unsent?: true;
+  /**
+   * What the message carries besides text, without ids: `buildRecord` mints
+   * those. A message with media COUNTS even when its body is empty, which is
+   * the TAC-582 change to the Contract's condition 1. (TAC-583.)
+   */
+  media?: Omit<FixtureAttachment, 'id'>[];
+  /** Meta flagged it unsupported. Counts with an empty body, like media. */
+  unsupported?: true;
+}
+
+/**
+ * The label the server puts on a media-only last message, per kind. From
+ * TAC-582's Contract, "Values": `Photo`, `Voice note`, `GIF`, `Video`,
+ * `Shared a reel`, `Shared a post`, `File`, `Story mention`, `Attachment`,
+ * `Sent something we can't show`. The Contract lists the values and not which
+ * kind gets which, so this mapping is the fixture's own reading and is NOT a
+ * place to assert the server's behaviour from.
+ */
+function previewLabelFor(message: SeedMessage): string | null {
+  if (message.body !== '') return null;
+  if (message.unsupported) return "Sent something we can't show";
+  const first = message.media?.[0];
+  if (!first) return null;
+  switch (first.kind) {
+    case 'image':
+      return 'Photo';
+    case 'audio':
+      return 'Voice note';
+    case 'gif':
+      return 'GIF';
+    case 'video':
+      return 'Video';
+    case 'share':
+      return 'Shared a reel';
+    case 'file':
+      return 'File';
+    case 'story_mention':
+    case 'story_reply':
+      return 'Story mention';
+    default:
+      return 'Attachment';
+  }
+}
+
+function hasSeedMedia(message: SeedMessage): boolean {
+  return (message.media?.length ?? 0) > 0 || message.unsupported === true;
 }
 
 interface SeedGuest {
@@ -362,6 +433,124 @@ function seedGuests(): SeedGuest[] {
         },
       ],
     },
+    // Every kind of media in one thread (TAC-583), so fixture mode draws each
+    // variant without a backend. The shapes follow TAC-582's Contract examples.
+    // The URLs are placeholders and load nothing, except the Giphy one, which
+    // is the Contract's own example host: offline, a photo and a voice note
+    // show their "Couldn't load" state, which is itself a state worth seeing.
+    // The voice note carries the production shape that matters: `kind: audio`
+    // with `mimeType: video/mp4`.
+    {
+      guestId: 'c0abcdef-abcd-4bcd-8bcd-abcdefabcdef',
+      name: 'Noor K.',
+      phoneFallback: '',
+      guestChannel: 'instagram',
+      instagramUsername: 'noor.kitchen',
+      windowMinutesLeft: 600,
+      recognitionState: 'returning',
+      conversationCount: 2,
+      firstConversationDaysAgo: 12,
+      messages: [
+        {
+          direction: 'inbound',
+          body: '',
+          minsAgo: 64,
+          media: [
+            {
+              kind: 'share',
+              status: 'link_only',
+              url: null,
+              urlExpiresAt: null,
+              mimeType: null,
+              title: 'the amount of times we lost him was crazy 😂',
+              linkUrl: 'https://www.instagram.com/reel/DcPVXR9vbun/',
+            },
+          ],
+        },
+        {
+          direction: 'inbound',
+          body: 'is this you?',
+          minsAgo: 61,
+          media: [
+            {
+              kind: 'story_reply',
+              status: 'expired',
+              url: null,
+              urlExpiresAt: null,
+              mimeType: null,
+              title: null,
+              linkUrl: null,
+            },
+          ],
+        },
+        { direction: 'outbound', body: 'That was us on Saturday, yes.', minsAgo: 58 },
+        {
+          direction: 'inbound',
+          body: '',
+          minsAgo: 22,
+          media: [
+            {
+              kind: 'gif',
+              status: 'ready',
+              url: 'https://media3.giphy.com/media/3o7abKhOpu0NwenH3O/200.gif',
+              urlExpiresAt: null,
+              mimeType: 'image/gif',
+              title: null,
+              linkUrl: null,
+            },
+          ],
+        },
+        {
+          direction: 'inbound',
+          body: '',
+          minsAgo: 20,
+          media: [
+            {
+              kind: 'audio',
+              status: 'ready',
+              url: 'https://fixtures.invalid/guest-media/voice-note.mp4',
+              urlExpiresAt: null,
+              mimeType: 'video/mp4',
+              title: null,
+              linkUrl: null,
+            },
+          ],
+        },
+        { direction: 'inbound', body: '', minsAgo: 19, unsupported: true },
+        {
+          direction: 'inbound',
+          body: '',
+          minsAgo: 6,
+          media: [
+            {
+              kind: 'image',
+              status: 'pending',
+              url: null,
+              urlExpiresAt: null,
+              mimeType: 'image/jpeg',
+              title: null,
+              linkUrl: null,
+            },
+          ],
+        },
+        {
+          direction: 'inbound',
+          body: '',
+          minsAgo: 5,
+          media: [
+            {
+              kind: 'image',
+              status: 'ready',
+              url: 'https://fixtures.invalid/guest-media/photo.jpg',
+              urlExpiresAt: null,
+              mimeType: 'image/jpeg',
+              title: null,
+              linkUrl: null,
+            },
+          ],
+        },
+      ],
+    },
     {
       guestId: 'c0eeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
       name: 'Phoebe B.',
@@ -408,16 +597,23 @@ function buildRecord(seed: SeedGuest, now: number): ConversationRecord {
   // Both of the Contract's conditions: an empty body never counts either
   // (a reaction, or a photo-only text), which is what lets a guest have no
   // counting message at all despite having texted.
-  const counting = seed.messages.filter((m) => !m.unsent && m.body !== '');
+  //
+  // Since TAC-582 a message with media counts on an empty body too: fixture
+  // mode stands for a server called with `?attachments=1`, which is how the
+  // app always calls it. An empty body with NO media still does not count.
+  const hasContent = (m: SeedMessage): boolean => m.body !== '' || hasSeedMedia(m);
+  const counting = seed.messages.filter((m) => !m.unsent && hasContent(m));
   const messages: ThreadMessage[] = counting.map((m) => ({
     id: fixtureUuid(),
     direction: m.direction,
     body: m.body,
     createdAt: at(m),
+    attachments: (m.media ?? []).map((a) => ({ ...a, id: fixtureUuid() })),
+    unsupported: m.unsupported === true,
   }));
 
   // Newest by position: SeedGuest.messages is oldest-first by contract.
-  const nonEmpty = seed.messages.filter((m) => m.body !== '');
+  const nonEmpty = seed.messages.filter(hasContent);
   const newestCounting = counting[counting.length - 1];
   // `noUncheckedIndexedAccess` is off, so both index reads type as
   // SeedMessage and the compiler cannot see this. A seed guest with no
@@ -453,6 +649,7 @@ function buildRecord(seed: SeedGuest, now: number): ConversationRecord {
     lastMessageAt: at(describes),
     lastMessageDirection: describes.direction,
     lastMessagePreview: newestCounting ? newestCounting.body : '',
+    previewLabel: newestCounting ? previewLabelFor(newestCounting) : null,
     conversationCount: seed.conversationCount,
     firstConversationAt: new Date(
       now - seed.firstConversationDaysAgo * 24 * 60 * 60_000,
@@ -515,10 +712,13 @@ export function triggerConversationActivityFixture(guestId: string, body: string
     direction: 'inbound',
     body,
     createdAt: new Date().toISOString(),
+    attachments: [],
+    unsupported: false,
   };
   record.messages = [...record.messages, message];
   record.lastMessageAt = message.createdAt;
   record.lastMessageDirection = message.direction;
   record.lastMessagePreview = message.body;
+  record.previewLabel = null;
   emitConversationsChanged();
 }

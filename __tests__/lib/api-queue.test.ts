@@ -593,8 +593,10 @@ describe('lib/api/queue HTTP shape', () => {
     );
     const result = await getThread('11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d');
     const [url, init] = fetchMock.mock.calls[0];
+    // TAC-582 Contract, verbatim:
+    // `GET /api/operator/messages/:id/thread?attachments=1`.
     expect(String(url)).toBe(
-      'https://api.test/api/operator/messages/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/thread',
+      'https://api.test/api/operator/messages/11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d/thread?attachments=1',
     );
     expect(init.method).toBe('GET');
     expect(result.ok).toBe(true);
@@ -603,6 +605,210 @@ describe('lib/api/queue HTTP shape', () => {
       expect(result.data[0].body).toBe('hi');
       expect(result.data[1].direction).toBe('outbound');
     }
+  });
+
+  /**
+   * Attachments, against TAC-582's `## Contract`. The three JSON objects below
+   * are that section's own examples, transcribed. Its message id and attachment
+   * ids are written elided ("5b0e…", "a1…"), and so is the storage path, so
+   * those four values are filled in here; every other value is the Contract's.
+   * Expected values come from the Contract, never from the schema under test
+   * (CLAUDE.md, "Cross-repo contracts" rule #5).
+   */
+  describe('attachments, per the TAC-582 Contract', () => {
+    const MESSAGE_ID = '5b0e3c1a-7d2f-4e8b-9a6c-1f0d2e3b4c5d';
+    const DRAFT_ID = '11a4d9c1-2f3e-4a5b-8c6d-7e8f9a0b1c2d';
+
+    const CONTRACT_IMAGE_MESSAGE = {
+      id: MESSAGE_ID,
+      direction: 'inbound',
+      body: '',
+      createdAt: '2026-10-11T17:12:33.000Z',
+      unsupported: false,
+      attachments: [
+        {
+          id: 'a1',
+          kind: 'image',
+          status: 'ready',
+          url: 'https://project.supabase.co/storage/v1/object/sign/guest-media/v/g/m/a1',
+          urlExpiresAt: '2026-10-11T18:12:33.000Z',
+          mimeType: 'image/jpeg',
+          title: null,
+          linkUrl: null,
+        },
+      ],
+    };
+
+    const CONTRACT_GIF = {
+      id: 'a2',
+      kind: 'gif',
+      status: 'ready',
+      url: 'https://media3.giphy.com/media/abc/200.gif',
+      urlExpiresAt: null,
+      mimeType: 'image/gif',
+      title: null,
+      linkUrl: null,
+    };
+
+    const CONTRACT_SHARE = {
+      id: 'a3',
+      kind: 'share',
+      status: 'link_only',
+      url: null,
+      urlExpiresAt: null,
+      mimeType: null,
+      title: 'the amount of times we lost him was crazy 😂',
+      linkUrl: 'https://www.instagram.com/reel/DcPVXR9vbun/',
+    };
+
+    async function fetchThread(messages: unknown[]) {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ messages }), { status: 200 }),
+      );
+      const result = await getThread(DRAFT_ID);
+      if (!result.ok) throw new Error(`expected ok, got ${result.error.kind}`);
+      return result.data;
+    }
+
+    it('parses the image example field for field, with its empty body', async () => {
+      const [message] = await fetchThread([CONTRACT_IMAGE_MESSAGE]);
+      expect(message).toEqual(CONTRACT_IMAGE_MESSAGE);
+    });
+
+    it('parses the GIF and share examples field for field', async () => {
+      const [message] = await fetchThread([
+        { ...CONTRACT_IMAGE_MESSAGE, attachments: [CONTRACT_GIF, CONTRACT_SHARE] },
+      ]);
+      expect(message.attachments).toEqual([CONTRACT_GIF, CONTRACT_SHARE]);
+    });
+
+    // "`kind`: image | gif | video | audio | file | share | story_mention |
+    //  story_reply | unknown" and "`status`: ready | pending | link_only |
+    //  expired | failed".
+    it.each([
+      'image',
+      'gif',
+      'video',
+      'audio',
+      'file',
+      'share',
+      'story_mention',
+      'story_reply',
+      'unknown',
+    ])('accepts kind %p', async (kind) => {
+      const [message] = await fetchThread([
+        { ...CONTRACT_IMAGE_MESSAGE, attachments: [{ ...CONTRACT_GIF, kind }] },
+      ]);
+      expect(message.attachments?.[0].kind).toBe(kind);
+    });
+
+    it.each(['ready', 'pending', 'link_only', 'expired', 'failed'])(
+      'accepts status %p',
+      async (status) => {
+        const [message] = await fetchThread([
+          { ...CONTRACT_IMAGE_MESSAGE, attachments: [{ ...CONTRACT_GIF, status }] },
+        ]);
+        expect(message.attachments?.[0].status).toBe(status);
+      },
+    );
+
+    // "Story kinds (`story_mention`, `story_reply`): while live,
+    //  `status: "link_only"`, `url` = Meta's link, `urlExpiresAt` = sent time
+    //  + 24 h, `linkUrl: null`. Afterwards `status: "expired"`, `url: null`,
+    //  `urlExpiresAt: null`. ... A story reply is the guest's text plus one
+    //  `story_reply` attachment."
+    it('parses a live story reply: the guest\'s text plus one link_only attachment', async () => {
+      const live = {
+        id: 'a4',
+        kind: 'story_reply',
+        status: 'link_only',
+        url: 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1',
+        urlExpiresAt: '2026-10-12T17:12:33.000Z',
+        mimeType: null,
+        title: null,
+        linkUrl: null,
+      };
+      const [message] = await fetchThread([
+        { ...CONTRACT_IMAGE_MESSAGE, body: 'is this you?', attachments: [live] },
+      ]);
+      expect(message.body).toBe('is this you?');
+      expect(message.attachments).toEqual([live]);
+    });
+
+    it('parses an expired story: status expired, url and urlExpiresAt null', async () => {
+      const expired = {
+        id: 'a5',
+        kind: 'story_mention',
+        status: 'expired',
+        url: null,
+        urlExpiresAt: null,
+        mimeType: null,
+        title: null,
+        linkUrl: null,
+      };
+      const [message] = await fetchThread([
+        { ...CONTRACT_IMAGE_MESSAGE, attachments: [expired] },
+      ]);
+      expect(message.attachments).toEqual([expired]);
+    });
+
+    // "`unsupported: boolean` is always present on a ThreadMessage".
+    it('parses unsupported: true on a message with an empty body and no attachments', async () => {
+      const [message] = await fetchThread([
+        { ...CONTRACT_IMAGE_MESSAGE, unsupported: true, attachments: [] },
+      ]);
+      expect(message.unsupported).toBe(true);
+      expect(message.attachments).toEqual([]);
+      expect(message.body).toBe('');
+    });
+
+    // The production shape (2026-10-11): a voice note is `kind: audio` whose
+    // file is `video/mp4`. Both values must survive the parse untouched, since
+    // the renderer has to be able to tell them apart to ignore the second.
+    it('keeps a voice note as kind audio alongside its video/mp4 mimeType', async () => {
+      const [message] = await fetchThread([
+        {
+          ...CONTRACT_IMAGE_MESSAGE,
+          attachments: [{ ...CONTRACT_IMAGE_MESSAGE.attachments[0], kind: 'audio', mimeType: 'video/mp4' }],
+        },
+      ]);
+      expect(message.attachments?.[0].kind).toBe('audio');
+      expect(message.attachments?.[0].mimeType).toBe('video/mp4');
+    });
+
+    describe('what the client does when the server strays from the Contract', () => {
+      it('reads a kind it does not know as unknown, and keeps the message', async () => {
+        const [message] = await fetchThread([
+          { ...CONTRACT_IMAGE_MESSAGE, attachments: [{ ...CONTRACT_GIF, kind: 'location' }] },
+        ]);
+        expect(message.attachments?.[0].kind).toBe('unknown');
+      });
+
+      it('reads a status it does not know as failed, never as ready', async () => {
+        const [message] = await fetchThread([
+          { ...CONTRACT_IMAGE_MESSAGE, attachments: [{ ...CONTRACT_GIF, status: 'scanning' }] },
+        ]);
+        expect(message.attachments?.[0].status).toBe('failed');
+      });
+
+      it('keeps the message, without attachments, when the array cannot be read', async () => {
+        const [message] = await fetchThread([
+          { ...CONTRACT_IMAGE_MESSAGE, body: 'hi', attachments: 'nope' },
+        ]);
+        expect(message.body).toBe('hi');
+        expect(message.attachments).toEqual([]);
+      });
+
+      it('leaves both fields absent when the server sends neither', async () => {
+        // A response from before TAC-582. Absent is not the same as empty:
+        // `mergeThreadMessage` reads absent as "this source does not know".
+        const [message] = await fetchThread([
+          { id: MESSAGE_ID, direction: 'inbound', body: 'hi', createdAt: '2026-10-11T17:12:33.000Z' },
+        ]);
+        expect(message.attachments).toBeUndefined();
+        expect(message.unsupported).toBeUndefined();
+      });
+    });
   });
 
   it('getThread returns HTTP error on 404 / 500 (caller treats uniformly)', async () => {

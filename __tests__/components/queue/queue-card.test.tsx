@@ -745,3 +745,79 @@ describe('QueueCard — what the draft is answering (TAC-533)', () => {
     expect(outer.height).toBe(HEIGHT);
   });
 });
+
+/**
+ * The `thread` prop. (TAC-583.) The stack fetches it for a card raised by
+ * media and passes nothing otherwise; see `lib/card-excerpt.ts`.
+ */
+describe('QueueCard — an excerpt from the thread', () => {
+  const at = (minute: number) =>
+    new Date(Date.parse('2026-10-11T17:00:00.000Z') + minute * 60_000).toISOString();
+  const text = (id: string, minute: number, body: string) => ({
+    id,
+    direction: 'inbound' as const,
+    body,
+    createdAt: at(minute),
+  });
+  const voiceNote = {
+    id: 'voice',
+    direction: 'inbound' as const,
+    body: '',
+    createdAt: at(9),
+    unsupported: false,
+    attachments: [
+      {
+        id: 'a1',
+        // The production shape: a voice note whose file is video/mp4.
+        kind: 'audio' as const,
+        status: 'ready' as const,
+        url: 'https://project.supabase.co/storage/v1/object/sign/guest-media/a1',
+        urlExpiresAt: '2026-10-11T18:12:33.000Z',
+        mimeType: 'video/mp4',
+        title: null,
+        linkUrl: null,
+      },
+    ],
+  };
+
+  it('draws recentContext when no thread is passed, as it always has', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({ recentContext: [text('r1', 0, 'from recent context')] })}
+        height={HEIGHT}
+      />,
+    );
+    expect(screen.getByText('from recent context')).toBeTruthy();
+  });
+
+  it('draws the tail of the thread instead, once there is one', () => {
+    render(
+      <QueueCard
+        draft={makeDraft({ recentContext: [text('r1', 0, 'from recent context')] })}
+        height={HEIGHT}
+        thread={[
+          text('t1', 1, 'one'),
+          text('t2', 2, 'two'),
+          text('t3', 3, 'three'),
+          text('t4', 4, 'four'),
+        ]}
+      />,
+    );
+    expect(screen.queryByText('from recent context')).toBeNull();
+    expect(screen.queryByText('one')).toBeNull();
+    expect(screen.getByText('two')).toBeTruthy();
+    expect(screen.getByText('four')).toBeTruthy();
+  });
+
+  it('names a voice note rather than mounting a player on the card', () => {
+    render(<QueueCard draft={makeDraft()} height={HEIGHT} thread={[voiceNote]} />);
+    expect(screen.getByText(CARD_COPY.media.voiceNote)).toBeTruthy();
+    expect(screen.queryByTestId('voice-note-scrubber')).toBeNull();
+    expect(screen.queryByTestId('media-video')).toBeNull();
+  });
+
+  it('draws no empty bubble for the media-only message', () => {
+    render(<QueueCard draft={makeDraft()} height={HEIGHT} thread={[voiceNote]} />);
+    expect(screen.getAllByTestId('media-bubble')).toHaveLength(1);
+  });
+});

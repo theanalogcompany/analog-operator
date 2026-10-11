@@ -59,6 +59,9 @@ describe('card surfaces', () => {
     // The thread renders on the card and the takeover too.
     'components/thread',
     'components/ui/message-bubble.tsx',
+    // Media draws on the card, the takeover and the thread. (TAC-583.)
+    'components/ui/media-bubble.tsx',
+    'lib/media-variant.ts',
     'lib/thread-cluster.ts',
     'lib/card-copy.ts',
     'lib/heads-up.ts',

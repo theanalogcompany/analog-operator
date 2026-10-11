@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 
+import { MediaBubble } from '@/components/ui/media-bubble';
 import { MessageBubble, type BubbleSurface } from '@/components/ui/message-bubble';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type ThreadItem } from '@/lib/thread-cluster';
@@ -16,12 +17,18 @@ type Props = {
   /** Divider colour. Both surfaces sit on a ground, so this is white by
    *  default; the queue card passes its own darker value. */
   dividerColor?: string;
+  /**
+   * A media file failed to load after its signed URL ran out. Both thread
+   * screens answer by refetching the thread. (TAC-583.)
+   */
+  onMediaUrlExpired?: (attachmentId: string) => void;
 };
 
 export function ThreadBubbleList({
   items,
   surface = 'thread',
   dividerColor = groundText.body,
+  onMediaUrlExpired,
 }: Props) {
   return (
     <>
@@ -55,6 +62,16 @@ export function ThreadBubbleList({
                 label
               )}
             </View>
+          );
+        }
+        if (item.kind === 'media') {
+          return (
+            <MediaBubble
+              key={item.key}
+              message={item.message}
+              surface={surface}
+              onUrlExpired={onMediaUrlExpired}
+            />
           );
         }
         const { message, position } = item;

@@ -1298,3 +1298,214 @@ describe('EditScreen — what the draft is answering (TAC-533)', () => {
     expect(screen.queryByTestId('reply-quote')).toBeNull();
   });
 });
+
+/**
+ * Media on the edit takeover. (TAC-583.) Same claims as the Conversations
+ * thread's block, on the other screen that holds a thread: the two answer the
+ * same questions and must not answer them differently.
+ */
+describe('EditScreen — media (TAC-583)', () => {
+  const SENT = '2026-10-11T17:12:33.000Z';
+  const PHOTO_MESSAGE_ID = '5b0e3c1a-7d2f-4e8b-9a6c-1f0d2e3b4c5d';
+  const photo = (overrides: Record<string, unknown> = {}) => ({
+    id: 'a1',
+    kind: 'image' as const,
+    status: 'ready' as const,
+    url: 'https://project.supabase.co/storage/v1/object/sign/guest-media/a1',
+    urlExpiresAt: '2999-01-01T00:00:00.000Z',
+    mimeType: 'image/jpeg',
+    title: null,
+    linkUrl: null,
+    ...overrides,
+  });
+  const photoMessage = (attachment: ReturnType<typeof photo>) => ({
+    id: PHOTO_MESSAGE_ID,
+    direction: 'inbound' as const,
+    body: '',
+    createdAt: SENT,
+    unsupported: false,
+    attachments: [attachment],
+  });
+
+  // The media-only operator card, in its production shape (2026-10-11): an
+  // empty draft, no text in `recentContext`, reason `media_only_inbound`.
+  function openMediaCard() {
+    mockQueue.drafts = [
+      makeDraft({
+        draftBody: '',
+        recentContext: [],
+        reviewReasonCode: 'media_only_inbound',
+        replyingTo: { messageId: PHOTO_MESSAGE_ID, body: '' },
+      }),
+    ];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+  }
+
+  function captureRealtime() {
+    const box: { onRefetch: (() => void) | null } = { onRefetch: null };
+    (useThreadRealtime as jest.Mock).mockImplementation((opts) => {
+      box.onRefetch = opts.onRefetch;
+    });
+    return box;
+  }
+
+  it('shows the photo a media-only card is about, instead of the empty state', async () => {
+    openMediaCard();
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: [photoMessage(photo())] });
+
+    render(<EditScreen />);
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+    expect(screen.queryByText('Nothing has reached this guest yet.')).toBeNull();
+  });
+
+  it('fetches again when the channel says a media row changed: pending becomes the photo', async () => {
+    openMediaCard();
+    const realtime = captureRealtime();
+    (getThread as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: [photoMessage(photo({ status: 'pending', url: null, urlExpiresAt: null }))],
+      })
+      .mockResolvedValueOnce({ ok: true, data: [photoMessage(photo())] });
+
+    render(<EditScreen />);
+    await waitFor(() => expect(screen.getByLabelText('Loading')).toBeTruthy());
+
+    act(() => {
+      realtime.onRefetch!();
+    });
+
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+    expect(getThread).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the thread, and does not fall to the error state, when a refetch fails', async () => {
+    openMediaCard();
+    const realtime = captureRealtime();
+    (getThread as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, data: [photoMessage(photo())] })
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { kind: 'HTTP', status: 500, message: 'mocked' },
+      });
+
+    render(<EditScreen />);
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+
+    await act(async () => {
+      realtime.onRefetch!();
+    });
+
+    await waitFor(() => expect(getThread).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('media-image')).toBeTruthy();
+  });
+
+  it('refetches once for a photo whose url ran out, however often it fails', async () => {
+    openMediaCard();
+    const STALE = '2020-01-01T00:00:00.000Z';
+    (getThread as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: [photoMessage(photo({ url: 'https://project.supabase.co/first', urlExpiresAt: STALE }))],
+      })
+      .mockResolvedValue({
+        ok: true,
+        data: [photoMessage(photo({ url: 'https://project.supabase.co/second', urlExpiresAt: STALE }))],
+      });
+
+    render(<EditScreen />);
+    await waitFor(() =>
+      expect(screen.getByTestId('media-image').props.source.uri).toBe(
+        'https://project.supabase.co/first',
+      ),
+    );
+
+    fireEvent(screen.getByTestId('media-image'), 'error', {});
+    await waitFor(() =>
+      expect(screen.getByTestId('media-image').props.source.uri).toBe(
+        'https://project.supabase.co/second',
+      ),
+    );
+    expect(getThread).toHaveBeenCalledTimes(2);
+
+    fireEvent(screen.getByTestId('media-image'), 'error', {});
+    await waitFor(() => expect(screen.getByText("Couldn't load")).toBeTruthy());
+    expect(getThread).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * The takeover's empty-state claim, on a fetch failure. For an ordinary card
+   * an empty `recentContext` is the server saying nothing has reached the
+   * guest. For a card raised by media it is not: the queue leaves a message
+   * with no text out of `recentContext`, and the thread, which would have shown
+   * the photo, is the fetch that just failed.
+   */
+  it('does not claim nothing reached the guest when the fetch fails on a media card', async () => {
+    openMediaCard();
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: false,
+      error: { kind: 'HTTP', status: 500, message: 'mocked' },
+    });
+
+    await renderAndDrain();
+    await act(async () => {});
+
+    expect(screen.queryByText('Nothing has reached this guest yet.')).toBeNull();
+  });
+
+  it('is the control: an ordinary card with an empty seed still makes the claim on a failed fetch', async () => {
+    mockQueue.drafts = [makeDraft({ recentContext: [] })];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: false,
+      error: { kind: 'HTTP', status: 500, message: 'mocked' },
+    });
+
+    await renderAndDrain();
+
+    await waitFor(() =>
+      expect(screen.getByText('Nothing has reached this guest yet.')).toBeTruthy(),
+    );
+  });
+
+  it('lets a photo ask again after the refetch it asked for failed', async () => {
+    openMediaCard();
+    const realtime = captureRealtime();
+    const STALE = '2020-01-01T00:00:00.000Z';
+    const stale = (url: string) => ({
+      ok: true,
+      data: [photoMessage(photo({ url, urlExpiresAt: STALE }))],
+    });
+    (getThread as jest.Mock)
+      .mockResolvedValueOnce(stale('https://project.supabase.co/first'))
+      // The refetch the photo asks for fails...
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { kind: 'NETWORK', message: 'mocked' },
+      })
+      // ...a later live refetch brings a new url, still stale...
+      .mockResolvedValueOnce(stale('https://project.supabase.co/second'))
+      .mockResolvedValue(stale('https://project.supabase.co/third'));
+
+    render(<EditScreen />);
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+
+    fireEvent(screen.getByTestId('media-image'), 'error', {});
+    await waitFor(() => expect(getThread).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      realtime.onRefetch!();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('media-image').props.source.uri).toBe(
+        'https://project.supabase.co/second',
+      ),
+    );
+    expect(getThread).toHaveBeenCalledTimes(3);
+
+    // ...and when that one fails too, the photo may ask again: its first ask
+    // was never answered.
+    fireEvent(screen.getByTestId('media-image'), 'error', {});
+    await waitFor(() => expect(getThread).toHaveBeenCalledTimes(4));
+  });
+});

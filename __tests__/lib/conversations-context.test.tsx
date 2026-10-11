@@ -75,6 +75,7 @@ function makeConversation(
     lastMessageAt: new Date(Date.now() - minsAgo * 60_000).toISOString(),
     lastMessageDirection: 'outbound',
     lastMessagePreview: 'hi',
+    previewLabel: null,
     conversationCount: 1,
     firstConversationAt: new Date(Date.now() - 86_400_000).toISOString(),
   };

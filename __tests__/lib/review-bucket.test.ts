@@ -90,6 +90,23 @@ const SPEC_TABLE: ReadonlyArray<readonly [string, string]> = [
   ['operator_decline_initiated', 'midThread'],
 ];
 
+/**
+ * Jaipal's ruling of 2026-10-11 (TAC-583), transcribed: "add
+ * `media_only_inbound`, `unsupported_inbound` and `media_context` to the app's
+ * reason-code table", in the "Outside the draft" bucket.
+ */
+describe('the media reason codes (ruled 2026-10-11)', () => {
+  it.each(['media_only_inbound', 'unsupported_inbound', 'media_context'])(
+    'puts %s outside the draft, with that strip label and not "Needs review"',
+    (code) => {
+      expect(bucketForDraft(draftWith({ reviewReasonCode: code }))).toBe('outsideDraft');
+      expect(stripLabelForDraft(draftWith({ reviewReasonCode: code }))).toBe(
+        'Outside the draft',
+      );
+    },
+  );
+});
+
 describe('bucketForDraft — the spec table', () => {
   it.each(SPEC_TABLE)('puts %s in %s', (code, bucket) => {
     expect(bucketForDraft(draftWith({ reviewReasonCode: code }))).toBe(bucket);
@@ -486,10 +503,14 @@ describe('every server reason code is mapped', () => {
    * The number is the point: if `REVIEW_REASON_LABELS` grows and nobody
    * transcribes it, this is the line that should look stale.
    */
-  it('accounts for all 26 codes the server had when it was transcribed', () => {
+  //
+  // 29 since 2026-10-11: the 26 transcribed that day, plus the three media
+  // codes Jaipal ruled on for TAC-583 (`media_only_inbound`,
+  // `unsupported_inbound`, `media_context`).
+  it('accounts for the 26 codes the server had when it was transcribed, and the 3 ruled since', () => {
     expect(
       SERVER_REASON_CODES.length + UNRULED_SERVER_REASON_CODES.length,
-    ).toBe(26);
+    ).toBe(29);
   });
 
   /**

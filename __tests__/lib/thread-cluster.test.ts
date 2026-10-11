@@ -328,3 +328,113 @@ describe('the day separator label', () => {
     }
   });
 });
+
+/**
+ * Media items. (TAC-583.) A message with attachments, or one Meta flagged
+ * unsupported, yields a `media` item; its text, when it has any, still yields
+ * a bubble after it.
+ */
+describe('computeItems — media', () => {
+  const PHOTO = {
+    id: 'a1',
+    kind: 'image' as const,
+    status: 'ready' as const,
+    url: 'https://project.supabase.co/storage/v1/object/sign/guest-media/a1',
+    urlExpiresAt: '2026-10-11T18:12:33.000Z',
+    mimeType: 'image/jpeg',
+    title: null,
+    linkUrl: null,
+  };
+  const ISO = '2026-09-14T01:00:00Z';
+
+  const kinds = (items: ThreadItem[]): string[] => items.map((item) => item.kind);
+
+  it('gives a media-only message a media item and NO bubble', () => {
+    const items = computeItems(
+      [{ ...msg({ id: 'p', direction: 'inbound', body: '', iso: ISO }), attachments: [PHOTO] }],
+      UTC,
+      NOW,
+    );
+    // An empty bubble under a photo would read as a second, blank message.
+    expect(kinds(items)).toEqual(['timestamp', 'media']);
+    expect(items[1]).toMatchObject({ kind: 'media', key: 'm-p' });
+  });
+
+  it('gives a message with media AND text the media first, then its bubble', () => {
+    // A story reply: "the guest's text plus one `story_reply` attachment".
+    const items = computeItems(
+      [
+        {
+          ...msg({ id: 's', direction: 'inbound', body: 'is this you?', iso: ISO }),
+          attachments: [{ ...PHOTO, kind: 'story_reply' as const, status: 'link_only' as const }],
+        },
+      ],
+      UTC,
+      NOW,
+    );
+    expect(kinds(items)).toEqual(['timestamp', 'media', 'bubble']);
+    expect(items[1]).toMatchObject({ key: 'm-s' });
+    expect(items[2]).toMatchObject({ key: 'b-s' });
+  });
+
+  it('gives an unsupported message a media item even with no attachments', () => {
+    const items = computeItems(
+      [
+        {
+          ...msg({ id: 'u', direction: 'inbound', body: '', iso: ISO }),
+          attachments: [],
+          unsupported: true,
+        },
+      ],
+      UTC,
+      NOW,
+    );
+    expect(kinds(items)).toEqual(['timestamp', 'media']);
+  });
+
+  it('leaves a text message exactly as it was: one bubble, no media item', () => {
+    const plain = computeItems(
+      [msg({ id: 't', direction: 'inbound', body: 'hi', iso: ISO })],
+      UTC,
+      NOW,
+    );
+    const withEmptyFields = computeItems(
+      [
+        {
+          ...msg({ id: 't', direction: 'inbound', body: 'hi', iso: ISO }),
+          attachments: [],
+          unsupported: false,
+        },
+      ],
+      UTC,
+      NOW,
+    );
+    expect(kinds(plain)).toEqual(['timestamp', 'bubble']);
+    expect(kinds(withEmptyFields)).toEqual(['timestamp', 'bubble']);
+  });
+
+  it('still draws the bubble of an empty body that has no media', () => {
+    // The pre-existing behaviour for an empty-bodied entry, unchanged.
+    const items = computeItems(
+      [msg({ id: 'e', direction: 'inbound', body: '', iso: ISO })],
+      UTC,
+      NOW,
+    );
+    expect(kinds(items)).toEqual(['timestamp', 'bubble']);
+  });
+
+  it('opens a new day above a media-only message like any other', () => {
+    const items = computeItems(
+      [
+        msg({ id: 'a', direction: 'inbound', body: 'hi', iso: '2026-09-12T10:00:00Z' }),
+        {
+          ...msg({ id: 'p', direction: 'inbound', body: '', iso: '2026-09-13T10:00:00Z' }),
+          attachments: [PHOTO],
+        },
+      ],
+      UTC,
+      NOW,
+    );
+    expect(kinds(items)).toEqual(['timestamp', 'bubble', 'timestamp', 'media']);
+  });
+});

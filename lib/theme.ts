@@ -335,6 +335,40 @@ export const thread = {
   nearBottomPx: 120,
 } as const;
 
+/**
+ * Media a guest sent, drawn in a thread or on a card. (TAC-583.)
+ *
+ * A tile's width is fixed and its height follows the media's own shape, inside
+ * `minAspect`..`maxAspect`, so a panorama can't become a sliver and a tall
+ * screenshot can't push the whole thread off screen. The shape is only known
+ * once the file loads, so every tile starts at `defaultAspect`.
+ *
+ * `compact` is the queue card and the heads-up card. Those are fixed-height
+ * with a clipped conversation region, so their tiles are small on purpose: the
+ * media is there to be recognised, and the takeover is where it is looked at.
+ */
+export const media = {
+  tileWidthPx: 220,
+  compactTileWidthPx: 132,
+  /** Stickers and GIFs: smaller than a photo, and never cropped. */
+  stickerSizePx: 150,
+  compactStickerSizePx: 96,
+  defaultAspect: 1,
+  /** width / height. 0.72 is a little taller than 4:5; 1.9 is just past 16:9. */
+  minAspect: 0.72,
+  maxAspect: 1.9,
+  radiusPx: 18,
+  audio: {
+    widthPx: 220,
+    trackHeightPx: 3,
+    thumbSizePx: 11,
+    /** The touch target around the 3px track. */
+    scrubHeightPx: 30,
+    /** How far one VoiceOver swipe moves the position. */
+    accessibilityStepSec: 5,
+  },
+} as const;
+
 // Conversations tab: the window (in minutes since last message) inside
 // which a conversation counts as "active" — drives the pulsing-dot render
 // and the Active filter pill. Mirrors the imported design's default.

@@ -94,6 +94,23 @@ const BUCKET_BY_CODE: Readonly<Record<string, DraftBucket>> = {
   closed_venue_arrival_emitted: 'outsideDraft',
   closed_venue_arrival_backstop: 'outsideDraft',
   /**
+   * Ruled 2026-10-11 (TAC-583). The guest sent something the agent cannot
+   * read, so there is no draft to judge and the reply is the operator's to
+   * write, which is what this bucket means. The server's sentence for each,
+   * recorded here and NOT rendered from here (the card shows `reviewReason`,
+   * the server's own text):
+   *
+   *   media_only_inbound   "Sent an attachment"
+   *   unsupported_inbound  "Sent something we can't show"
+   *   media_context        "Replied after an attachment"
+   *
+   * `media_only_inbound` is checked against production. The other two had not
+   * occurred there on that date.
+   */
+  media_only_inbound: 'outsideDraft',
+  unsupported_inbound: 'outsideDraft',
+  media_context: 'outsideDraft',
+  /**
    * Ruled 2026-09-23, on the same reasoning as `prose_cancellation_backstop`:
    * the reply points at a promise that does not exist. Approving it changes
    * nothing, so it is a claim to fix rather than an obligation to weigh.
@@ -121,7 +138,7 @@ export const FALLBACK_BUCKET: DraftBucket = 'midThread';
  * Transcribed from `analog-guest`'s `REVIEW_REASON_LABELS`
  * (`lib/operator/queue.ts`) on its merged `main`, 2026-09-23. Together with
  * `UNRULED_SERVER_REASON_CODES` below this accounts for all 26 codes that
- * enum holds on that date.
+ * enum holds on that date, plus the three media codes ruled on 2026-10-11.
  *
  * A HAND-KEPT MIRROR, like `BUCKET_BY_CODE` itself. It catches a code we know
  * about and forgot to map. It CANNOT catch a code the server adds later:
@@ -151,6 +168,11 @@ export const SERVER_REASON_CODES: readonly string[] = [
   'closed_venue_arrival_emitted',
   'closed_venue_arrival_backstop',
   'unresolved_cancellation_id',
+  // Added 2026-10-11 on Jaipal's ruling (TAC-583), not from a fresh
+  // transcription of the server's enum.
+  'media_only_inbound',
+  'unsupported_inbound',
+  'media_context',
   'model_flagged',
   'self_talk_detected',
   'fidelity_below_auto_send_floor',

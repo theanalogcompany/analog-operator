@@ -109,6 +109,42 @@ export const CARD_COPY = {
     /** The channel glyph's accessibility label. */
     instagram: 'Instagram',
   },
+  /**
+   * Media a guest sent. (TAC-583.)
+   *
+   * The first four are the wording approved on the plan, 2026-10-11:
+   * `unsupported`, `expired`, `couldntLoad` and `openInInstagram`.
+   */
+  media: {
+    /** A message Meta flags unsupported, or a kind this app has no way to draw. */
+    unsupported: "Sent something we can't show.",
+    /** A story after its 24 hours. */
+    expired: 'Expired',
+    couldntLoad: "Couldn't load",
+    /** The link out on a reel or post share. */
+    openInInstagram: 'Open in Instagram',
+    /** The link out did not open. Nothing was copied, so it says only that. */
+    openFailed: "Couldn't open Instagram.",
+    /**
+     * A voice note or a video on a CARD, where nothing can be played: a card's
+     * touches belong to the swipe. The server's own words for them, from the
+     * conversations list's `previewLabel` values (TAC-582 Contract), so a card
+     * and a row name the same thing the same way.
+     */
+    voiceNote: 'Voice note',
+    video: 'Video',
+    /** What VoiceOver announces. None of these is drawn. */
+    spoken: {
+      loading: 'Loading',
+      photo: 'Photo',
+      gif: 'GIF',
+      story: 'Story',
+      playVoiceNote: 'Play voice note',
+      pauseVoiceNote: 'Pause voice note',
+      voiceNotePosition: 'Voice note position',
+      closePhoto: 'Close photo',
+    },
+  },
   /** A guest with no name, no handle and no phone. (TAC-486.) */
   guestFallback: {
     /**
