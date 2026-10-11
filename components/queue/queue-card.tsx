@@ -1,11 +1,13 @@
 import { type ComponentRef, type ReactNode, type Ref } from 'react';
 import { type LayoutChangeEvent, Text, View } from 'react-native';
 
+import { MediaBubble } from '@/components/ui/media-bubble';
 import { MessageBubble } from '@/components/ui/message-bubble';
 import { SendGlyph } from '@/components/ui/send-glyph';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { useNow } from '@/hooks/use-now';
-import { type PendingDraft } from '@/lib/api/queue';
+import { type PendingDraft, type ThreadMessage } from '@/lib/api/queue';
+import { cardExcerpt } from '@/lib/card-excerpt';
 import { CARD_COPY } from '@/lib/card-copy';
 import { EXPIRED_STRIP_COLOR } from '@/lib/grounds';
 import { type GuestIdentity, guestFirstName, guestIdentity } from '@/lib/guest-identity';
@@ -76,6 +78,13 @@ type Props = {
    * their only one. Derived from the deck by `lib/sub-queue.ts`.
    */
   subQueueSpot?: SubQueuePosition | null;
+  /**
+   * The guest's thread, for a card raised by media: `recentContext` carries
+   * text only, so it cannot show the photo this card is about. Fetched by the
+   * stack for the front card alone, and empty for every other card, where the
+   * excerpt is `recentContext` as before. See `lib/card-excerpt.ts`. (TAC-583.)
+   */
+  thread?: readonly ThreadMessage[];
   /** Resolved by `resolveCardLayout` — fixed, so every card in the deck is
    *  the same size regardless of how many messages it holds. */
   height: number;
@@ -119,6 +128,7 @@ export function QueueCard({
   handleRef,
   onPressHandle,
   subQueueSpot = null,
+  thread = [],
   overlay,
 }: Props) {
   const bucket = bucketForDraft(draft);
@@ -162,7 +172,10 @@ export function QueueCard({
   // an excerpt that crosses midnight labels both days instead of filing this
   // morning's message under yesterday. Bubble positions come back unused: the
   // card doesn't chain its bubbles. (TAC-408.)
-  const items = computeItems(draft.recentContext, deviceTimezone());
+  const items = computeItems(
+    cardExcerpt(draft.recentContext, thread),
+    deviceTimezone(),
+  );
   const reasoning = draft.agentReasoning?.trim();
 
   return (
@@ -355,6 +368,16 @@ export function QueueCard({
                 {item.label}
               </TrackedCaps>
             </View>
+          ) : item.kind === 'media' ? (
+            // Shown, never played: a card's touches belong to the swipe, so
+            // nothing on it may be pressable. The takeover plays it. (TAC-583.)
+            <MediaBubble
+              key={item.key}
+              message={item.message}
+              surface={expired ? 'expiredCard' : 'card'}
+              interactive={false}
+              compact
+            />
           ) : (
             <MessageBubble
               key={item.key}

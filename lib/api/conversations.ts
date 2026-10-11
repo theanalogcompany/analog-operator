@@ -39,6 +39,13 @@ export const ConversationSummarySchema = z.object({
   lastMessageAt: z.string(),
   lastMessageDirection: z.enum(['inbound', 'outbound']),
   lastMessagePreview: z.string(),
+  // TAC-582 Contract: a flat field beside `lastMessagePreview`, always present,
+  // and `null` unless the last message has an empty body with attachments or
+  // is unsupported. One of a fixed set of server strings ("Photo", "Voice
+  // note", ...), shown as-is, so a label the server adds later needs no client
+  // release. `.catch(null)` also absorbs the field being absent, so a list from
+  // a server that predates it still parses.
+  previewLabel: z.string().nullable().catch(null),
   conversationCount: z.number(),
   firstConversationAt: z.string(),
 });
@@ -64,7 +71,9 @@ export async function listConversations(): Promise<Result<ConversationSummary[]>
   if (isFixtureMode()) {
     return ok(fixtures.listConversationsFixture());
   }
-  const result = await authedFetch('/api/operator/conversations', { method: 'GET' });
+  const result = await authedFetch('/api/operator/conversations?attachments=1', {
+    method: 'GET',
+  });
   if (!result.ok) return result;
   if (!result.data.ok) return err<ApiError>(await parseHttpError(result.data));
   let json: unknown;
@@ -83,7 +92,7 @@ export async function getGuestThread(guestId: string): Promise<Result<ThreadMess
     return ok(fixtures.getGuestThreadFixture(guestId));
   }
   const result = await authedFetch(
-    `/api/operator/guests/${encodeURIComponent(guestId)}/thread`,
+    `/api/operator/guests/${encodeURIComponent(guestId)}/thread?attachments=1`,
     { method: 'GET' },
   );
   if (!result.ok) return result;

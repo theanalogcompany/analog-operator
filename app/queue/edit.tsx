@@ -27,8 +27,10 @@ import { SendGlyph } from '@/components/ui/send-glyph';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { clearUndoState, setUndoState } from '@/hooks/use-undo-state';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
+import { useThreadRefetch } from '@/hooks/use-thread-refetch';
 import { type ThreadMessage, editAndSend, getThread, skipDraft } from '@/lib/api/queue';
 import { windowState } from '@/lib/reply-window';
+import { needsThreadExcerpt } from '@/lib/card-excerpt';
 import { CARD_COPY } from '@/lib/card-copy';
 import { clearDeclineHandoff, peekDeclineHandoff } from '@/lib/decline-handoff';
 import { useQueueContext } from '@/lib/queue-context';
@@ -46,6 +48,12 @@ import {
   typePresets,
 } from '@/lib/theme';
 import { computeItems } from '@/lib/thread-cluster';
+import {
+  mergeThreadMessage,
+  reconcileFetchedThread,
+  reconcileRefetchedThread,
+  removeThreadMessage,
+} from '@/lib/thread-messages';
 
 /**
  * The takeover pads its own top. It opens as a `transparentModal`, where the
@@ -60,54 +68,6 @@ type ThreadState =
   | { kind: 'loading'; messages: ThreadMessage[] }
   | { kind: 'ready'; messages: ThreadMessage[] }
   | { kind: 'error'; messages: ThreadMessage[] };
-
-// Replace-by-id for any message already in the list, otherwise insert at the
-// correct chronological position. Used both for Realtime INSERTs (where the
-// echo of an optimistic outbound dedupes against itself) and UPDATEs (where
-// a row mutates after being seen).
-function mergeMessage(
-  current: ThreadMessage[],
-  next: ThreadMessage,
-): ThreadMessage[] {
-  const existingIdx = current.findIndex((m) => m.id === next.id);
-  if (existingIdx >= 0) {
-    const out = current.slice();
-    out[existingIdx] = next;
-    return out;
-  }
-  const nextMs = Date.parse(next.createdAt);
-  for (let i = current.length - 1; i >= 0; i--) {
-    if (Date.parse(current[i].createdAt) <= nextMs) {
-      return [...current.slice(0, i + 1), next, ...current.slice(i + 1)];
-    }
-  }
-  return [next, ...current];
-}
-
-// Drop a message that stopped counting. The channel decides — see
-// `countsAsThreadRow` in lib/realtime/thread-channel.ts — and this only
-// applies the verdict, so a row the operator is looking at leaves without
-// the screen being reopened. Returns `current` untouched when the id isn't
-// present, so React skips the re-render. (TAC-411.)
-function removeMessage(current: ThreadMessage[], id: string): ThreadMessage[] {
-  const idx = current.findIndex((m) => m.id === id);
-  if (idx < 0) return current;
-  return [...current.slice(0, idx), ...current.slice(idx + 1)];
-}
-
-// When the fetched thread arrives, merge any Realtime messages that landed
-// during the fetch window so we don't drop a live arrival. Server response
-// is authoritative; we add only ids not already present.
-function reconcileFetchedThread(
-  fetched: ThreadMessage[],
-  liveDuringLoad: ThreadMessage[],
-): ThreadMessage[] {
-  if (liveDuringLoad.length === 0) return fetched;
-  const fetchedIds = new Set(fetched.map((m) => m.id));
-  const survivors = liveDuringLoad.filter((m) => !fetchedIds.has(m.id));
-  if (survivors.length === 0) return fetched;
-  return survivors.reduce<ThreadMessage[]>((acc, m) => mergeMessage(acc, m), fetched);
-}
 
 export default function EditScreen() {
   const router = useRouter();
@@ -181,37 +141,68 @@ export default function EditScreen() {
   );
 
   const messageId = draft?.messageId;
+  // When to fetch the thread again: a live row with media arrived or changed,
+  // or a media file's signed URL ran out. See the hook. (TAC-583.)
+  const {
+    tick: refetchTick,
+    refetch: handleRefetch,
+    onMediaUrlExpired: handleMediaUrlExpired,
+    onFetched,
+    onFetchFailed,
+  } = useThreadRefetch();
+  // The message id whose thread has loaded at least once. A fetch after that
+  // is a REFETCH, which reconciles differently and fails differently.
+  const loadedForRef = useRef<string | null>(null);
   useEffect(() => {
     if (!messageId) return;
     let cancelled = false;
     void (async () => {
       const result = await getThread(messageId);
       if (cancelled) return;
+      const isRefetch = loadedForRef.current === messageId;
       if (result.ok) {
+        loadedForRef.current = messageId;
+        onFetched(result.data);
+        // A photo arriving live reaches the screen through this refetch, not
+        // through `handleInsert`, so it needs the same near-bottom scroll or
+        // it lands below the fold while a text would have scrolled into view.
+        if (isRefetch && isNearBottomRef.current) {
+          requestAnimationFrame(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+          });
+        }
         // Reconcile against any Realtime messages that landed during the
         // fetch window — the server response is authoritative for messages
         // it includes, but we don't want to drop a live arrival that beat
         // the response back. Anything `prev.messages` carries beyond
-        // `recentContext` came from `handleInsert`/`handleUpdate`.
+        // `recentContext` came from `handleInsert`/`handleUpdate`. A refetch
+        // has its own rule: see `reconcileRefetchedThread`.
         setThreadState((prev) => ({
           kind: 'ready',
-          messages: reconcileFetchedThread(result.data, prev.messages),
+          messages: isRefetch
+            ? reconcileRefetchedThread(result.data, prev.messages)
+            : reconcileFetchedThread(result.data, prev.messages),
         }));
-      } else {
+      } else if (!isRefetch) {
         // Fall back to recentContext (already in initialMessages) per ticket
         // spec — uniform 401/404/500 handling, don't break the screen.
         setThreadState((prev) => ({ kind: 'error', messages: prev.messages }));
+      } else {
+        // A failed REFETCH changes nothing on screen: the thread already there
+        // is better than an error state, and the next live event tries again.
+        onFetchFailed();
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [messageId]);
+  }, [messageId, refetchTick, onFetched, onFetchFailed]);
+
 
   const handleInsert = useCallback((message: ThreadMessage) => {
     setThreadState((prev) => ({
       kind: prev.kind,
-      messages: mergeMessage(prev.messages, message),
+      messages: mergeThreadMessage(prev.messages, message),
     }));
     // Auto-scroll only if the operator is currently near the bottom — don't
     // yank them mid-read (per ticket UAT step 5).
@@ -225,14 +216,14 @@ export default function EditScreen() {
   const handleUpdate = useCallback((message: ThreadMessage) => {
     setThreadState((prev) => ({
       kind: prev.kind,
-      messages: mergeMessage(prev.messages, message),
+      messages: mergeThreadMessage(prev.messages, message),
     }));
   }, []);
 
   const handleRemove = useCallback((id: string) => {
     setThreadState((prev) => ({
       kind: prev.kind,
-      messages: removeMessage(prev.messages, id),
+      messages: removeThreadMessage(prev.messages, id),
     }));
   }, []);
 
@@ -246,6 +237,7 @@ export default function EditScreen() {
     onInsert: handleInsert,
     onUpdate: handleUpdate,
     onRemove: handleRemove,
+    onRefetch: handleRefetch,
   });
 
   const handleScroll = useCallback(
@@ -299,11 +291,20 @@ export default function EditScreen() {
   // reached them, above an apology addressed to them, is the same false
   // statement this copy was chosen to avoid. So on error we only claim when
   // the seed came from the server. (TAC-411; see lib/decline-handoff.ts.)
+  //
+  // A card raised by MEDIA needs the same guard, for a different reason. Its
+  // seed did come from the server, but the queue and the thread endpoint no
+  // longer answer the same question: the queue's `recentContext` still leaves
+  // out a message with no text, and since TAC-582 the thread returns it. So an
+  // empty seed on such a card says only that the guest sent no words, and
+  // claiming nothing reached them, above a reply to their photo, would be
+  // false. (TAC-583.)
   const seedIsFabricated = draft !== null && draft === handoff;
+  const seedOmitsMedia = draft !== null && draft !== undefined && needsThreadExcerpt(draft);
   const showEmptyThread =
     threadState.kind !== 'loading' &&
     threadState.messages.length === 0 &&
-    !(threadState.kind === 'error' && seedIsFabricated);
+    !(threadState.kind === 'error' && (seedIsFabricated || seedOmitsMedia));
 
   if (!draft) {
     return (
@@ -557,7 +558,11 @@ export default function EditScreen() {
               {showEmptyThread ? (
                 <EmptyState variant="thread" backed />
               ) : (
-                <ThreadBubbleList items={items} surface="card" />
+                <ThreadBubbleList
+                  items={items}
+                  surface="card"
+                  onMediaUrlExpired={handleMediaUrlExpired}
+                />
               )}
             </ScrollView>
           </View>

@@ -11,6 +11,8 @@ export type UseThreadRealtimeOptions = {
   onUpdate: (message: ThreadMessage) => void;
   /** A live row that no longer counts leaves the thread by id. (TAC-411.) */
   onRemove: (id: string) => void;
+  /** A row with media arrived or changed; fetch the thread again. (TAC-583.) */
+  onRefetch: () => void;
 };
 
 /**
@@ -23,7 +25,7 @@ export type UseThreadRealtimeOptions = {
 export function useThreadRealtime(opts: UseThreadRealtimeOptions): void {
   const session = useSession();
   const accessToken = session.session?.access_token ?? null;
-  const { venueId, guestId, onInsert, onUpdate, onRemove } = opts;
+  const { venueId, guestId, onInsert, onUpdate, onRemove, onRefetch } = opts;
 
   useEffect(() => {
     // Empty venueId/guestId means the host screen rendered without a draft
@@ -43,10 +45,11 @@ export function useThreadRealtime(opts: UseThreadRealtimeOptions): void {
       onInsert,
       onUpdate,
       onRemove,
+      onRefetch,
     });
 
     return () => {
       channel.unsubscribe();
     };
-  }, [accessToken, venueId, guestId, onInsert, onUpdate, onRemove]);
+  }, [accessToken, venueId, guestId, onInsert, onUpdate, onRemove, onRefetch]);
 }

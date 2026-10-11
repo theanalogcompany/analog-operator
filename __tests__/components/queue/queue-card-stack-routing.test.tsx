@@ -261,6 +261,91 @@ describe('a swipe on a draft card routes as it always has', () => {
   });
 });
 
+/**
+ * The media-only operator card. (TAC-583: "The media-only operator card shows
+ * the media.")
+ *
+ * `recentContext` carries text only, so the photo such a card is about exists
+ * only on the thread endpoint, and the front card fetches it. The draft here
+ * is the production shape (2026-10-11): reason `media_only_inbound`, an empty
+ * draft, and a `replyingTo` whose body is empty.
+ */
+describe('a draft card raised by media', () => {
+  const PHOTO_MESSAGE_ID = '5b0e3c1a-7d2f-4e8b-9a6c-1f0d2e3b4c5d';
+  const mediaDraft = () =>
+    makeDraft({
+      draftBody: '',
+      recentContext: [],
+      reviewReasonCode: 'media_only_inbound',
+      replyingTo: { messageId: PHOTO_MESSAGE_ID, body: '' },
+    });
+  const photoThread = () => ({
+    ok: true as const,
+    data: [
+      {
+        id: PHOTO_MESSAGE_ID,
+        direction: 'inbound' as const,
+        body: '',
+        createdAt: '2026-10-11T17:12:33.000Z',
+        unsupported: false,
+        attachments: [
+          {
+            id: 'a1',
+            kind: 'image' as const,
+            status: 'ready' as const,
+            url: 'https://project.supabase.co/storage/v1/object/sign/guest-media/a1',
+            urlExpiresAt: '2026-10-11T18:12:33.000Z',
+            mimeType: 'image/jpeg',
+            title: null,
+            linkUrl: null,
+          },
+        ],
+      },
+    ],
+  });
+
+  it('fetches the thread by the draft\'s own message id, and shows the photo', async () => {
+    getThreadMock.mockResolvedValue(photoThread());
+    const draft = mediaDraft();
+    renderStack([draftItem(draft)]);
+    expect(await screen.findByTestId('media-image')).toBeTruthy();
+    expect(getThreadMock).toHaveBeenCalledWith(draft.messageId);
+  });
+
+  it('is still a draft card: it keeps its composer and its swipe', async () => {
+    getThreadMock.mockResolvedValue(photoThread());
+    const draft = mediaDraft();
+    const handlers = renderStack([draftItem(draft)]);
+    await screen.findByTestId('media-image');
+    expect(screen.getByTestId('queue-card-composer')).toBeTruthy();
+    await act(async () => {
+      swipe().onCommitLeft();
+    });
+    expect(handlers.onEdit).toHaveBeenCalledWith(draft);
+  });
+
+  it('puts nothing pressable on the card, so the photo cannot take the swipe\'s touch', async () => {
+    // CLAUDE.md, TAC-37: a Pressable inside the deck's GestureDetector kills
+    // the pan. A LIVE draft card has none at all, with or without media.
+    getThreadMock.mockResolvedValue(photoThread());
+    renderStack([draftItem(mediaDraft())]);
+    const image = await screen.findByTestId('media-image');
+    expect(screen.queryByRole('imagebutton')).toBeNull();
+    expect(image.props.onPress).toBeUndefined();
+  });
+
+  it('falls back to the card as it was when the fetch fails', async () => {
+    getThreadMock.mockResolvedValue({
+      ok: false,
+      error: { kind: 'HTTP', status: 500, message: 'mocked' },
+    });
+    renderStack([draftItem(mediaDraft())]);
+    await act(async () => {});
+    expect(screen.queryByTestId('media-image')).toBeNull();
+    expect(screen.getByTestId('queue-card-composer')).toBeTruthy();
+  });
+});
+
 describe('what a heads-up card shows', () => {
   it('has no composer, and says nothing sends', async () => {
     renderStack([headsUpItem(makeCommitment())]);

@@ -12,6 +12,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCommitmentThread } from '@/hooks/use-commitment-thread';
+import { needsThreadExcerpt } from '@/lib/card-excerpt';
 import { useHaptics } from '@/hooks/use-haptics';
 import { useNow } from '@/hooks/use-now';
 import { type SwipeOutcome, useQueueSwipe } from '@/hooks/use-queue-swipe';
@@ -353,9 +354,16 @@ function FrontCard({
 
   const { clock: entranceClock } = useEntrance();
   const riseRides = useRidesEntranceSlot(entrance.cardDelayMs);
+  // A heads-up card always reads its thread. A draft card does only when it
+  // was raised by media, because that is the one card `recentContext` can't
+  // illustrate. (TAC-583.)
+  const wantsThread =
+    item.kind === 'headsUp' || needsThreadExcerpt(item.draft);
   const thread = useCommitmentThread(
-    item.kind === 'headsUp' ? item.commitment.sourceMessageId : null,
-    item.kind === 'headsUp',
+    item.kind === 'headsUp'
+      ? item.commitment.sourceMessageId
+      : item.draft.messageId,
+    wantsThread,
   );
 
   const tap = Gesture.Tap()
@@ -469,6 +477,7 @@ function FrontCard({
                 // real Pressable rather than a hoisted hit-test.
                 onPressHandle={() => onOpenHandle(item.draft)}
                 subQueueSpot={subQueueSpot}
+                thread={thread}
               />
             </Animated.View>
           ) : (
@@ -496,6 +505,7 @@ function FrontCard({
                   }}
                   handleRef={handleRef}
                   subQueueSpot={subQueueSpot}
+                  thread={thread}
                   overlay={
                     <SwipeOverlay direction={direction} intensity={intensity} />
                   }

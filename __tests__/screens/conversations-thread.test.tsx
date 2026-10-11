@@ -24,6 +24,7 @@ const GUEST: ConversationSummary = {
   lastMessageAt: new Date(Date.now() - 2 * 60_000).toISOString(),
   lastMessageDirection: 'outbound',
   lastMessagePreview: 'Done — got you down for two at 7:30.',
+  previewLabel: null,
   conversationCount: 4,
   firstConversationAt: new Date(Date.now() - 90 * 24 * 60 * 60_000).toISOString(),
 };
@@ -338,6 +339,7 @@ describe('ConversationThreadScreen — empty preview (TAC-411)', () => {
   const EMPTY_PREVIEW_GUEST: ConversationSummary = {
     ...GUEST,
     lastMessagePreview: '',
+    previewLabel: null,
   };
 
   it('builds no fallback bubble when the fetch fails and the preview is empty', async () => {
@@ -424,5 +426,220 @@ describe('ConversationThreadScreen — empty preview (TAC-411)', () => {
       expect(screen.getByText('Done — got you down for two at 7:30.')).toBeTruthy(),
     );
     expect(screen.queryByText('Nothing has reached this guest yet.')).toBeNull();
+  });
+});
+
+/**
+ * Media on the Conversations thread. (TAC-583.)
+ *
+ * `useThreadRealtime` is mocked, so these claim what the SCREEN does when the
+ * channel asks for a refetch or a tile reports an expired url. That the channel
+ * asks on INSERT and UPDATE is pinned where it lives, in
+ * __tests__/lib/realtime-thread-channel.test.ts.
+ */
+describe('ConversationThreadScreen — media (TAC-583)', () => {
+  const SENT = '2026-10-11T17:12:33.000Z';
+  const photo = (overrides: Record<string, unknown> = {}) => ({
+    id: 'a1',
+    kind: 'image',
+    status: 'ready',
+    url: 'https://project.supabase.co/storage/v1/object/sign/guest-media/a1',
+    urlExpiresAt: '2026-10-11T18:12:33.000Z',
+    mimeType: 'image/jpeg',
+    title: null,
+    linkUrl: null,
+    ...overrides,
+  });
+  const photoMessage = (attachment: Record<string, unknown>) => ({
+    id: 'p',
+    direction: 'inbound',
+    body: '',
+    createdAt: SENT,
+    unsupported: false,
+    attachments: [attachment],
+  });
+
+  function captureRealtime() {
+    const box: { opts: UseThreadRealtimeOptions | null } = { opts: null };
+    mockUseThreadRealtime.mockImplementation((opts: UseThreadRealtimeOptions) => {
+      box.opts = opts;
+    });
+    return box;
+  }
+
+  it('draws a media-only thread as media, not as the empty state', async () => {
+    mockGetGuestThread.mockResolvedValue({ ok: true, data: [photoMessage(photo())] });
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+    expect(screen.queryByText('Nothing has reached this guest yet.')).toBeNull();
+  });
+
+  it('fetches the thread again when the channel says a media row changed, and shows the result', async () => {
+    const realtime = captureRealtime();
+    // First: re-hosting has not settled. Then: it has.
+    mockGetGuestThread
+      .mockResolvedValueOnce({
+        ok: true,
+        data: [photoMessage(photo({ status: 'pending', url: null, urlExpiresAt: null }))],
+      })
+      .mockResolvedValueOnce({ ok: true, data: [photoMessage(photo())] });
+
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByLabelText('Loading')).toBeTruthy());
+    expect(screen.queryByTestId('media-image')).toBeNull();
+
+    await act(async () => {
+      realtime.opts!.onRefetch();
+    });
+
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+    expect(mockGetGuestThread).toHaveBeenCalledTimes(2);
+    expect(screen.queryByLabelText('Loading')).toBeNull();
+  });
+
+  it('keeps the thread on screen when a refetch fails', async () => {
+    const realtime = captureRealtime();
+    mockGetGuestThread
+      .mockResolvedValueOnce({ ok: true, data: [photoMessage(photo())] })
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { kind: 'HTTP', status: 500, message: 'mocked' },
+      });
+
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+
+    await act(async () => {
+      realtime.opts!.onRefetch();
+    });
+
+    await waitFor(() => expect(mockGetGuestThread).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('media-image')).toBeTruthy();
+  });
+
+  it('does not bring back a message the refetch no longer returns', async () => {
+    const realtime = captureRealtime();
+    mockGetGuestThread
+      .mockResolvedValueOnce({
+        ok: true,
+        data: [
+          { id: '1', direction: 'inbound', body: 'still here', createdAt: SENT },
+          { id: '2', direction: 'outbound', body: 'since removed', createdAt: SENT },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: [{ id: '1', direction: 'inbound', body: 'still here', createdAt: SENT }],
+      });
+
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByText('since removed')).toBeTruthy());
+
+    await act(async () => {
+      realtime.opts!.onRefetch();
+    });
+
+    await waitFor(() => expect(screen.queryByText('since removed')).toBeNull());
+    expect(screen.getByText('still here')).toBeTruthy();
+  });
+
+  it('passes the same onRefetch identity across renders, so the channel is not reopened', async () => {
+    const seen: (() => void)[] = [];
+    mockUseThreadRealtime.mockImplementation((opts: UseThreadRealtimeOptions) => {
+      seen.push(opts.onRefetch);
+    });
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByText('Hi! Is the patio open tonight?')).toBeTruthy());
+    expect(seen.length).toBeGreaterThan(1);
+    expect(new Set(seen).size).toBe(1);
+  });
+
+  // "On a load error past `urlExpiresAt`, refetch once."
+  describe('a photo whose signed url has run out', () => {
+    // Long past by the real clock, so no fake timers are needed.
+    const STALE = '2020-01-01T00:00:00.000Z';
+
+    it('refetches once, and only once however many times that photo fails', async () => {
+      // The refetch hands back a new url for the same attachment, which
+      // remounts the tile. It then fails again, still past its expiry. Without
+      // the once-per-attachment memory this would refetch for ever.
+      mockGetGuestThread
+        .mockResolvedValueOnce({
+          ok: true,
+          data: [photoMessage(photo({ url: 'https://project.supabase.co/first', urlExpiresAt: STALE }))],
+        })
+        .mockResolvedValue({
+          ok: true,
+          data: [photoMessage(photo({ url: 'https://project.supabase.co/second', urlExpiresAt: STALE }))],
+        });
+
+      render(withSafeArea(<ThreadScreen />));
+      await waitFor(() =>
+        expect(screen.getByTestId('media-image').props.source.uri).toBe(
+          'https://project.supabase.co/first',
+        ),
+      );
+      expect(mockGetGuestThread).toHaveBeenCalledTimes(1);
+
+      fireEvent(screen.getByTestId('media-image'), 'error', {});
+      await waitFor(() =>
+        expect(screen.getByTestId('media-image').props.source.uri).toBe(
+          'https://project.supabase.co/second',
+        ),
+      );
+      expect(mockGetGuestThread).toHaveBeenCalledTimes(2);
+
+      fireEvent(screen.getByTestId('media-image'), 'error', {});
+      await waitFor(() => expect(screen.getByText("Couldn't load")).toBeTruthy());
+      expect(mockGetGuestThread).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not refetch for a photo that fails while its url is still good', async () => {
+      mockGetGuestThread.mockResolvedValue({
+        ok: true,
+        data: [photoMessage(photo({ urlExpiresAt: '2999-01-01T00:00:00.000Z' }))],
+      });
+      render(withSafeArea(<ThreadScreen />));
+      await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+
+      fireEvent(screen.getByTestId('media-image'), 'error', {});
+      await waitFor(() => expect(screen.getByText("Couldn't load")).toBeTruthy());
+      expect(mockGetGuestThread).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the fetch-failure fallback', () => {
+    const failed = () =>
+      mockGetGuestThread.mockResolvedValue({
+        ok: false,
+        error: { kind: 'HTTP', status: 500, message: 'mocked' },
+      });
+
+    it('stands the list\'s label in for a media last message, instead of claiming nothing happened', async () => {
+      mockConversations = {
+        conversations: [{ ...GUEST, lastMessagePreview: '', previewLabel: 'Photo' }],
+        status: 'ready',
+        error: null,
+        reload: jest.fn(),
+      };
+      failed();
+      render(withSafeArea(<ThreadScreen />));
+      await waitFor(() => expect(screen.getByText('Photo')).toBeTruthy());
+      expect(screen.queryByText('Nothing has reached this guest yet.')).toBeNull();
+    });
+
+    it('still claims it when the preview and the label are both empty (TAC-411)', async () => {
+      mockConversations = {
+        conversations: [{ ...GUEST, lastMessagePreview: '', previewLabel: null }],
+        status: 'ready',
+        error: null,
+        reload: jest.fn(),
+      };
+      failed();
+      render(withSafeArea(<ThreadScreen />));
+      await waitFor(() =>
+        expect(screen.getByText('Nothing has reached this guest yet.')).toBeTruthy(),
+      );
+    });
   });
 });

@@ -13,10 +13,12 @@ beforeEach(() => {
 // The one seeded guest with no counting message: an empty-bodied inbound and
 // a pending draft, so `lastMessagePreview` is "". (TAC-411.)
 const EMPTY_PREVIEW_GUEST_ID = 'c0ffffff-ffff-4fff-8fff-ffffffffffff';
+// The seeded guest whose thread holds one of every kind of media. (TAC-583.)
+const MEDIA_GUEST_ID = 'c0abcdef-abcd-4bcd-8bcd-abcdefabcdef';
 
 describe('lib/fixtures/conversations', () => {
-  it('seeds 15 conversations across two venues', () => {
-    expect(listConversationsFixture()).toHaveLength(15);
+  it('seeds 16 conversations across two venues', () => {
+    expect(listConversationsFixture()).toHaveLength(16);
   });
 
   it('every seeded row has real-shaped UUIDs and a direction', () => {
@@ -32,14 +34,56 @@ describe('lib/fixtures/conversations', () => {
   // Was "every seeded row has a non-empty preview". TAC-395's Contract makes
   // an empty preview a legitimate row, so the invariant is now that exactly
   // the guests with no counting message have one.
-  it('gives every guest a non-empty preview except the one with no counting message', () => {
+  //
+  // TAC-582 added a second legitimate empty preview: a guest whose last
+  // message is media with no text. That row is told apart by `previewLabel`,
+  // which is null for the guest nothing has reached and set for the other.
+  it('gives every guest a non-empty preview except the two whose last message has no text', () => {
     for (const c of listConversationsFixture()) {
       if (c.guestId === EMPTY_PREVIEW_GUEST_ID) {
         expect(c.lastMessagePreview).toBe('');
+        expect(c.previewLabel).toBeNull();
+      } else if (c.guestId === MEDIA_GUEST_ID) {
+        expect(c.lastMessagePreview).toBe('');
+        expect(c.previewLabel).toBe('Photo');
       } else {
         expect(c.lastMessagePreview.length).toBeGreaterThan(0);
+        expect(c.previewLabel).toBeNull();
       }
     }
+  });
+
+  // TAC-583. The thread a media guest gets back is the thread the app has to
+  // draw, so the seed is pinned here rather than trusted.
+  describe('the media guest', () => {
+    const thread = () => getGuestThreadFixture(MEDIA_GUEST_ID);
+
+    it('keeps media-only messages in the thread, which an empty body alone never was', () => {
+      const mediaOnly = thread().filter((m) => m.body === '');
+      expect(mediaOnly.length).toBeGreaterThan(0);
+      for (const m of mediaOnly) {
+        expect(m.attachments.length > 0 || m.unsupported).toBe(true);
+      }
+    });
+
+    it('seeds the voice note in its production shape: kind audio, mimeType video/mp4', () => {
+      const voiceNotes = thread()
+        .flatMap((m) => m.attachments)
+        .filter((a) => a.kind === 'audio');
+      expect(voiceNotes).toHaveLength(1);
+      expect(voiceNotes[0].mimeType).toBe('video/mp4');
+    });
+
+    it('gives every attachment its own id', () => {
+      const ids = thread().flatMap((m) => m.attachments.map((a) => a.id));
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('still leaves an empty body with no media out of every thread', () => {
+      // Iris's photo-with-no-text predates attachments in the seed: no media
+      // on it, so it does not count, exactly as before.
+      expect(getGuestThreadFixture(EMPTY_PREVIEW_GUEST_ID)).toEqual([]);
+    });
   });
 
   // The Contract's two branches, pinned against the seed.
@@ -126,11 +170,11 @@ describe('lib/fixtures/conversations', () => {
     unsubscribe();
   });
 
-  it('resetConversationsFixture restores the original 15-guest seed', () => {
+  it('resetConversationsFixture restores the original 16-guest seed', () => {
     const [target] = listConversationsFixture();
     triggerConversationActivityFixture(target.guestId, 'a new message');
     resetConversationsFixture();
-    expect(listConversationsFixture()).toHaveLength(15);
+    expect(listConversationsFixture()).toHaveLength(16);
     expect(getGuestThreadFixture(target.guestId).at(-1)?.body).not.toBe('a new message');
   });
 });

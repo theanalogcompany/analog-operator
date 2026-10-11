@@ -15,10 +15,10 @@ beforeEach(() => {
 });
 
 describe('lib/api/conversations in fixture mode', () => {
-  it('listConversations returns the 15-guest fixture seed', async () => {
+  it('listConversations returns the 16-guest fixture seed', async () => {
     const result = await listConversations();
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.data).toHaveLength(15);
+    if (result.ok) expect(result.data).toHaveLength(16);
   });
 
   it('getGuestThread returns that guest\'s messages', async () => {
@@ -73,6 +73,10 @@ describe('lib/api/conversations HTTP shape', () => {
       lastMessageAt: '2026-09-05T21:39:00.000Z',
       lastMessageDirection: 'outbound',
       lastMessagePreview: 'Done — got you down for two at 7:30.',
+      // TAC-582 Contract: "Always present. `null` unless the flag is passed
+      // and the last message has an empty body with attachments or
+      // `unsupported: true`." This row's last message has text.
+      previewLabel: null,
       conversationCount: 4,
       firstConversationAt: '2026-06-10T18:00:00.000Z',
     };
@@ -81,7 +85,8 @@ describe('lib/api/conversations HTTP shape', () => {
     );
     const result = await listConversations();
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe('https://api.test/api/operator/conversations');
+    // TAC-582 Contract, verbatim: `GET /api/operator/conversations?attachments=1`.
+    expect(String(url)).toBe('https://api.test/api/operator/conversations?attachments=1');
     expect(init.method).toBe('GET');
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data).toEqual([row]);
@@ -145,7 +150,11 @@ describe('lib/api/conversations HTTP shape', () => {
     );
     const result = await getGuestThread(guestId);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe(`https://api.test/api/operator/guests/${guestId}/thread`);
+    // TAC-582 Contract, verbatim:
+    // `GET /api/operator/guests/:guestId/thread?attachments=1`.
+    expect(String(url)).toBe(
+      `https://api.test/api/operator/guests/${guestId}/thread?attachments=1`,
+    );
     expect(init.method).toBe('GET');
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -158,6 +167,86 @@ describe('lib/api/conversations HTTP shape', () => {
         },
       ]);
     }
+  });
+
+  /**
+   * `previewLabel`, from TAC-582's `## Contract`:
+   *
+   *   "each conversation summary gains a flat `previewLabel: string | null`
+   *    beside `lastMessagePreview`. There is no nested last-message object.
+   *    Always present. `null` unless the flag is passed and the last message
+   *    has an empty body with attachments or `unsupported: true`. Values:
+   *    `Photo`, `Voice note`, `GIF`, `Video`, `Shared a reel`, `Shared a post`,
+   *    `File`, `Story mention`, `Attachment`, `Sent something we can't show`."
+   *
+   * The expected values below are that paragraph's, not this client's.
+   */
+  describe('previewLabel, per the TAC-582 Contract', () => {
+    const summary = (overrides: Record<string, unknown>) => ({
+      guestId: 'c0111111-1111-4111-8111-111111111111',
+      venueId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      venueSlug: 'mock-sextant-coffee-roasters',
+      venueTimezone: 'America/Los_Angeles',
+      agentName: 'Sana',
+      name: 'Maya R.',
+      phoneFallback: '+15551110001',
+      guestChannel: 'text',
+      replyWindowExpiresAt: null,
+      instagramUsername: null,
+      recognitionState: 'returning',
+      lastMessageAt: '2026-09-05T21:39:00.000Z',
+      lastMessageDirection: 'inbound',
+      lastMessagePreview: '',
+      conversationCount: 4,
+      firstConversationAt: '2026-06-10T18:00:00.000Z',
+      ...overrides,
+    });
+
+    async function parse(row: Record<string, unknown>) {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ conversations: [row] }), { status: 200 }),
+      );
+      const result = await listConversations();
+      if (!result.ok) throw new Error(`expected ok, got ${result.error.kind}`);
+      return result.data[0];
+    }
+
+    it.each([
+      'Photo',
+      'Voice note',
+      'GIF',
+      'Video',
+      'Shared a reel',
+      'Shared a post',
+      'File',
+      'Story mention',
+      'Attachment',
+      "Sent something we can't show",
+    ])('carries the flat label %p through as sent, beside an empty preview', async (label) => {
+      const parsed = await parse(summary({ previewLabel: label }));
+      expect(parsed.previewLabel).toBe(label);
+      expect(parsed.lastMessagePreview).toBe('');
+    });
+
+    it('parses null, which is what a text last message carries', async () => {
+      const parsed = await parse(
+        summary({ lastMessagePreview: 'hi!', previewLabel: null }),
+      );
+      expect(parsed.previewLabel).toBeNull();
+      expect(parsed.lastMessagePreview).toBe('hi!');
+    });
+
+    it('keeps a label the Contract has not listed yet, rather than dropping the row', async () => {
+      // The label is shown as sent, so a value the server adds later needs no
+      // client release. An enum here would fail the whole list on it.
+      const parsed = await parse(summary({ previewLabel: 'Location' }));
+      expect(parsed.previewLabel).toBe('Location');
+    });
+
+    it('reads a missing field as null, so a list from an older server still parses', async () => {
+      const parsed = await parse(summary({}));
+      expect(parsed.previewLabel).toBeNull();
+    });
   });
 
   it('listConversations returns a PARSE error on a malformed response', async () => {

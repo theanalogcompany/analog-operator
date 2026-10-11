@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { Text, View } from 'react-native';
 
+import { MediaBubble } from '@/components/ui/media-bubble';
 import { MessageBubble } from '@/components/ui/message-bubble';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type HeadsUpCommitment, type ThreadMessage } from '@/lib/api/queue';
@@ -167,6 +168,16 @@ export function HeadsUpCard({
                   {item.label}
                 </TrackedCaps>
               </View>
+            ) : item.kind === 'media' ? (
+              // Shown, never played, for the same reason as the draft card:
+              // nothing inside the deck's gesture may be pressable. (TAC-583.)
+              <MediaBubble
+                key={item.key}
+                message={item.message}
+                surface="card"
+                interactive={false}
+                compact
+              />
             ) : (
               <MessageBubble
                 key={item.key}

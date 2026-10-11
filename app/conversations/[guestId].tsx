@@ -5,7 +5,7 @@
 // something is flagged.
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,6 +21,7 @@ import { CARD_COPY } from '@/lib/card-copy';
 import { guestIdentity } from '@/lib/guest-identity';
 import { openInstagramThread } from '@/lib/instagram';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
+import { useThreadRefetch } from '@/hooks/use-thread-refetch';
 import { getGuestThread } from '@/lib/api/conversations';
 import { type ThreadMessage } from '@/lib/api/queue';
 import { useConversationsContext } from '@/lib/conversations-context';
@@ -32,60 +33,17 @@ import {
   typePresets,
 } from '@/lib/theme';
 import { computeItems } from '@/lib/thread-cluster';
+import {
+  mergeThreadMessage,
+  reconcileFetchedThread,
+  reconcileRefetchedThread,
+  removeThreadMessage,
+} from '@/lib/thread-messages';
 
 type ThreadState =
   | { kind: 'loading'; messages: ThreadMessage[] }
   | { kind: 'ready'; messages: ThreadMessage[] }
   | { kind: 'error'; messages: ThreadMessage[] };
-
-// Replace-by-id for any message already in the list, otherwise insert at the
-// correct chronological position. Used both for Realtime INSERTs (where the
-// echo of an optimistic send, or a duplicate delivery, dedupes against
-// itself) and UPDATEs (where a row mutates after being seen). Copied from
-// app/queue/edit.tsx's function of the same name/behavior — kept local
-// here rather than extracted to a shared module (fix-round scope).
-function mergeMessage(current: ThreadMessage[], next: ThreadMessage): ThreadMessage[] {
-  const existingIdx = current.findIndex((m) => m.id === next.id);
-  if (existingIdx >= 0) {
-    const out = current.slice();
-    out[existingIdx] = next;
-    return out;
-  }
-  const nextMs = Date.parse(next.createdAt);
-  for (let i = current.length - 1; i >= 0; i--) {
-    if (Date.parse(current[i].createdAt) <= nextMs) {
-      return [...current.slice(0, i + 1), next, ...current.slice(i + 1)];
-    }
-  }
-  return [next, ...current];
-}
-
-// Drop a message that stopped counting. The channel decides — see
-// `countsAsThreadRow` in lib/realtime/thread-channel.ts — and this only
-// applies the verdict, so a row the operator is looking at leaves without
-// the screen being reopened. Returns `current` untouched when the id isn't
-// present, so React skips the re-render. Copied from app/queue/edit.tsx's
-// function of the same name/behavior. (TAC-411.)
-function removeMessage(current: ThreadMessage[], id: string): ThreadMessage[] {
-  const idx = current.findIndex((m) => m.id === id);
-  if (idx < 0) return current;
-  return [...current.slice(0, idx), ...current.slice(idx + 1)];
-}
-
-// When the fetched thread arrives, merge any Realtime messages that landed
-// during the fetch window so we don't drop a live arrival. Server response
-// is authoritative; we add only ids not already present. Copied from
-// app/queue/edit.tsx's function of the same name/behavior.
-function reconcileFetchedThread(
-  fetched: ThreadMessage[],
-  liveDuringLoad: ThreadMessage[],
-): ThreadMessage[] {
-  if (liveDuringLoad.length === 0) return fetched;
-  const fetchedIds = new Set(fetched.map((m) => m.id));
-  const survivors = liveDuringLoad.filter((m) => !fetchedIds.has(m.id));
-  if (survivors.length === 0) return fetched;
-  return survivors.reduce<ThreadMessage[]>((acc, m) => mergeMessage(acc, m), fetched);
-}
 
 export default function ConversationThreadScreen() {
   const router = useRouter();
@@ -99,29 +57,54 @@ export default function ConversationThreadScreen() {
 
   const [threadState, setThreadState] = useState<ThreadState>({ kind: 'loading', messages: [] });
 
+  // When to fetch the thread again: a live row with media arrived or changed,
+  // or a media file's signed URL ran out. The same hook as the edit takeover,
+  // for the same reasons. (TAC-583.)
+  const {
+    tick: refetchTick,
+    refetch: handleRefetch,
+    onMediaUrlExpired: handleMediaUrlExpired,
+    onFetched,
+    onFetchFailed,
+  } = useThreadRefetch();
+  // The guest whose thread has loaded at least once. A fetch after that is a
+  // REFETCH, which reconciles differently and fails differently.
+  const loadedForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!params.guestId) return;
+    const guestId = params.guestId;
+    if (!guestId) return;
     let cancelled = false;
     void (async () => {
-      const result = await getGuestThread(params.guestId);
+      const result = await getGuestThread(guestId);
       if (cancelled) return;
+      const isRefetch = loadedForRef.current === guestId;
       if (result.ok) {
+        loadedForRef.current = guestId;
+        onFetched(result.data);
         // Reconcile against any Realtime messages that landed during the
         // fetch window — the server response is authoritative for messages
         // it includes, but we don't want to drop a live arrival that beat
-        // the response back.
+        // the response back. A refetch has its own rule: see
+        // `reconcileRefetchedThread`.
         setThreadState((prev) => ({
           kind: 'ready',
-          messages: reconcileFetchedThread(result.data, prev.messages),
+          messages: isRefetch
+            ? reconcileRefetchedThread(result.data, prev.messages)
+            : reconcileFetchedThread(result.data, prev.messages),
         }));
-      } else {
+      } else if (!isRefetch) {
         setThreadState((prev) => ({ kind: 'error', messages: prev.messages }));
+      } else {
+        // A failed REFETCH changes nothing on screen: the thread already there
+        // is better than an error state, and the next live event tries again.
+        onFetchFailed();
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [params.guestId]);
+  }, [params.guestId, refetchTick, onFetched, onFetchFailed]);
+
 
   // `useCallback` with an empty dep array (functional setState form, no
   // closed-over values) so these handlers keep the same identity across
@@ -132,21 +115,21 @@ export default function ConversationThreadScreen() {
   const handleInsert = useCallback((message: ThreadMessage) => {
     setThreadState((prev) => ({
       kind: prev.kind,
-      messages: mergeMessage(prev.messages, message),
+      messages: mergeThreadMessage(prev.messages, message),
     }));
   }, []);
 
   const handleUpdate = useCallback((message: ThreadMessage) => {
     setThreadState((prev) => ({
       kind: prev.kind,
-      messages: mergeMessage(prev.messages, message),
+      messages: mergeThreadMessage(prev.messages, message),
     }));
   }, []);
 
   const handleRemove = useCallback((id: string) => {
     setThreadState((prev) => ({
       kind: prev.kind,
-      messages: removeMessage(prev.messages, id),
+      messages: removeThreadMessage(prev.messages, id),
     }));
   }, []);
 
@@ -156,6 +139,7 @@ export default function ConversationThreadScreen() {
     onInsert: handleInsert,
     onUpdate: handleUpdate,
     onRemove: handleRemove,
+    onRefetch: handleRefetch,
   });
 
   // Falls back to the device timezone when the venue hasn't got one on file
@@ -178,18 +162,32 @@ export default function ConversationThreadScreen() {
   // defect this ticket exists to fix, rebuilt on the client. The empty state
   // below covers the screen instead. (TAC-411; TAC-395 Contract, "What it
   // may not assume".)
+  //
+  // A guest whose last message was MEDIA has an empty preview too, but for the
+  // opposite reason: there is a message, it just has no text. The list names
+  // it in `previewLabel` ("Photo", "Voice note", ...), and that label stands in
+  // as the bubble's text. Without this the screen would fall through to the
+  // empty state and claim nothing had happened in a thread whose row, one tap
+  // back, says the guest sent a photo. The file itself can't be shown: its URL
+  // comes from the fetch that just failed. (TAC-583; TAC-582 Contract.)
   const effectiveMessages = useMemo(() => {
+    const fallbackBody =
+      guest === null
+        ? ''
+        : guest.lastMessagePreview !== ''
+          ? guest.lastMessagePreview
+          : (guest.previewLabel ?? '');
     if (
       threadState.kind === 'error' &&
       threadState.messages.length === 0 &&
       guest &&
-      guest.lastMessagePreview !== ''
+      fallbackBody !== ''
     ) {
       return [
         {
           id: `fallback-${guest.guestId}`,
           direction: guest.lastMessageDirection,
-          body: guest.lastMessagePreview,
+          body: fallbackBody,
           createdAt: guest.lastMessageAt,
         },
       ];
@@ -419,7 +417,11 @@ export default function ConversationThreadScreen() {
         {showEmptyState ? (
           <EmptyState variant="thread" />
         ) : (
-          <ThreadBubbleList items={items} surface="thread" />
+          <ThreadBubbleList
+            items={items}
+            surface="thread"
+            onMediaUrlExpired={handleMediaUrlExpired}
+          />
         )}
       </ScrollView>
 

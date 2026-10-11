@@ -40,6 +40,13 @@ import { supabase } from '@/lib/supabase/client';
 // for them: a row with a malformed `created_at`, or no `venue_id`, is dropped
 // before the condition and removes nothing. That is narrower than the status
 // fields (those two are the ones the condition reads) but it is not closed.
+//
+// `media_urls` and `unsupported_content` (TAC-583) follow the same rule and go
+// one step further with `.catch(null)`. Live, `media_urls` is `text[] NOT NULL`
+// and `unsupported_content` is a nullable boolean (checked against production,
+// 2026-10-11). Neither is needed to decide anything about a TEXT row, so a
+// value this module can't read must not cost that row its parse: it reads as
+// "no media", and a text message still merges or removes as it always did.
 const MessageRowSchema = z.object({
   id: z.string(),
   venue_id: z.string(),
@@ -49,6 +56,8 @@ const MessageRowSchema = z.object({
   created_at: z.string(),
   status: z.string().nullable().optional(),
   review_state: z.string().nullable().optional(),
+  media_urls: z.array(z.unknown()).nullable().optional().catch(null),
+  unsupported_content: z.boolean().nullable().optional().catch(null),
 });
 type MessageRow = z.infer<typeof MessageRowSchema>;
 
@@ -64,14 +73,34 @@ type MessageRow = z.infer<typeof MessageRowSchema>;
 const DELIVERED_OUTBOUND_STATUSES = ['sending', 'sent', 'delivered'];
 
 /**
+ * Whether a live row carries something besides text: at least one media URL,
+ * or Meta's unsupported flag. This is all a `messages` row can say about
+ * attachments. What they ARE lives in `message_attachments`, which this channel
+ * does not see, so a row that answers yes is a row the thread has to be
+ * refetched for. (TAC-583.)
+ */
+export function rowHasMedia(row: {
+  media_urls?: readonly unknown[] | null;
+  unsupported_content?: boolean | null;
+}): boolean {
+  return (row.media_urls?.length ?? 0) > 0 || row.unsupported_content === true;
+}
+
+/**
  * Whether a live `messages` row belongs in an open thread.
  *
  * Transcribed from TAC-395's `## Contract`, "Which messages count" — a row
  * counts when BOTH hold:
  *
- *   1. `body <> ''`
+ *   1. `body <> ''`, OR the row carries media (TAC-582: with `?attachments=1`
+ *      the thread endpoints "stop excluding media-only rows", and `body` "may
+ *      be `""` when `attachments` is non-empty or `unsupported` is true")
  *   2. `direction = 'inbound' OR (review_state IS DISTINCT FROM 'pending'
  *       AND status IN ('sending', 'sent', 'delivered'))`
+ *
+ * Condition 1 used to be `body <> ''` alone, which is why a photo sent with no
+ * text never appeared in an open thread. An empty body with no media still
+ * does not count: that is a reaction or a blanked row, exactly as before.
  *
  * Inbound is decided by `direction` alone: every inbound row has a NULL
  * `review_state`, so testing `review_state` on all rows would drop every
@@ -87,8 +116,10 @@ export function countsAsThreadRow(row: {
   body: string;
   status?: string | null;
   review_state?: string | null;
+  media_urls?: readonly unknown[] | null;
+  unsupported_content?: boolean | null;
 }): boolean {
-  if (row.body === '') return false;
+  if (row.body === '' && !rowHasMedia(row)) return false;
   if (row.direction === 'inbound') return true;
   return (
     row.review_state !== 'pending' &&
@@ -118,7 +149,10 @@ function parseRow(raw: unknown): MessageRow | null {
 export type ThreadChannelEvent =
   | { type: 'message_inserted'; message: ThreadMessage }
   | { type: 'message_updated'; message: ThreadMessage }
-  | { type: 'message_removed'; id: string };
+  | { type: 'message_removed'; id: string }
+  /** A row with media arrived or changed. Its attachments are not on the row,
+   *  so the screen fetches the thread again. (TAC-583.) */
+  | { type: 'thread_stale' };
 
 export type ThreadChannel = {
   unsubscribe: () => void;
@@ -134,6 +168,17 @@ export type ThreadChannelOptions = {
    *  The server does not filter this channel — see the Realtime section of
    *  TAC-395's Contract. (TAC-411.) */
   onRemove: (id: string) => void;
+  /**
+   * A row carrying media was inserted or updated. The row itself has no
+   * attachment data and no signed URLs, so the screen refetches the thread.
+   *
+   * Fires on UPDATE as well as INSERT, per TAC-582's Contract: an attachment
+   * goes `pending` to `ready` when re-hosting settles, and the server announces
+   * that by updating the parent `messages` row. Listening for INSERT alone
+   * would leave every photo on its loading state until the screen was reopened.
+   * (TAC-583.)
+   */
+  onRefetch: () => void;
 };
 
 /**
@@ -154,6 +199,7 @@ export function createThreadChannel(opts: ThreadChannelOptions): ThreadChannel {
       if (event.type === 'message_inserted') opts.onInsert(event.message);
       else if (event.type === 'message_updated') opts.onUpdate(event.message);
       else if (event.type === 'message_removed') opts.onRemove(event.id);
+      else if (event.type === 'thread_stale') opts.onRefetch();
     });
     return { unsubscribe: unsub };
   }
@@ -198,6 +244,17 @@ export function createThreadChannel(opts: ThreadChannelOptions): ThreadChannel {
       opts.onRemove(row.id);
       return;
     }
+
+    // A row with media is announced, on INSERT and on UPDATE alike, and the
+    // screen refetches: attachments and their signed URLs come only from the
+    // thread endpoint. A media row with NO text is not merged as well, because
+    // all this row could draw is an empty bubble, shown until the refetch
+    // lands and then replaced by the photo. One with text (a story reply) is
+    // merged too, so the words appear at once and the story follows.
+    const media = rowHasMedia(row);
+    if (media) opts.onRefetch();
+    if (media && row.body === '') return;
+
     if (kind === 'INSERT') opts.onInsert(message);
     else opts.onUpdate(message);
   };

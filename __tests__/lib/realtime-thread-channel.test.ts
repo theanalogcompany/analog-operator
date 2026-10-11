@@ -1,4 +1,8 @@
-import { countsAsThreadRow, createThreadChannel } from '@/lib/realtime/thread-channel';
+import {
+  countsAsThreadRow,
+  createThreadChannel,
+  rowHasMedia,
+} from '@/lib/realtime/thread-channel';
 import { supabase } from '@/lib/supabase/client';
 
 jest.mock('@/lib/supabase/client', () => ({
@@ -84,6 +88,7 @@ describe('createThreadChannel — fixture mode', () => {
       onInsert: jest.fn(),
       onUpdate: jest.fn(),
       onRemove: jest.fn(),
+      onRefetch: jest.fn(),
     });
     expect(fixtureSubscribe).toHaveBeenCalledTimes(1);
     expect(channelFactory).not.toHaveBeenCalled();
@@ -102,6 +107,7 @@ describe('createThreadChannel — live mode', () => {
       onInsert: jest.fn(),
       onUpdate: jest.fn(),
       onRemove: jest.fn(),
+      onRefetch: jest.fn(),
     });
 
     expect(setAuth).toHaveBeenCalledWith('tok');
@@ -122,6 +128,7 @@ describe('createThreadChannel — live mode', () => {
       onInsert,
       onUpdate: jest.fn(),
       onRemove: jest.fn(),
+      onRefetch: jest.fn(),
     });
     const insert = handle.subscriptions.find((s) => s.event === 'INSERT')!.handler;
 
@@ -173,6 +180,7 @@ describe('createThreadChannel — live mode', () => {
       onInsert: jest.fn(),
       onUpdate,
       onRemove: jest.fn(),
+      onRefetch: jest.fn(),
     });
     const update = handle.subscriptions.find((s) => s.event === 'UPDATE')!.handler;
 
@@ -211,6 +219,7 @@ describe('createThreadChannel — live mode', () => {
       onInsert,
       onUpdate: jest.fn(),
       onRemove,
+      onRefetch: jest.fn(),
     });
     const insert = handle.subscriptions.find((s) => s.event === 'INSERT')!.handler;
 
@@ -242,6 +251,7 @@ describe('createThreadChannel — live mode', () => {
       onInsert: jest.fn(),
       onUpdate: jest.fn(),
       onRemove: jest.fn(),
+      onRefetch: jest.fn(),
     });
     channel.unsubscribe();
     expect(removeChannel).toHaveBeenCalledTimes(1);
@@ -385,6 +395,7 @@ describe('createThreadChannel — live rows are filtered and removed (TAC-411)',
       onInsert,
       onUpdate,
       onRemove,
+      onRefetch: jest.fn(),
     });
     return {
       onInsert,
@@ -475,5 +486,263 @@ describe('createThreadChannel — live rows are filtered and removed (TAC-411)',
     });
     expect(onInsert).not.toHaveBeenCalled();
     expect(onRemove).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Media rows. (TAC-583.)
+ *
+ * The condition is TAC-582's change to TAC-395's "Which messages count": with
+ * `?attachments=1` the thread endpoints "stop excluding media-only rows", and
+ * `body` "may be `""` when `attachments` is non-empty or `unsupported` is
+ * true". The row shapes are production's (checked 2026-10-11): `media_urls` is
+ * `text[] NOT NULL`, one URL per attachment, and `unsupported_content` is a
+ * nullable boolean that is NULL on every row seen so far.
+ */
+describe('rowHasMedia', () => {
+  it('is true for a row with at least one media url', () => {
+    expect(rowHasMedia({ media_urls: ['https://lookaside.fbsbx.com/x'] })).toBe(true);
+  });
+
+  it('is true for a row Meta flagged unsupported', () => {
+    expect(rowHasMedia({ media_urls: [], unsupported_content: true })).toBe(true);
+  });
+
+  it('is false for an ordinary text row', () => {
+    expect(rowHasMedia({ media_urls: [], unsupported_content: null })).toBe(false);
+    expect(rowHasMedia({ media_urls: [], unsupported_content: false })).toBe(false);
+  });
+
+  it('is false when the columns are absent or null', () => {
+    expect(rowHasMedia({})).toBe(false);
+    expect(rowHasMedia({ media_urls: null, unsupported_content: null })).toBe(false);
+  });
+});
+
+describe('countsAsThreadRow — media (TAC-582 Contract)', () => {
+  it('keeps an inbound row with an empty body and a media url', () => {
+    expect(
+      countsAsThreadRow({
+        direction: 'inbound',
+        body: '',
+        status: 'received',
+        review_state: null,
+        media_urls: ['https://lookaside.fbsbx.com/x'],
+        unsupported_content: null,
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps an inbound row with an empty body that Meta flagged unsupported', () => {
+    expect(
+      countsAsThreadRow({
+        direction: 'inbound',
+        body: '',
+        status: 'received',
+        review_state: null,
+        media_urls: [],
+        unsupported_content: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('still drops an empty body with no media: a reaction, or a blanked row', () => {
+    expect(
+      countsAsThreadRow({
+        direction: 'inbound',
+        body: '',
+        status: 'received',
+        media_urls: [],
+        unsupported_content: null,
+      }),
+    ).toBe(false);
+  });
+
+  // The media-only operator card is exactly this row: an empty pending draft
+  // answering a photo. Media on a row must not get it past condition 2.
+  it('still drops a pending draft, media or not', () => {
+    expect(
+      countsAsThreadRow({
+        direction: 'outbound',
+        body: '',
+        status: 'pending_review',
+        review_state: 'pending',
+        media_urls: ['https://example.test/x.jpg'],
+      }),
+    ).toBe(false);
+  });
+
+  it('keeps an outbound media row that was sent: a staff reply from the Instagram app', () => {
+    expect(
+      countsAsThreadRow({
+        direction: 'outbound',
+        body: '',
+        status: 'sent',
+        review_state: null,
+        media_urls: ['https://lookaside.fbsbx.com/x'],
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('createThreadChannel — media rows ask for a refetch (TAC-583)', () => {
+  function openChannel() {
+    const handle = mockLiveChannel();
+    const onInsert = jest.fn();
+    const onUpdate = jest.fn();
+    const onRemove = jest.fn();
+    const onRefetch = jest.fn();
+    createThreadChannel({
+      venueId: VENUE_ID,
+      guestId: GUEST_ID,
+      accessToken: 'tok',
+      onInsert,
+      onUpdate,
+      onRemove,
+      onRefetch,
+    });
+    return {
+      onInsert,
+      onUpdate,
+      onRemove,
+      onRefetch,
+      insert: handle.subscriptions.find((s) => s.event === 'INSERT')!.handler,
+      update: handle.subscriptions.find((s) => s.event === 'UPDATE')!.handler,
+    };
+  }
+
+  const MEDIA_ID = '66666666-6666-4666-8666-666666666666';
+
+  function mediaRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: MEDIA_ID,
+      venue_id: VENUE_ID,
+      guest_id: GUEST_ID,
+      direction: 'inbound',
+      body: '',
+      created_at: '2026-10-11T17:12:33.000Z',
+      status: 'received',
+      review_state: null,
+      media_urls: ['https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1'],
+      unsupported_content: null,
+      ...overrides,
+    };
+  }
+
+  it('refetches when a media-only row is INSERTED, and draws no empty bubble for it', () => {
+    const { insert, onInsert, onRemove, onRefetch } = openChannel();
+    insert({ new: mediaRow() });
+    expect(onRefetch).toHaveBeenCalledTimes(1);
+    // The row has nothing to draw: its attachments are not on it.
+    expect(onInsert).not.toHaveBeenCalled();
+    // And it counts, so it must not be removed either.
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  /**
+   * TAC-582 Contract: "`pending` to `ready`: the server updates the parent
+   * `messages` row when re-hosting settles, so the change arrives on the live
+   * channel as an UPDATE. The client refetches the thread on UPDATE as well as
+   * INSERT."
+   */
+  it('refetches when a media row is UPDATED: this is how pending becomes ready', () => {
+    const { update, onUpdate, onRemove, onRefetch } = openChannel();
+    update({ new: mediaRow() });
+    expect(onRefetch).toHaveBeenCalledTimes(1);
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it('refetches for an unsupported row, on INSERT and on UPDATE', () => {
+    const a = openChannel();
+    a.insert({ new: mediaRow({ media_urls: [], unsupported_content: true }) });
+    expect(a.onRefetch).toHaveBeenCalledTimes(1);
+
+    const b = openChannel();
+    b.update({ new: mediaRow({ media_urls: [], unsupported_content: true }) });
+    expect(b.onRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('merges the text of a media row that has text, AND refetches for its attachment', () => {
+    // A story reply: the words appear at once, the story follows the refetch.
+    const { insert, onInsert, onRefetch } = openChannel();
+    insert({ new: mediaRow({ body: 'is this you?' }) });
+    expect(onInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ id: MEDIA_ID, body: 'is this you?' }),
+    );
+    expect(onRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds the merged message WITHOUT attachment fields, so a merge cannot wipe fetched ones', () => {
+    const { insert, onInsert } = openChannel();
+    insert({ new: mediaRow({ body: 'is this you?' }) });
+    const message = onInsert.mock.calls[0][0];
+    expect('attachments' in message).toBe(false);
+    expect('unsupported' in message).toBe(false);
+  });
+
+  it('does not refetch for an ordinary text row', () => {
+    const a = openChannel();
+    a.insert({ new: mediaRow({ body: 'hi', media_urls: [] }) });
+    expect(a.onInsert).toHaveBeenCalledTimes(1);
+    expect(a.onRefetch).not.toHaveBeenCalled();
+
+    const b = openChannel();
+    b.update({ new: mediaRow({ body: 'hi', media_urls: [] }) });
+    expect(b.onUpdate).toHaveBeenCalledTimes(1);
+    expect(b.onRefetch).not.toHaveBeenCalled();
+  });
+
+  it('does not refetch for another guest\'s media', () => {
+    const { insert, onRefetch } = openChannel();
+    insert({ new: mediaRow({ guest_id: OTHER_GUEST_ID }) });
+    expect(onRefetch).not.toHaveBeenCalled();
+  });
+
+  it('removes, and does not refetch for, a media row that does not count', () => {
+    // The media-only card's own row: an empty pending draft.
+    const { update, onRemove, onRefetch } = openChannel();
+    update({
+      new: mediaRow({
+        direction: 'outbound',
+        status: 'pending_review',
+        review_state: 'pending',
+      }),
+    });
+    expect(onRemove).toHaveBeenCalledWith(MEDIA_ID);
+    expect(onRefetch).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Which way the module fails. A text row whose media columns cannot be read
+   * must still merge: those columns decide nothing about it.
+   */
+  it('still merges a text row whose media columns are unreadable or absent', () => {
+    const a = openChannel();
+    a.insert({ new: mediaRow({ body: 'hi', media_urls: 'not-an-array', unsupported_content: 'x' }) });
+    expect(a.onInsert).toHaveBeenCalledTimes(1);
+    expect(a.onRefetch).not.toHaveBeenCalled();
+
+    const b = openChannel();
+    const { media_urls: _m, unsupported_content: _u, ...withoutColumns } = mediaRow({ body: 'hi' });
+    b.insert({ new: withoutColumns });
+    expect(b.onInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes the fixture channel\'s thread_stale event to onRefetch', () => {
+    process.env.EXPO_PUBLIC_USE_FIXTURES = 'true';
+    const onRefetch = jest.fn();
+    createThreadChannel({
+      venueId: VENUE_ID,
+      guestId: GUEST_ID,
+      accessToken: 'tok',
+      onInsert: jest.fn(),
+      onUpdate: jest.fn(),
+      onRemove: jest.fn(),
+      onRefetch,
+    });
+    const emit = fixtureSubscribe.mock.calls[0][0] as (event: { type: string }) => void;
+    emit({ type: 'thread_stale' });
+    expect(onRefetch).toHaveBeenCalledTimes(1);
   });
 });

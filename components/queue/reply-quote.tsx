@@ -171,7 +171,9 @@ export function shouldShowReplyQuote(
 export function lastRenderedMessageId(items: ThreadItem[]): string | null {
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i];
-    if (item.kind === 'bubble') return item.message.id;
+    // A media item is a message too: a thread that ends on a photo ends on
+    // that photo, not on the text bubble above it. (TAC-583.)
+    if (item.kind === 'bubble' || item.kind === 'media') return item.message.id;
   }
   return null;
 }
