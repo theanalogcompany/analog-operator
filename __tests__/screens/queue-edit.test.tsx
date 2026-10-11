@@ -1371,7 +1371,7 @@ describe('EditScreen — media (TAC-583)', () => {
     render(<EditScreen />);
     await waitFor(() => expect(screen.getByLabelText('Loading')).toBeTruthy());
 
-    act(() => {
+    await act(async () => {
       realtime.onRefetch!();
     });
 

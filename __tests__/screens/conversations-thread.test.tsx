@@ -488,7 +488,7 @@ describe('ConversationThreadScreen — media (TAC-583)', () => {
     await waitFor(() => expect(screen.getByLabelText('Loading')).toBeTruthy());
     expect(screen.queryByTestId('media-image')).toBeNull();
 
-    act(() => {
+    await act(async () => {
       realtime.opts!.onRefetch();
     });
 
@@ -535,7 +535,7 @@ describe('ConversationThreadScreen — media (TAC-583)', () => {
     render(withSafeArea(<ThreadScreen />));
     await waitFor(() => expect(screen.getByText('since removed')).toBeTruthy());
 
-    act(() => {
+    await act(async () => {
       realtime.opts!.onRefetch();
     });
 
