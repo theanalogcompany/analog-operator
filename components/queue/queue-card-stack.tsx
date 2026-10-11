@@ -3,7 +3,6 @@ import { type LayoutChangeEvent, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   type SharedValue,
-  measure,
   runOnJS,
   useAnimatedRef,
   useAnimatedStyle,
@@ -17,6 +16,7 @@ import { useHaptics } from '@/hooks/use-haptics';
 import { useNow } from '@/hooks/use-now';
 import { type SwipeOutcome, useQueueSwipe } from '@/hooks/use-queue-swipe';
 import { type HeadsUpCommitment, type PendingDraft } from '@/lib/api/queue';
+import { guardGesture, measureIfAttached } from '@/lib/gesture-guard';
 import { windowState } from '@/lib/reply-window';
 import { cardRiseAt, fadeInAt } from '@/lib/entrance';
 import { useEntrance, useRidesEntranceSlot } from '@/lib/entrance-context';
@@ -368,13 +368,18 @@ function FrontCard({
 
   const tap = Gesture.Tap()
     .maxDuration(300)
-    .onEnd((event, success) => {
+    .onEnd(guardGesture('tap.onEnd', (event, success) => {
       'worklet';
       if (!success) return;
       // The handle is tested FIRST: it sits inside the head, which the
       // composer's single-boundary test does not cover, and a tap can only
       // mean one thing.
-      const handle = measure(handleRef);
+      //
+      // `measureIfAttached`, never `measure`: only an Instagram card with a
+      // handle line attaches this ref. On every other card it is empty, and
+      // a bare `measure` on an empty ref throws on the UI thread, which in a
+      // release build aborts the app on every tap.
+      const handle = measureIfAttached(handleRef);
       if (
         handle !== null &&
         isHandleTap(
@@ -395,7 +400,7 @@ function FrontCard({
       if (isComposerTap(event.y, composerTop.value)) {
         runOnJS(openEditor)();
       }
-    });
+    }));
 
   // Exclusive, pan first: the pan only activates past a 10px offset, so a
   // stationary tap falls through to the tap recognizer, and a drag never
