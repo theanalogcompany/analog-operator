@@ -1,10 +1,12 @@
-import { type Attachment } from '@/lib/api/queue';
+import { type Attachment, type ThreadMessage } from '@/lib/api/queue';
 import {
   formatMediaDuration,
+  isLiveStoryMention,
   isPastUrlExpiry,
   mediaVariantFor,
   nextPinnedSource,
   pinSource,
+  reshareHandleFor,
   scrubPositionSec,
   shouldRefetchOnLoadError,
   tileHeightFor,
@@ -394,5 +396,86 @@ describe('nextPinnedSource', () => {
       urlExpiresAt: null,
       failed: false,
     });
+  });
+});
+
+/**
+ * "Reshare on Instagram" (TAC-585). The expectations are the ticket's
+ * user-facing behavior: the link is for a `story_mention` that is `link_only`,
+ * which is a story still up, and it goes once the story has expired.
+ */
+describe('isLiveStoryMention', () => {
+  it('is true for a story mention that is still up', () => {
+    expect(isLiveStoryMention(LIVE_STORY, NOW)).toBe(true);
+  });
+
+  it('is false once the server says the story expired', () => {
+    expect(isLiveStoryMention(EXPIRED_STORY, NOW)).toBe(false);
+  });
+
+  it('is false once this device passes the 24 hours, before any refetch says so', () => {
+    const expiresMs = Date.parse(LIVE_STORY.urlExpiresAt as string);
+    expect(isLiveStoryMention(LIVE_STORY, expiresMs - 1)).toBe(true);
+    expect(isLiveStoryMention(LIVE_STORY, expiresMs)).toBe(false);
+  });
+
+  it('is false for a story REPLY, which is the venue\'s own story', () => {
+    expect(isLiveStoryMention({ ...LIVE_STORY, kind: 'story_reply' }, NOW)).toBe(false);
+  });
+
+  it.each(['image', 'gif', 'video', 'audio', 'file', 'share', 'unknown'] as const)(
+    'is false for kind %s whatever its status',
+    (kind) => {
+      for (const status of ['ready', 'pending', 'link_only', 'expired', 'failed'] as const) {
+        expect(isLiveStoryMention({ ...LIVE_STORY, kind, status }, NOW)).toBe(false);
+      }
+    },
+  );
+
+  it.each(['pending', 'failed', 'expired'] as const)(
+    'is false for a story mention with status %s',
+    (status) => {
+      expect(isLiveStoryMention({ ...LIVE_STORY, status }, NOW)).toBe(false);
+    },
+  );
+});
+
+describe('reshareHandleFor', () => {
+  const messageWith = (attachments: Attachment[]): ThreadMessage => ({
+    id: '5b0e3c1a-7d2f-4e8b-9a6c-1f0d2e3b4c5d',
+    direction: 'inbound',
+    body: '',
+    createdAt: '2026-10-11T17:12:33.000Z',
+    attachments,
+    unsupported: false,
+  });
+  const text: ThreadMessage = {
+    id: '6c1f4d2b-8e3a-4f9c-8b7d-2a1e3f4c5d6e',
+    direction: 'inbound',
+    body: 'see you soon',
+    createdAt: '2026-10-11T17:10:00.000Z',
+  };
+
+  it('names the guest when one of the messages is a live story mention', () => {
+    expect(reshareHandleFor('mia.brews', [text, messageWith([LIVE_STORY])], NOW)).toBe(
+      'mia.brews',
+    );
+  });
+
+  it('is null once the story has expired', () => {
+    expect(reshareHandleFor('mia.brews', [messageWith([EXPIRED_STORY])], NOW)).toBeNull();
+  });
+
+  it('is null when no message carries a story mention', () => {
+    expect(reshareHandleFor('mia.brews', [text, messageWith([CONTRACT_SHARE])], NOW)).toBeNull();
+    expect(reshareHandleFor('mia.brews', [], NOW)).toBeNull();
+  });
+
+  it.each([null, '', '   '])('is null with no handle to open (%p)', (handle) => {
+    expect(reshareHandleFor(handle, [messageWith([LIVE_STORY])], NOW)).toBeNull();
+  });
+
+  it('reads a message with no attachments field as having none', () => {
+    expect(reshareHandleFor('mia.brews', [text], NOW)).toBeNull();
   });
 });

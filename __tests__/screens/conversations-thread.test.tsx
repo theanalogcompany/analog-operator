@@ -643,3 +643,124 @@ describe('ConversationThreadScreen — media (TAC-583)', () => {
     });
   });
 });
+
+/**
+ * "Reshare on Instagram" on the Texts thread (TAC-585). The same link and the
+ * same rules as the edit takeover: a story the guest tagged the venue in, while
+ * it is still up, for a guest with a handle. The real thread list, bubble and
+ * `openInstagramThread`; only the OS hand-off is stubbed.
+ */
+describe('ConversationThreadScreen: reshare a story mention (TAC-585)', () => {
+  const Linking = jest.requireActual('expo-linking');
+  const toast = jest.requireActual('@/components/auth/toast');
+  const HOUR = 60 * 60_000;
+  let openURL: jest.SpyInstance;
+  let showToastSpy: jest.SpyInstance;
+
+  // TAC-582's Contract for a live story: `link_only`, Meta's link as `url`,
+  // and an expiry 24 h after it was sent.
+  const storyThread = (over: Record<string, unknown> = {}) => ({
+    ok: true,
+    data: [
+      {
+        id: 's',
+        direction: 'inbound',
+        body: '',
+        createdAt: new Date(Date.now() - HOUR).toISOString(),
+        unsupported: false,
+        attachments: [
+          {
+            id: 'story',
+            kind: 'story_mention',
+            status: 'link_only',
+            url: 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1',
+            urlExpiresAt: new Date(Date.now() + 23 * HOUR).toISOString(),
+            mimeType: null,
+            title: null,
+            linkUrl: null,
+            ...over,
+          },
+        ],
+      },
+    ],
+  });
+  const instagramGuest = (over: Partial<ConversationSummary> = {}) => {
+    mockConversations = {
+      ...mockConversations,
+      conversations: [
+        {
+          ...GUEST,
+          guestChannel: 'instagram',
+          instagramUsername: 'mia.brews',
+          phoneFallback: '',
+          ...over,
+        },
+      ],
+    };
+  };
+  const link = () => screen.queryByRole('link', { name: 'Reshare on Instagram' });
+
+  beforeEach(() => {
+    openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    showToastSpy = jest.spyOn(toast, 'showToast').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    openURL.mockRestore();
+    showToastSpy.mockRestore();
+  });
+
+  it("opens the guest's Instagram thread, built from their username", async () => {
+    instagramGuest();
+    mockGetGuestThread.mockResolvedValue(storyThread());
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(link()).not.toBeNull());
+    await act(async () => {
+      fireEvent.press(link()!);
+    });
+    // The ticket's own link: https://ig.me/m/{instagram_username}.
+    expect(openURL).toHaveBeenCalledTimes(1);
+    expect(openURL).toHaveBeenCalledWith('https://ig.me/m/mia.brews');
+    expect(showToastSpy).not.toHaveBeenCalled();
+    expect(mockRouter.back).not.toHaveBeenCalled();
+  });
+
+  it('says only that Instagram would not open, since nothing was copied', async () => {
+    openURL.mockRejectedValueOnce(new Error('no handler'));
+    instagramGuest();
+    mockGetGuestThread.mockResolvedValue(storyThread());
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(link()).not.toBeNull());
+    await act(async () => {
+      fireEvent.press(link()!);
+    });
+    expect(showToastSpy).toHaveBeenCalledTimes(1);
+    expect(showToastSpy).toHaveBeenCalledWith("Couldn't open Instagram.");
+  });
+
+  it('offers nothing once the story has expired', async () => {
+    instagramGuest();
+    mockGetGuestThread.mockResolvedValue(
+      storyThread({ status: 'expired', url: null, urlExpiresAt: null }),
+    );
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByText('Expired')).toBeTruthy());
+    expect(link()).toBeNull();
+  });
+
+  it('offers nothing on a story reply', async () => {
+    instagramGuest();
+    mockGetGuestThread.mockResolvedValue(storyThread({ kind: 'story_reply' }));
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+    expect(link()).toBeNull();
+  });
+
+  it('offers nothing for a guest with no handle to open', async () => {
+    instagramGuest({ instagramUsername: null });
+    mockGetGuestThread.mockResolvedValue(storyThread());
+    render(withSafeArea(<ThreadScreen />));
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+    expect(link()).toBeNull();
+  });
+});

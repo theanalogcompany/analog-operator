@@ -553,3 +553,17 @@ export const instagramIdentity = {
   /** An unnamed guest's name line is the handle, in its own case. */
   handleAsNameTrackingPx: 0.2,
 } as const;
+
+/**
+ * The "Reshare on Instagram" link on a card with a live story mention.
+ * (TAC-585.)
+ *
+ * `rowHeightPx` is the room a card keeps for it under the conversation. The
+ * card is fixed-height with only the thread flexing, so this comes out of the
+ * conversation, the same trade the reply quote makes.
+ */
+export const reshare = {
+  rowHeightPx: 30,
+  hitSlopPx: 8,
+  pressedOpacity: 0.6,
+} as const;

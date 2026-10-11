@@ -36,6 +36,7 @@ type CardStackProps = {
   onAcknowledge: (commitment: HeadsUpCommitment) => void | Promise<void>;
   onDecline: (commitment: HeadsUpCommitment) => void | Promise<void>;
   onPressHelp: () => void;
+  onReshareStory: (username: string) => void | Promise<void>;
 };
 let lastCardStackProps: CardStackProps | null = null;
 let lastGroundName: GroundName | null = null;
@@ -891,5 +892,57 @@ describe('QueueScreen — heads-up cards (TAC-364)', () => {
       kind: 'headsUp',
       commitment: { id: tapped.id },
     });
+  });
+});
+
+/**
+ * "Reshare on Instagram" (TAC-585). `QueueCardStack` is mocked here, so this
+ * says only what the SCREEN does when the stack reports a press: where the
+ * link goes and what it leaves alone. That the stack reports one, and from
+ * where, is `queue-card-stack-routing.test.tsx`'s.
+ */
+describe('QueueScreen: reshare a story mention', () => {
+  const toast = jest.requireActual('@/components/auth/toast');
+  let showToastSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    showToastSpy = jest.spyOn(toast, 'showToast').mockImplementation(() => {});
+    mockQueue.drafts = [draftWithTone()];
+  });
+
+  afterEach(() => {
+    showToastSpy.mockRestore();
+    (Linking.openURL as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it("opens the guest's Instagram thread, built from their username", async () => {
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onReshareStory('mia.brews');
+    });
+    // The ticket's own link: https://ig.me/m/{instagram_username}.
+    expect(Linking.openURL).toHaveBeenCalledTimes(1);
+    expect(Linking.openURL).toHaveBeenCalledWith('https://ig.me/m/mia.brews');
+    expect(showToastSpy).not.toHaveBeenCalled();
+  });
+
+  it('approves, sends and removes nothing', async () => {
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onReshareStory('mia.brews');
+    });
+    expect(approveDraft).not.toHaveBeenCalled();
+    expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
+    expect(mockRouterPush).not.toHaveBeenCalled();
+    expect(lastCardStackProps!.items).toHaveLength(1);
+  });
+
+  it('says so when Instagram will not open', async () => {
+    (Linking.openURL as jest.Mock).mockRejectedValueOnce(new Error('no handler'));
+    renderScreen();
+    await act(async () => {
+      await lastCardStackProps!.onReshareStory('mia.brews');
+    });
+    expect(showToastSpy).toHaveBeenCalledWith("Couldn't open Instagram.");
   });
 });

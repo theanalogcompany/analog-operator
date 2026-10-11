@@ -3,6 +3,7 @@ import { type LayoutChangeEvent, Text, View } from 'react-native';
 
 import { MediaBubble } from '@/components/ui/media-bubble';
 import { MessageBubble } from '@/components/ui/message-bubble';
+import { ReshareLink } from '@/components/ui/reshare-link';
 import { SendGlyph } from '@/components/ui/send-glyph';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { useNow } from '@/hooks/use-now';
@@ -19,7 +20,13 @@ import {
   stripColorFor,
   stripLabelForDraft,
 } from '@/lib/review-bucket';
-import { body as bodyType, card, replyWindow, typePresets } from '@/lib/theme';
+import {
+  body as bodyType,
+  card,
+  replyWindow,
+  reshare,
+  typePresets,
+} from '@/lib/theme';
 import { computeItems, deviceTimezone } from '@/lib/thread-cluster';
 
 import { ExpiredComposer } from './expired-composer';
@@ -99,6 +106,20 @@ type Props = {
    * outright (CLAUDE.md / TAC-37).
    */
   onComposerLayout?: (event: LayoutChangeEvent) => void;
+  /**
+   * Keeps an empty row under the conversation for the "Reshare on Instagram"
+   * link and reports where it is, in card-local coordinates. Passed on a LIVE
+   * card showing a live story mention. The card draws nothing in the row: the
+   * stack draws the real link over it from OUTSIDE the `GestureDetector`,
+   * because a `Pressable` inside one kills the pan (CLAUDE.md, TAC-37).
+   * (TAC-585.)
+   */
+  onReshareSlotLayout?: (event: LayoutChangeEvent) => void;
+  /**
+   * Passed instead where no `GestureDetector` is above the card, which is the
+   * expired card. The same row then holds the link itself.
+   */
+  onPressReshare?: () => void;
   /** Rendered above the card content, clipped to its rounded corners — the
    *  swipe washes. */
   overlay?: ReactNode;
@@ -129,6 +150,8 @@ export function QueueCard({
   onPressHandle,
   subQueueSpot = null,
   thread = [],
+  onReshareSlotLayout,
+  onPressReshare,
   overlay,
 }: Props) {
   const bucket = bucketForDraft(draft);
@@ -145,10 +168,11 @@ export function QueueCard({
   // sendable after the deadline and a swipe that fails at the server. The
   // client's 5 minute display margin is what makes that safe, since roughly
   // five real minutes of window remain at the moment it converts.
+  const nowMs = useNow();
   const window = windowState({
     expiresAt: draft.replyWindowExpiresAt,
     channel: draft.guestChannel,
-    nowMs: useNow(),
+    nowMs,
   });
   const expired = isExpired(window);
 
@@ -377,6 +401,9 @@ export function QueueCard({
               surface={expired ? 'expiredCard' : 'card'}
               interactive={false}
               compact
+              // The stack decides the reshare link on this same clock, so a
+              // story can't read "Expired" with the link still under it.
+              nowMs={nowMs}
             />
           ) : (
             <MessageBubble
@@ -388,6 +415,26 @@ export function QueueCard({
           ),
         )}
       </View>
+
+      {/* c1. The way out to reshare a story the guest tagged the venue in.
+          Directly under the conversation, where the story is. A direct child
+          of the card's inner column ON PURPOSE: `onLayout` reports a position
+          relative to the immediate parent, and the stack reads this one as
+          card-local, the same arrangement the composer relies on. Nest it and
+          the link is drawn in the wrong place. (TAC-585.) */}
+      {onReshareSlotLayout || onPressReshare ? (
+        <View
+          testID="reshare-slot"
+          onLayout={onReshareSlotLayout}
+          style={{
+            height: reshare.rowHeightPx,
+            paddingHorizontal: card.regionInsetPx,
+            justifyContent: 'center',
+          }}
+        >
+          {onPressReshare ? <ReshareLink onPress={onPressReshare} /> : null}
+        </View>
+      ) : null}
 
       {/* c2. What this draft is answering, when the thread does not already end
           on it. Between the conversation and the composer, so the question and

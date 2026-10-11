@@ -644,3 +644,100 @@ describe('MediaBubble — on a card (interactive={false})', () => {
     expect(mockUseVideoPlayer).toHaveBeenCalled();
   });
 });
+
+/**
+ * "Reshare on Instagram" under a story the guest tagged the venue in.
+ * (TAC-585.) The link's presence is decided by `isLiveStoryMention`, tested on
+ * its own; this is what the bubble does with the answer.
+ */
+describe('MediaBubble: reshare a story mention', () => {
+  const storyUrl = 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1';
+  const liveMention = (overrides: Partial<Attachment> = {}) =>
+    attachment({
+      id: 'story',
+      kind: 'story_mention',
+      status: 'link_only',
+      url: storyUrl,
+      urlExpiresAt: new Date(SENT_AT + 24 * 60 * 60_000).toISOString(),
+      mimeType: null,
+      ...overrides,
+    });
+  const reshareLink = () => screen.queryByRole('link', { name: 'Reshare on Instagram' });
+
+  it('offers it under a live story mention, and a press runs the action', () => {
+    const onReshare = jest.fn();
+    renderBubble(message([liveMention()]), { onReshare });
+    expect(screen.getByText('RESHARE ON INSTAGRAM')).toBeTruthy();
+    fireEvent.press(reshareLink()!);
+    expect(onReshare).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the story itself on screen beside it', () => {
+    renderBubble(message([liveMention()]), { onReshare: jest.fn() });
+    expect(screen.getByTestId('media-image').props.source).toEqual({ uri: storyUrl });
+  });
+
+  it('offers nothing once the story has expired', () => {
+    renderBubble(
+      message([liveMention({ status: 'expired', url: null, urlExpiresAt: null })]),
+      { onReshare: jest.fn() },
+    );
+    expect(screen.getByText('Expired')).toBeTruthy();
+    expect(reshareLink()).toBeNull();
+  });
+
+  it('offers nothing once the 24 hours have passed on this device', () => {
+    renderBubble(message([liveMention()]), {
+      onReshare: jest.fn(),
+      nowMs: SENT_AT + 24 * 60 * 60_000,
+    });
+    expect(reshareLink()).toBeNull();
+  });
+
+  it('offers nothing on a story reply, a photo or a reel share', () => {
+    renderBubble(
+      message([
+        liveMention({ id: 'reply', kind: 'story_reply' }),
+        attachment({ id: 'photo' }),
+        attachment({
+          id: 'reel',
+          kind: 'share',
+          status: 'link_only',
+          url: null,
+          urlExpiresAt: null,
+          linkUrl: 'https://www.instagram.com/reel/DcPVXR9vbun/',
+        }),
+      ]),
+      { onReshare: jest.fn() },
+    );
+    expect(reshareLink()).toBeNull();
+  });
+
+  it('offers nothing where the screen passes no action', () => {
+    renderBubble(message([liveMention()]));
+    expect(reshareLink()).toBeNull();
+  });
+
+  it('draws nothing pressable on a card, even when handed the action', () => {
+    // A card sits inside the deck's GestureDetector. Its link is drawn by the
+    // stack, outside the detector, never by the bubble.
+    renderBubble(message([liveMention()]), {
+      onReshare: jest.fn(),
+      interactive: false,
+      compact: true,
+    });
+    expect(reshareLink()).toBeNull();
+    expect(screen.queryByTestId('reshare-link')).toBeNull();
+  });
+
+  it('still offers it when the story would not draw', () => {
+    // Meta's link failing to load says nothing about whether Instagram still
+    // offers the reshare.
+    renderBubble(message([liveMention()]), { onReshare: jest.fn(), interactive: true });
+    act(() => {
+      screen.getByTestId('media-image').props.onError();
+    });
+    // Tried as a video next; that failing too leaves "Couldn't load".
+    expect(reshareLink()).not.toBeNull();
+  });
+});

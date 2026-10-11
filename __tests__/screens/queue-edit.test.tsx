@@ -1509,3 +1509,114 @@ describe('EditScreen — media (TAC-583)', () => {
     await waitFor(() => expect(getThread).toHaveBeenCalledTimes(4));
   });
 });
+
+/**
+ * "Reshare on Instagram" on the takeover (TAC-585). The real thread list, the
+ * real bubble and the real `openInstagramThread`; only the OS hand-off is
+ * stubbed. The takeover has no GestureDetector, so the link is an ordinary
+ * `Pressable` under the story.
+ */
+describe('EditScreen: reshare a story mention (TAC-585)', () => {
+  const Linking = jest.requireActual('expo-linking');
+  const toast = jest.requireActual('@/components/auth/toast');
+  const HOUR = 60 * 60_000;
+  let openURL: jest.SpyInstance;
+  let showToastSpy: jest.SpyInstance;
+
+  // TAC-582's Contract for a live story: `link_only`, Meta's link as `url`,
+  // and an expiry 24 h after it was sent.
+  const storyThread = (
+    over: Partial<NonNullable<ThreadMessage['attachments']>[number]> = {},
+  ): ThreadMessage[] => [
+    {
+      id: '5b0e3c1a-7d2f-4e8b-9a6c-1f0d2e3b4c5d',
+      direction: 'inbound',
+      body: '',
+      createdAt: new Date(Date.now() - HOUR).toISOString(),
+      unsupported: false,
+      attachments: [
+        {
+          id: 'story',
+          kind: 'story_mention',
+          status: 'link_only',
+          url: 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1',
+          urlExpiresAt: new Date(Date.now() + 23 * HOUR).toISOString(),
+          mimeType: null,
+          title: null,
+          linkUrl: null,
+          ...over,
+        },
+      ],
+    },
+  ];
+  const link = () => screen.queryByRole('link', { name: 'Reshare on Instagram' });
+
+  beforeEach(() => {
+    openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    showToastSpy = jest.spyOn(toast, 'showToast').mockImplementation(() => {});
+    mockQueue.drafts = [
+      makeDraft({
+        guestChannel: 'instagram',
+        instagramUsername: 'mia.brews',
+        guestPhoneFallback: '',
+        reviewReasonCode: 'media_only_inbound',
+        recentContext: [],
+      }),
+    ];
+    mockRouter.params = { messageId: mockQueue.drafts[0].messageId };
+  });
+
+  afterEach(() => {
+    openURL.mockRestore();
+    showToastSpy.mockRestore();
+  });
+
+  it("opens the guest's Instagram thread and leaves the draft alone", async () => {
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: storyThread() });
+    render(<EditScreen />);
+    await waitFor(() => expect(link()).not.toBeNull());
+    await act(async () => {
+      fireEvent.press(link()!);
+    });
+
+    // The ticket's own link: https://ig.me/m/{instagram_username}.
+    expect(openURL).toHaveBeenCalledTimes(1);
+    expect(openURL).toHaveBeenCalledWith('https://ig.me/m/mia.brews');
+    expect(editAndSend).not.toHaveBeenCalled();
+    expect(skipDraft).not.toHaveBeenCalled();
+    expect(mockQueue.optimisticallyRemove).not.toHaveBeenCalled();
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(showToastSpy).not.toHaveBeenCalled();
+  });
+
+  it('says so when Instagram will not open', async () => {
+    openURL.mockRejectedValueOnce(new Error('no handler'));
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: storyThread() });
+    render(<EditScreen />);
+    await waitFor(() => expect(link()).not.toBeNull());
+    await act(async () => {
+      fireEvent.press(link()!);
+    });
+    expect(showToastSpy).toHaveBeenCalledWith("Couldn't open Instagram.");
+  });
+
+  it('offers nothing once the story has expired', async () => {
+    (getThread as jest.Mock).mockResolvedValue({
+      ok: true,
+      data: storyThread({ status: 'expired', url: null, urlExpiresAt: null }),
+    });
+    render(<EditScreen />);
+    await waitFor(() => expect(screen.getByText('Expired')).toBeTruthy());
+    expect(link()).toBeNull();
+  });
+
+  it('offers nothing for a guest with no handle to open', async () => {
+    mockQueue.drafts = [
+      makeDraft({ reviewReasonCode: 'media_only_inbound', recentContext: [] }),
+    ];
+    (getThread as jest.Mock).mockResolvedValue({ ok: true, data: storyThread() });
+    render(<EditScreen />);
+    await waitFor(() => expect(screen.getByTestId('media-image')).toBeTruthy());
+    expect(link()).toBeNull();
+  });
+});

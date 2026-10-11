@@ -278,6 +278,17 @@ export default function QueueScreen() {
     if (!result.ok) showToast(CARD_COPY.toast.instagramOpenFailed);
   };
 
+  /**
+   * "Reshare on Instagram" on a card showing a story the guest tagged the
+   * venue in. Opens their Instagram thread, where Instagram's own "Add to your
+   * story" button is, and does nothing to the card: nothing is approved, sent,
+   * skipped or removed. (TAC-585.)
+   */
+  const handleReshareStory = async (username: string): Promise<void> => {
+    const result = await openInstagramThread(username);
+    if (!result.ok) showToast(CARD_COPY.media.openFailed);
+  };
+
   // A swipe was in flight when the window shut under it. Nothing to remove and
   // nothing to restore: all this owes the operator is the explanation.
   const handleBlockedExpired = (): void => {
@@ -448,6 +459,7 @@ export default function QueueScreen() {
           onPressHelp={handleHelp}
           onCopyAndOpen={handleCopyAndOpen}
           onOpenHandle={handleOpenHandle}
+          onReshareStory={handleReshareStory}
           onBlockedExpired={handleBlockedExpired}
         />
       )}

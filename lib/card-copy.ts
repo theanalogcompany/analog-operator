@@ -126,6 +126,11 @@ export const CARD_COPY = {
     /** The link out did not open. Nothing was copied, so it says only that. */
     openFailed: "Couldn't open Instagram.",
     /**
+     * On a live story mention. Opens the guest's Instagram thread, where
+     * Instagram's own "Add to your story" lives. Wording from TAC-585.
+     */
+    reshare: 'Reshare on Instagram',
+    /**
      * A voice note or a video on a CARD, where nothing can be played: a card's
      * touches belong to the swipe. The server's own words for them, from the
      * conversations list's `previewLabel` values (TAC-582 Contract), so a card

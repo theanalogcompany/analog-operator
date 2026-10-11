@@ -16,12 +16,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
 import { type BubbleSurface } from '@/components/ui/message-bubble';
+import { ReshareLink } from '@/components/ui/reshare-link';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { type Attachment, type ThreadMessage } from '@/lib/api/queue';
 import { CARD_COPY } from '@/lib/card-copy';
 import {
   type PinnedSource,
   formatMediaDuration,
+  isLiveStoryMention,
   mediaVariantFor,
   nextPinnedSource,
   pinSource,
@@ -78,6 +80,13 @@ type Props = {
    * can ask once per attachment rather than once per failure.
    */
   onUrlExpired?: (attachmentId: string) => void;
+  /**
+   * Opens the guest's Instagram thread so a story they tagged the venue in can
+   * be reshared from there. When given, a live story mention gets a "Reshare
+   * on Instagram" link under it. Ignored when `interactive` is false: the link
+   * is a `Pressable`, and a card draws its own outside the gesture. (TAC-585.)
+   */
+  onReshare?: () => void;
 };
 
 const TAIL_RADIUS = 5;
@@ -119,6 +128,7 @@ export function MediaBubble({
   compact = false,
   nowMs,
   onUrlExpired,
+  onReshare,
 }: Props) {
   const tone = toneFor(message.direction, surface);
   const now = nowMs ?? Date.now();
@@ -148,6 +158,7 @@ export function MediaBubble({
           compact={compact}
           nowMs={now}
           onUrlExpired={onUrlExpired}
+          onReshare={onReshare}
         />
       ))}
       {message.unsupported === true ? (
@@ -164,9 +175,36 @@ type TileProps = {
   compact: boolean;
   nowMs: number;
   onUrlExpired?: (attachmentId: string) => void;
+  onReshare?: () => void;
 };
 
-function AttachmentTile({
+/**
+ * One attachment, and under a story the guest tagged the venue in, the way out
+ * to reshare it.
+ *
+ * The link is decided here rather than inside the tile so it does not depend
+ * on whether the story's picture loaded: Meta's link failing to draw says
+ * nothing about whether Instagram will still offer the reshare, and the
+ * operator is one tap from finding out. It sits on a bubble fill like every
+ * other piece of text in this file.
+ */
+function AttachmentTile(props: TileProps) {
+  const { attachment, tone, interactive, nowMs, onReshare } = props;
+  const tile = <AttachmentMedia {...props} />;
+  if (!interactive || !onReshare || !isLiveStoryMention(attachment, nowMs)) {
+    return tile;
+  }
+  return (
+    <>
+      {tile}
+      <BubbleShell tone={tone}>
+        <ReshareLink onPress={onReshare} color={tone.ink} />
+      </BubbleShell>
+    </>
+  );
+}
+
+function AttachmentMedia({
   attachment,
   tone,
   interactive,

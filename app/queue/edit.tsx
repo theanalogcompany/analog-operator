@@ -29,6 +29,7 @@ import { clearUndoState, setUndoState } from '@/hooks/use-undo-state';
 import { useThreadRealtime } from '@/hooks/use-thread-realtime';
 import { useThreadRefetch } from '@/hooks/use-thread-refetch';
 import { type ThreadMessage, editAndSend, getThread, skipDraft } from '@/lib/api/queue';
+import { openInstagramThread } from '@/lib/instagram';
 import { windowState } from '@/lib/reply-window';
 import { needsThreadExcerpt } from '@/lib/card-excerpt';
 import { CARD_COPY } from '@/lib/card-copy';
@@ -110,6 +111,17 @@ export default function EditScreen() {
   }, [params.messageId]);
 
   const [text, setText] = useState<string>(params.prefill ?? draft?.draftBody ?? '');
+
+  // Who a "Reshare on Instagram" link would open. Null for a guest with no
+  // handle, which includes a decline handoff's fabricated draft.
+  const reshareUsername = draft?.instagramUsername?.trim() || null;
+  const handleReshareStory = async (): Promise<void> => {
+    if (!reshareUsername) return;
+    // A press handler is an outer boundary: the failure is told to the
+    // operator rather than thrown.
+    const result = await openInstagramThread(reshareUsername);
+    if (!result.ok) showToast(CARD_COPY.media.openFailed);
+  };
   const [submitting, setSubmitting] = useState<'edit' | 'skip' | null>(null);
   // Thread state initialized with `recentContext` (oldest-first per the
   // PendingDraftSchema parse-boundary sort) so the screen renders bubbles
@@ -562,6 +574,13 @@ export default function EditScreen() {
                   items={items}
                   surface="card"
                   onMediaUrlExpired={handleMediaUrlExpired}
+                  // Drawn only under a story the guest tagged the venue in,
+                  // while it is still up. Opens their Instagram thread and
+                  // touches nothing here: not the draft, not the typed text,
+                  // not the card. (TAC-585.)
+                  onReshareStory={
+                    reshareUsername ? () => void handleReshareStory() : undefined
+                  }
                 />
               )}
             </ScrollView>

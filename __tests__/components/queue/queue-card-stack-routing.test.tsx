@@ -1,5 +1,6 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { type ReactNode } from 'react';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { QueueCardStack } from '@/components/queue/queue-card-stack';
@@ -143,6 +144,7 @@ function renderStack(items: QueueItem[], busyKey: string | null = null) {
     onPressHelp: jest.fn(),
     onCopyAndOpen: jest.fn(),
     onOpenHandle: jest.fn(),
+    onReshareStory: jest.fn(),
     onBlockedExpired: jest.fn(),
   };
   render(
@@ -343,6 +345,249 @@ describe('a draft card raised by media', () => {
     await act(async () => {});
     expect(screen.queryByTestId('media-image')).toBeNull();
     expect(screen.getByTestId('queue-card-composer')).toBeTruthy();
+  });
+});
+
+/**
+ * "Reshare on Instagram" on a card (TAC-585).
+ *
+ * The claim that matters is structural: the link is a real `Pressable`, and a
+ * Pressable under the deck's GestureDetector kills the pan (CLAUDE.md, TAC-37).
+ * `GestureDetector` contributes no host node, so its place in the tree is read
+ * off the one view it wraps, `queue-front-card`: on a live card the link must
+ * not be inside that view. Whether the pan and the link then coexist under a
+ * real finger is not claimable here and is the device gate's.
+ */
+describe('reshare on a card showing a story mention', () => {
+  const STORY_MESSAGE_ID = '5b0e3c1a-7d2f-4e8b-9a6c-1f0d2e3b4c5d';
+  const HOUR = 60 * 60_000;
+  const storyDraft = (over: Partial<PendingDraft> = {}) =>
+    makeDraft({
+      guestChannel: 'instagram',
+      instagramUsername: 'mia.brews',
+      guestPhoneFallback: '',
+      draftBody: '',
+      recentContext: [],
+      reviewReasonCode: 'media_only_inbound',
+      replyingTo: { messageId: STORY_MESSAGE_ID, body: '' },
+      ...over,
+    });
+  // TAC-582's Contract for a story: live is `link_only` with Meta's link and
+  // an expiry 24 h after it was sent; afterwards `expired` with both null.
+  const storyThread = (
+    over: Partial<{
+      kind: 'story_mention' | 'story_reply';
+      status: 'link_only' | 'expired';
+      url: string | null;
+      urlExpiresAt: string | null;
+    }> = {},
+  ) => ({
+    ok: true as const,
+    data: [
+      {
+        id: STORY_MESSAGE_ID,
+        direction: 'inbound' as const,
+        body: '',
+        createdAt: new Date(Date.now() - HOUR).toISOString(),
+        unsupported: false,
+        attachments: [
+          {
+            id: 'story',
+            kind: 'story_mention' as const,
+            status: 'link_only' as const,
+            url: 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1',
+            urlExpiresAt: new Date(Date.now() + 23 * HOUR).toISOString(),
+            mimeType: null,
+            title: null,
+            linkUrl: null,
+            ...over,
+          },
+        ],
+      },
+    ],
+  });
+
+  type TreeNode = ReturnType<typeof screen.getByTestId>;
+  const isInside = (node: TreeNode, testID: string): boolean => {
+    for (let parent = node.parent; parent; parent = parent.parent) {
+      if (parent.props.testID === testID) return true;
+    }
+    return false;
+  };
+
+  /** The card reporting where it left room, as a real layout pass would. */
+  const layOutSlot = async (y = 372): Promise<void> => {
+    const slot = await screen.findByTestId('reshare-slot');
+    fireEvent(slot, 'layout', {
+      nativeEvent: { layout: { x: 0, y, width: 362, height: 30 } },
+    });
+  };
+  const link = () => screen.queryByRole('link', { name: 'Reshare on Instagram' });
+
+  it('draws the link outside the gesture, over the room the card left', async () => {
+    getThreadMock.mockResolvedValue(storyThread());
+    renderStack([draftItem(storyDraft())]);
+    await layOutSlot();
+
+    const reshare = link();
+    expect(reshare).not.toBeNull();
+    expect(isInside(reshare!, 'queue-front-card')).toBe(false);
+    expect(isInside(reshare!, 'reshare-layer')).toBe(true);
+    // The control for the line above: the helper does find things that ARE
+    // inside the detector's view.
+    expect(isInside(screen.getByTestId('queue-card-composer'), 'queue-front-card')).toBe(
+      true,
+    );
+  });
+
+  it('draws it exactly where the card said the room is, and follows a re-layout', async () => {
+    // The handle link once matched at (0, 0) and opened Instagram from the
+    // flag strip (CLAUDE.md, TAC-486). A link drawn at the top of the card
+    // would pass every ancestry check above.
+    getThreadMock.mockResolvedValue(storyThread());
+    renderStack([draftItem(storyDraft())]);
+    await layOutSlot(372);
+    const row = () => StyleSheet.flatten(screen.getByTestId('reshare-layer-row').props.style);
+    expect(row()).toMatchObject({ position: 'absolute', top: 372, height: 30, left: 0, right: 0 });
+    expect(isInside(link()!, 'reshare-layer-row')).toBe(true);
+
+    // The layer is the card's own box, so the row's offset is card-local.
+    const layer = StyleSheet.flatten(screen.getByTestId('reshare-layer').props.style);
+    const front = StyleSheet.flatten(screen.getByTestId('queue-front-card').props.style);
+    expect(layer).toMatchObject({ position: 'absolute', top: 0, left: 0, right: 0 });
+    expect(front).toMatchObject({ position: 'absolute', top: 0, left: 0, right: 0 });
+
+    await layOutSlot(340);
+    expect(row()).toMatchObject({ top: 340, height: 30 });
+  });
+
+  it('draws no link until the card has said where the room is', async () => {
+    getThreadMock.mockResolvedValue(storyThread());
+    renderStack([draftItem(storyDraft())]);
+    await screen.findByTestId('reshare-slot');
+    expect(screen.queryByTestId('reshare-layer')).toBeNull();
+    expect(link()).toBeNull();
+  });
+
+  it('leaves the card itself with nothing pressable', async () => {
+    getThreadMock.mockResolvedValue(storyThread());
+    renderStack([draftItem(storyDraft())]);
+    await layOutSlot();
+    const insideCard = screen
+      .queryAllByTestId('reshare-link')
+      .filter((node) => isInside(node, 'queue-front-card'));
+    expect(insideCard).toHaveLength(0);
+  });
+
+  it('lets touches that miss the link through to the card', async () => {
+    getThreadMock.mockResolvedValue(storyThread());
+    renderStack([draftItem(storyDraft())]);
+    await layOutSlot();
+    expect(screen.getByTestId('reshare-layer').props.pointerEvents).toBe('box-none');
+    // The row spans the card's width, so it needs it as much as the layer
+    // does: without it a pan starting anywhere in that band is swallowed.
+    expect(screen.getByTestId('reshare-layer-row').props.pointerEvents).toBe('box-none');
+  });
+
+  it('gives a heads-up card no room and no link', async () => {
+    // Its payload carries no Instagram handle to open.
+    getThreadMock.mockResolvedValue(storyThread());
+    renderStack([headsUpItem(makeCommitment())]);
+    await screen.findByTestId('media-image');
+    expect(screen.queryByTestId('reshare-slot')).toBeNull();
+    expect(link()).toBeNull();
+  });
+
+  it('opens the guest and does nothing else to the card', async () => {
+    getThreadMock.mockResolvedValue(storyThread());
+    const handlers = renderStack([draftItem(storyDraft())]);
+    await layOutSlot();
+    fireEvent.press(link()!);
+
+    expect(handlers.onReshareStory).toHaveBeenCalledTimes(1);
+    expect(handlers.onReshareStory).toHaveBeenCalledWith('mia.brews');
+    expect(handlers.onApprove).not.toHaveBeenCalled();
+    expect(handlers.onEdit).not.toHaveBeenCalled();
+    expect(handlers.onRefuseApprove).not.toHaveBeenCalled();
+    expect(handlers.onCopyAndOpen).not.toHaveBeenCalled();
+    expect(handlers.onOpenHandle).not.toHaveBeenCalled();
+    // Still the front card, still swipeable.
+    expect(screen.getByTestId('queue-card-composer')).toBeTruthy();
+    expect(swipe().enabled).toBe(true);
+  });
+
+  it('keeps the swipe routing as it was', async () => {
+    getThreadMock.mockResolvedValue(storyThread());
+    const draft = storyDraft();
+    const handlers = renderStack([draftItem(draft)]);
+    await layOutSlot();
+    await act(async () => {
+      swipe().onCommitLeft();
+    });
+    expect(handlers.onEdit).toHaveBeenCalledWith(draft);
+    expect(handlers.onReshareStory).not.toHaveBeenCalled();
+  });
+
+  it('shows nothing once the story has expired', async () => {
+    getThreadMock.mockResolvedValue(
+      storyThread({ status: 'expired', url: null, urlExpiresAt: null }),
+    );
+    renderStack([draftItem(storyDraft())]);
+    expect(await screen.findByText('Expired')).toBeTruthy();
+    expect(screen.queryByTestId('reshare-slot')).toBeNull();
+    expect(link()).toBeNull();
+  });
+
+  it('shows nothing for a story reply', async () => {
+    getThreadMock.mockResolvedValue(storyThread({ kind: 'story_reply' }));
+    renderStack([draftItem(storyDraft())]);
+    await screen.findByTestId('media-image');
+    expect(screen.queryByTestId('reshare-slot')).toBeNull();
+    expect(link()).toBeNull();
+  });
+
+  it('shows nothing for a guest with no handle to open', async () => {
+    getThreadMock.mockResolvedValue(storyThread());
+    renderStack([draftItem(storyDraft({ instagramUsername: null }))]);
+    await screen.findByTestId('media-image');
+    expect(screen.queryByTestId('reshare-slot')).toBeNull();
+    expect(link()).toBeNull();
+  });
+
+  it('keeps no room on a card with no story', async () => {
+    renderStack([draftItem(makeDraft())]);
+    await act(async () => {});
+    expect(screen.queryByTestId('reshare-slot')).toBeNull();
+  });
+
+  it('never appears on the peek card behind', async () => {
+    getThreadMock.mockResolvedValue(storyThread());
+    renderStack([
+      draftItem(makeDraft()),
+      draftItem(storyDraft({ messageId: '44444444-4444-4444-8444-444444444444' })),
+    ]);
+    await act(async () => {});
+    expect(screen.queryByTestId('reshare-slot')).toBeNull();
+    expect(link()).toBeNull();
+  });
+
+  it('is a real link inside the card once the reply window has shut', async () => {
+    // An expired card has no GestureDetector above it at all (TAC-486), so
+    // the link lives in the card like its copy button does.
+    getThreadMock.mockResolvedValue(storyThread());
+    const handlers = renderStack([
+      draftItem(
+        storyDraft({
+          draftBody: 'thank you for the tag',
+          replyWindowExpiresAt: new Date(Date.now() - 3 * HOUR).toISOString(),
+        }),
+      ),
+    ]);
+    await screen.findByTestId('reshare-slot');
+    expect(screen.queryByTestId('reshare-layer')).toBeNull();
+    fireEvent.press(link()!);
+    expect(handlers.onReshareStory).toHaveBeenCalledWith('mia.brews');
+    expect(handlers.onCopyAndOpen).not.toHaveBeenCalled();
   });
 });
 
