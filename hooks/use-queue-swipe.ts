@@ -6,6 +6,7 @@ import {
   withTiming,
 } from 'react-native-reanimated';
 
+import { guardGesture } from '@/lib/gesture-guard';
 import { swipe } from '@/lib/theme';
 
 export type SwipeDirection = -1 | 0 | 1;
@@ -121,16 +122,16 @@ export function useQueueSwipe({
     .enabled(enabled)
     .activeOffsetX([-10, 10])
     .failOffsetY([-15, 15])
-    .onBegin(() => {
+    .onBegin(guardGesture('pan.onBegin', () => {
       'worklet';
       pastThreshold.value = false;
       isPanning.value = true;
-    })
-    .onFinalize(() => {
+    }))
+    .onFinalize(guardGesture('pan.onFinalize', () => {
       'worklet';
       isPanning.value = false;
-    })
-    .onUpdate((e) => {
+    }))
+    .onUpdate(guardGesture('pan.onUpdate', (e) => {
       'worklet';
       translateX.value = e.translationX;
       rotation.value = e.translationX * swipe.rotationFactor;
@@ -145,8 +146,8 @@ export function useQueueSwipe({
         // corrected, abandoned swipe feel like it did something.
         if (crossed) runOnJS(onCrossThreshold)();
       }
-    })
-    .onEnd((e) => {
+    }))
+    .onEnd(guardGesture('pan.onEnd', (e) => {
       'worklet';
       const outcome = resolveSwipeOutcome({
         translationX: e.translationX,
@@ -193,7 +194,7 @@ export function useQueueSwipe({
       } else if (outcome === 'refuse-right') {
         runOnJS(onRefuseRight)();
       }
-    });
+    }));
 
   return { pan, translateX, rotation, direction, intensity, isPanning };
 }

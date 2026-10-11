@@ -6,6 +6,7 @@ import {
 import { hintState } from '@/components/queue/swipe-hints';
 import { washOpacity } from '@/components/queue/swipe-overlay';
 import { resolveSwipeOutcome } from '@/hooks/use-queue-swipe';
+import { isRefAttached, measureIfAttached } from '@/lib/gesture-guard';
 import {
   cardRiseAt,
   cubicBezierAt,
@@ -48,6 +49,10 @@ const workletHelpers = {
   isHandleTap,
   // Called from the Pan gesture's onEnd, on the UI thread.
   resolveSwipeOutcome,
+  // Also from the Tap gesture's onEnd: the handle measurement, and the check
+  // that keeps it away from a ref no view is attached to.
+  measureIfAttached,
+  isRefAttached,
 
   // The cold-launch entrance ramps (TAC-384). Every one of these is called
   // from inside a useAnimatedStyle, and the easing helpers are called from
@@ -76,6 +81,6 @@ describe('worklet directives', () => {
   it('covers every helper, so the list cannot silently fall behind', () => {
     // A reminder rather than a real constraint: if you extracted a new helper
     // and did not add it above, this count is the thing that nags you.
-    expect(Object.keys(workletHelpers)).toHaveLength(13);
+    expect(Object.keys(workletHelpers)).toHaveLength(15);
   });
 });
