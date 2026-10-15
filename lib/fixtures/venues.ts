@@ -27,3 +27,35 @@ export const FIXTURE_VENUES = [
 
 /** A stable stand-in operator id, so fixture mode needs no Supabase row. */
 export const FIXTURE_OPERATOR_ID = 'f1c7d0e2-3a4b-4c5d-8e6f-0a1b2c3d4e5f';
+
+// Each fixture venue's Instagram connection (TAC-517), so the You screen's
+// Instagram row renders offline. One connected, one expiring; an id that isn't
+// a fixture venue reads as disconnected. Dates are relative to now so the
+// expiring venue stays expiring.
+export function fixtureVenueInstagram(venueId: string): {
+  status: 'connected' | 'disconnected' | 'expiring';
+  username: string | null;
+  expiresAt: string | null;
+} {
+  const day = 24 * 60 * 60_000;
+  if (venueId === FIXTURE_SEXTANT_ID) {
+    return {
+      status: 'connected',
+      username: 'mocksextant',
+      expiresAt: new Date(Date.now() + 40 * day).toISOString(),
+    };
+  }
+  if (venueId === FIXTURE_CENTRAL_PERK_ID) {
+    return {
+      status: 'expiring',
+      username: 'mockcentralperk',
+      expiresAt: new Date(Date.now() + 3 * day + 60_000).toISOString(),
+    };
+  }
+  return { status: 'disconnected', username: null, expiresAt: null };
+}
+
+/** Where fixture mode's Connect goes. A real page, so the browser opens. */
+export function fixtureConnectUrl(): string {
+  return 'https://www.instagram.com/';
+}

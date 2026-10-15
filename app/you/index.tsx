@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
-import { type ReactNode } from 'react';
-import { Image, Pressable, ScrollView, View } from 'react-native';
+import { type ReactNode, useRef } from 'react';
+import { Alert, Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showToast } from '@/components/auth/toast';
@@ -10,11 +10,23 @@ import { TopNav } from '@/components/shell/top-nav';
 import { VenuePicker } from '@/components/shell/venue-picker';
 import { TrackedCaps } from '@/components/ui/tracked-caps';
 import { useNotificationPermission } from '@/hooks/use-notification-permission';
+import { useNow } from '@/hooks/use-now';
+import { useVenueInstagram } from '@/hooks/use-venue-instagram';
 import { useSession } from '@/lib/auth/use-session';
 import { openHelpSms } from '@/lib/help';
+import {
+  INSTAGRAM_COPY,
+  type InstagramRowView,
+  connectionView,
+  openInstagramConnect,
+  rowAction,
+  rowDetail,
+  rowValue,
+} from '@/lib/instagram-connection';
 import { requestPermission } from '@/lib/notifications/permissions';
 import { supabase } from '@/lib/supabase/client';
-import { layout, typePresets } from '@/lib/theme';
+import { body as bodyType, instagramIdentity, layout, typePresets } from '@/lib/theme';
+import { useVenueSelection } from '@/lib/venue-context';
 
 /**
  * The full wordmark, 480x92 (aspect 5.217), drawn in the brand cream
@@ -91,6 +103,8 @@ export default function YouScreen() {
         </View>
 
         <View style={{ paddingHorizontal: 18, gap: 9 }}>
+          <InstagramCard />
+
           <SettingsCard>
             <SettingsRow
               label="Push notifications"
@@ -151,6 +165,81 @@ export default function YouScreen() {
   );
 }
 
+/**
+ * The selected venue's Instagram connection (TAC-517). Rendered only once a
+ * venue is selected, because the not-connected wording names it.
+ *
+ * Connect and Reconnect go through a confirm step BEFORE the browser opens:
+ * whichever Instagram account the phone is logged into is the one that gets
+ * connected, the same trap as the expired card's deep link (TAC-486).
+ */
+function InstagramCard() {
+  const { selectedVenue } = useVenueSelection();
+  const venueId = selectedVenue?.id ?? null;
+  const { state, refetch } = useVenueInstagram(venueId);
+  const nowMs = useNow();
+  // One connect at a time. The alert covers the screen, but the gap between
+  // Continue and the browser opening is a network round trip.
+  const connecting = useRef(false);
+
+  if (!selectedVenue) return null;
+
+  const view: InstagramRowView =
+    state.kind === 'loading'
+      ? { kind: 'loading' }
+      : state.kind === 'error'
+        ? { kind: 'unknown' }
+        : connectionView(state.instagram, nowMs);
+
+  const value = rowValue(view);
+  const action = rowAction(view);
+  const detail = rowDetail(view, selectedVenue.name);
+
+  const startConnect = (): void => {
+    if (connecting.current) return;
+    connecting.current = true;
+    void openInstagramConnect(selectedVenue.id).then((result) => {
+      connecting.current = false;
+      if (result.ok) return;
+      showToast(
+        result.error.kind === 'OPEN_FAILED'
+          ? INSTAGRAM_COPY.openFailedToast
+          : INSTAGRAM_COPY.connectFailedToast,
+      );
+    });
+  };
+
+  const handlePress = (): void => {
+    if (view.kind === 'unknown') {
+      refetch();
+      return;
+    }
+    Alert.alert(INSTAGRAM_COPY.confirmTitle, INSTAGRAM_COPY.confirmMessage, [
+      { text: INSTAGRAM_COPY.confirmCancel, style: 'cancel' },
+      { text: INSTAGRAM_COPY.confirmContinue, onPress: startConnect },
+    ]);
+  };
+
+  const handleIsValue = view.kind === 'connected' || view.kind === 'expiring';
+
+  return (
+    <SettingsCard>
+      <SettingsRow
+        label={INSTAGRAM_COPY.label}
+        value={value ?? undefined}
+        valueAsIs={handleIsValue}
+        action={action ?? undefined}
+        detail={detail ?? undefined}
+        accessibilityLabel={[INSTAGRAM_COPY.label, value, action, detail]
+          .filter((part): part is string => !!part)
+          .join(', ')}
+        isLast
+        onPress={action ? handlePress : undefined}
+      />
+    </SettingsCard>
+  );
+}
+
 function SettingsCard({ children }: { children: ReactNode }) {
   return (
     <View
@@ -171,35 +260,37 @@ function SettingsCard({ children }: { children: ReactNode }) {
 type RowProps = {
   label: string;
   value?: string;
+  /**
+   * Render the value in its own case rather than tracked caps. For a handle:
+   * nobody can look up `@LEMILSCOFFEE` (TAC-486's identity rule).
+   */
+  valueAsIs?: boolean;
   /** Trailing tracked-caps action, e.g. "Turn on". */
   action?: string;
   chevron?: boolean;
   destructive?: boolean;
   isLast?: boolean;
+  /** A sentence under the row, for a state that needs explaining. */
+  detail?: string;
+  /** Overrides the default label, which is the label plus the action. */
+  accessibilityLabel?: string;
   onPress?: () => void;
 };
 
 function SettingsRow({
   label,
   value,
+  valueAsIs = false,
   action,
   chevron = false,
   destructive = false,
   isLast = false,
+  detail,
+  accessibilityLabel,
   onPress,
 }: RowProps) {
-  const content = (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        paddingVertical: 16,
-        paddingHorizontal: 18,
-        borderBottomWidth: isLast ? 0 : 1,
-        borderBottomColor: 'rgba(28,24,20,0.10)',
-      }}
-    >
+  const line = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <TrackedCaps
         {...typePresets.settingLabel}
         color={destructive ? '#A85638' : '#1C1814'}
@@ -208,7 +299,22 @@ function SettingsRow({
       >
         {label}
       </TrackedCaps>
-      {value ? (
+      {value && valueAsIs ? (
+        <Text
+          allowFontScaling={false}
+          accessible={false}
+          numberOfLines={1}
+          className="font-inter-tight"
+          style={{
+            flexShrink: 1,
+            fontSize: instagramIdentity.handle.sizePx,
+            letterSpacing: instagramIdentity.handle.trackingPx,
+            color: '#6F6658',
+          }}
+        >
+          {value}
+        </Text>
+      ) : value ? (
         <TrackedCaps {...typePresets.settingValue} color="#6F6658" decorative>
           {value}
         </TrackedCaps>
@@ -224,12 +330,42 @@ function SettingsRow({
     </View>
   );
 
+  const content = (
+    <View
+      accessible={!onPress && accessibilityLabel ? true : undefined}
+      accessibilityLabel={!onPress ? accessibilityLabel : undefined}
+      style={{
+        paddingVertical: 16,
+        paddingHorizontal: 18,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: 'rgba(28,24,20,0.10)',
+      }}
+    >
+      {line}
+      {detail ? (
+        <Text
+          allowFontScaling={false}
+          accessible={false}
+          className="font-inter-tight"
+          style={{
+            marginTop: 8,
+            fontSize: bodyType.preview.size,
+            lineHeight: bodyType.preview.lineHeight,
+            color: '#6F6658',
+          }}
+        >
+          {detail}
+        </Text>
+      ) : null}
+    </View>
+  );
+
   if (!onPress) return content;
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={action ? `${label}, ${action}` : label}
+      accessibilityLabel={accessibilityLabel ?? (action ? `${label}, ${action}` : label)}
       onPress={onPress}
       style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}
     >
